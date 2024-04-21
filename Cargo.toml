@@ -1,0 +1,13 @@
+[package]
+name = "datafusion-functions-json"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+arrow-schema = "51.0.0"
+datafusion-common = "37.0.0"
+datafusion-expr = "37.0.0"
+jiter = { git = "https://github.com/pydantic/jiter.git", branch = "next_skip" }
+paste = "1.0.14"
+log = "0.4.21"
+datafusion-execution = "37.0.0"
