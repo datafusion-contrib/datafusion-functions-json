@@ -11,6 +11,7 @@ pub mod functions {
     pub use crate::json_obj_contains::json_obj_contains;
 }
 
+/// Register all JSON UDFs
 pub fn register_all(registry: &mut dyn FunctionRegistry) -> Result<()> {
     let functions: Vec<Arc<ScalarUDF>> = vec![json_obj_contains::json_obj_contains_udf()];
     functions.into_iter().try_for_each(|udf| {

@@ -1,3 +1,4 @@
+#[allow(clippy::doc_markdown)]
 /// Currently copied verbatim, can hopefully be replaced or simplified
 /// https://github.com/apache/datafusion/blob/19356b26f515149f96f9b6296975a77ac7260149/datafusion/functions-array/src/macros.rs
 ///
@@ -23,7 +24,7 @@
 /// ```
 /// # Arguments
 /// * `UDF`: name of the [`ScalarUDFImpl`]
-/// * `EXPR_FN`: name of the expr_fn function to be created
+/// * `EXPR_FN`: name of the `expr_fn` function to be created
 /// * `arg`: 0 or more named arguments for the function
 /// * `DOC`: documentation string for the function
 /// * `SCALAR_UDF_FUNC`: name of the function to create (just) the `ScalarUDF`
@@ -35,7 +36,7 @@ macro_rules! make_udf_function {
         paste::paste! {
             // "fluent expr_fn" style function
             #[doc = $DOC]
-            pub fn $EXPR_FN($($arg: datafusion_expr::Expr),*) -> datafusion_expr::Expr {
+            #[must_use] pub fn $EXPR_FN($($arg: datafusion_expr::Expr),*) -> datafusion_expr::Expr {
                 datafusion_expr::Expr::ScalarFunction(datafusion_expr::expr::ScalarFunction::new_udf(
                     $SCALAR_UDF_FN(),
                     vec![$($arg),*],

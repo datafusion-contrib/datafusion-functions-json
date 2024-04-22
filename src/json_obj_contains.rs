@@ -11,7 +11,7 @@ use std::sync::Arc;
 make_udf_function!(
     JsonObjContains,
     json_obj_contains,
-    json_haystack needle, // arg name
+    json_data key, // arg name
     "Does the string exist as a top-level key within the JSON value?", // doc
     json_obj_contains_udf // internal function name
 );
@@ -48,7 +48,7 @@ impl ScalarUDFImpl for JsonObjContains {
         match arg_types[0] {
             Utf8 | LargeUtf8 => Ok(DataType::Boolean),
             _ => {
-                return plan_err!("The json_obj_contains function can only accept Utf8 or LargeUtf8.");
+                plan_err!("The json_obj_contains function can only accept Utf8 or LargeUtf8.")
             }
         }
     }
@@ -56,7 +56,9 @@ impl ScalarUDFImpl for JsonObjContains {
     fn invoke(&self, args: &[ColumnarValue]) -> Result<ColumnarValue> {
         let json_haystack = match &args[0] {
             ColumnarValue::Array(array) => as_string_array(array),
-            _ => return exec_err!("json_obj_contains first argument: unexpected argument type, expected string array"),
+            ColumnarValue::Scalar(_) => {
+                return exec_err!("json_obj_contains first argument: unexpected argument type, expected string array")
+            }
         };
 
         let needle = match &args[1] {
@@ -79,10 +81,10 @@ impl ScalarUDFImpl for JsonObjContains {
 
 fn jiter_json_contains(json_data: &[u8], expected_key: &str) -> bool {
     let mut jiter = Jiter::new(json_data, false);
-    let first_key = match jiter.next_object() {
-        Ok(Some(key)) => key,
-        _ => return false,
+    let Ok(Some(first_key)) = jiter.next_object() else {
+        return false;
     };
+
     if first_key == expected_key {
         return true;
     }

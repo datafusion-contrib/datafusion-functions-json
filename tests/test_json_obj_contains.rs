@@ -13,7 +13,7 @@ async fn create_test_table() -> Result<SessionContext> {
         Field::new("json_data", DataType::Utf8, false),
     ]));
 
-    let data = vec![
+    let data = [
         ("object_foo", r#" {"foo": 123} "#),
         ("object_bar", r#" {"bar": true} "#),
         ("list_foo", r#" ["foo"] "#),
@@ -40,7 +40,7 @@ async fn create_test_table() -> Result<SessionContext> {
 
 /// Executes an expression on the test dataframe as a select.
 /// Compares formatted output of a record batch with an expected
-/// vector of strings, using the assert_batch_eq! macro
+/// vector of strings, using the `assert_batch_eq`! macro
 macro_rules! query {
     ($sql:expr, $expected: expr) => {
         let ctx = create_test_table().await?;
