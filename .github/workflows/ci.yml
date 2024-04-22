@@ -50,14 +50,15 @@ jobs:
     - id: cache-rust
       uses: Swatinem/rust-cache@v2
 
-    - uses: taiki-e/install-action@cargo-llvm-cov
-
-    - run: cargo llvm-cov --all-features --lcov --output-path lcov.info
-
-    - uses: codecov/codecov-action@v3
-      with:
-        files: lcov.info
-        env_vars: RUST_VERSION
+    - run: cargo test --all-features
+#    - uses: taiki-e/install-action@cargo-llvm-cov
+#
+#    - run: cargo llvm-cov --all-features --codecov --output-path codecov.json
+#
+#    - uses: codecov/codecov-action@v3
+#      with:
+#        files: codecov.json
+#        env_vars: RUST_VERSION
 
   # https://github.com/marketplace/actions/alls-green#why used for branch protection checks
   check:
