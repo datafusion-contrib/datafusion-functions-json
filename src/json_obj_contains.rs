@@ -1,12 +1,12 @@
-use std::any::Any;
-use std::sync::Arc;
+use crate::macros::make_udf_function;
 use arrow_schema::DataType;
 use arrow_schema::DataType::{LargeUtf8, Utf8};
-use datafusion_expr::{Signature, Volatility, ScalarUDFImpl, ColumnarValue};
-use datafusion_common::{plan_err, Result, exec_err, ScalarValue};
-use datafusion_common::arrow::array::{ArrayRef, as_string_array, BooleanArray};
+use datafusion_common::arrow::array::{as_string_array, ArrayRef, BooleanArray};
+use datafusion_common::{exec_err, plan_err, Result, ScalarValue};
+use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::Jiter;
-use crate::macros::make_udf_function;
+use std::any::Any;
+use std::sync::Arc;
 
 make_udf_function!(
     JsonObjContains,
@@ -25,15 +25,8 @@ pub(super) struct JsonObjContains {
 impl JsonObjContains {
     pub fn new() -> Self {
         Self {
-            signature: Signature::uniform(
-                2,
-                vec![Utf8, LargeUtf8],
-                Volatility::Immutable,
-            ),
-            aliases: vec![
-                "json_obj_contains".to_string(),
-                "json_object_contains".to_string(),
-            ],
+            signature: Signature::uniform(2, vec![Utf8, LargeUtf8], Volatility::Immutable),
+            aliases: vec!["json_obj_contains".to_string(), "json_object_contains".to_string()],
         }
     }
 }
@@ -55,9 +48,7 @@ impl ScalarUDFImpl for JsonObjContains {
         match arg_types[0] {
             Utf8 | LargeUtf8 => Ok(DataType::Boolean),
             _ => {
-                return plan_err!(
-                    "The json_obj_contains function can only accept Utf8 or LargeUtf8."
-                );
+                return plan_err!("The json_obj_contains function can only accept Utf8 or LargeUtf8.");
             }
         }
     }
@@ -75,12 +66,7 @@ impl ScalarUDFImpl for JsonObjContains {
 
         let array = json_haystack
             .iter()
-            .map(|opt_json| {
-                match opt_json {
-                    Some(json) => jiter_json_contains(json.as_bytes(), &needle),
-                    None => None,
-                }
-            })
+            .map(|opt_json| opt_json.map(|json| jiter_json_contains(json.as_bytes(), &needle)))
             .collect::<BooleanArray>();
 
         Ok(ColumnarValue::from(Arc::new(array) as ArrayRef))
@@ -91,25 +77,25 @@ impl ScalarUDFImpl for JsonObjContains {
     }
 }
 
-fn jiter_json_contains(json_data: &[u8], expected_key: &str) -> Option<bool> {
+fn jiter_json_contains(json_data: &[u8], expected_key: &str) -> bool {
     let mut jiter = Jiter::new(json_data, false);
     let first_key = match jiter.next_object() {
         Ok(Some(key)) => key,
-        _ => return None,
+        _ => return false,
     };
     if first_key == expected_key {
-        return Some(true);
+        return true;
     }
     if jiter.next_skip().is_err() {
-        return None;
+        return false;
     }
     while let Ok(Some(key)) = jiter.next_key() {
         if key == expected_key {
-            return Some(true);
+            return true;
         }
         if jiter.next_skip().is_err() {
-            return None;
+            return false;
         }
     }
-    Some(false)
+    false
 }
