@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+arrow = "51.0.0"
 arrow-schema = "51.0.0"
 datafusion-common = "37.0.0"
 datafusion-expr = "37.0.0"
@@ -13,7 +14,6 @@ log = "0.4.21"
 datafusion-execution = "37.0.0"
 
 [dev-dependencies]
-arrow = "51.0.0"
 datafusion = "37.0.0"
 tokio = { version = "1.37.0", features = ["full"] }
 

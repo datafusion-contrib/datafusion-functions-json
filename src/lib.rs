@@ -4,16 +4,19 @@ use datafusion_expr::ScalarUDF;
 use log::debug;
 use std::sync::Arc;
 
+mod json_get;
 mod json_obj_contains;
 mod macros;
+mod union;
 
 pub mod functions {
+    pub use crate::json_get::json_get;
     pub use crate::json_obj_contains::json_obj_contains;
 }
 
 /// Register all JSON UDFs
 pub fn register_all(registry: &mut dyn FunctionRegistry) -> Result<()> {
-    let functions: Vec<Arc<ScalarUDF>> = vec![json_obj_contains::json_obj_contains_udf()];
+    let functions: Vec<Arc<ScalarUDF>> = vec![json_obj_contains::json_obj_contains_udf(), json_get::json_get_udf()];
     functions.into_iter().try_for_each(|udf| {
         let existing_udf = registry.register_udf(udf)?;
         if let Some(existing_udf) = existing_udf {
