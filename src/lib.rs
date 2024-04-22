@@ -7,6 +7,7 @@ use std::sync::Arc;
 mod json_get;
 mod json_obj_contains;
 mod macros;
+mod rewrite;
 mod union;
 
 pub mod functions {
@@ -24,6 +25,7 @@ pub fn register_all(registry: &mut dyn FunctionRegistry) -> Result<()> {
         }
         Ok(()) as Result<()>
     })?;
+    registry.register_function_rewrite(Arc::new(rewrite::JsonFunctionRewriter))?;
 
     Ok(())
 }

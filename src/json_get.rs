@@ -82,7 +82,6 @@ impl ScalarUDFImpl for JsonGet {
         let mut union = JsonUnion::new(json_data.len());
         for opt_json in json_data {
             if let Some(union_field) = jiter_json_get(opt_json, &path) {
-                dbg!(&union_field);
                 union.push(union_field);
             } else {
                 union.push_none();
@@ -126,11 +125,11 @@ fn _jiter_json_get(jiter: &mut Jiter, peek: Peek, path: &[JsonPath]) -> Result<J
     let next_peek = match peek {
         Peek::Array => match first {
             JsonPath::Index(index) => jiter_array_get(jiter, *index),
-            _ => Err(GetError),
+            JsonPath::Key(_) => Err(GetError),
         },
         Peek::Object => match first {
             JsonPath::Key(key) => jiter_object_get(jiter, key),
-            _ => Err(GetError),
+            JsonPath::Index(_) => Err(GetError),
         },
         _ => Err(GetError),
     }?;
