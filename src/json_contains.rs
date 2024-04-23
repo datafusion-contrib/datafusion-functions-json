@@ -66,7 +66,7 @@ impl ScalarUDFImpl for JsonContains {
     }
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn jiter_json_contains(json_data: Option<&str>, path: &[JsonPath]) -> Result<bool, GetError> {
-    dbg!(path);
     Ok(jiter_json_find(json_data, path).is_some())
 }

@@ -7,9 +7,8 @@ use datafusion_expr::ColumnarValue;
 use jiter::{Jiter, JiterError, Peek};
 
 pub fn check_args(args: &[DataType], fn_name: &str) -> DataFusionResult<()> {
-    let first = match args.get(0) {
-        Some(arg) => arg,
-        None => return plan_err!("The `{fn_name}` function requires one or more arguments."),
+    let Some(first) = args.first() else {
+        return plan_err!("The `{fn_name}` function requires one or more arguments.");
     };
     if !matches!(first, DataType::Utf8) {
         return plan_err!("Unexpected argument type to `{fn_name}` at position 1, expected a string.");
@@ -140,9 +139,8 @@ macro_rules! get_err {
 pub(crate) use get_err;
 
 fn jiter_json_find_step(jiter: &mut Jiter, peek: Peek, path: &[JsonPath]) -> Result<Peek, GetError> {
-    let (first, rest) = match path.split_first() {
-        Some(first_rest) => first_rest,
-        None => return Ok(peek),
+    let Some((first, rest)) = path.split_first() else {
+        return Ok(peek);
     };
     let next_peek = match peek {
         Peek::Array => match first {
