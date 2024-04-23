@@ -132,13 +132,15 @@ async fn test_json_get_str_null() {
 }
 
 #[tokio::test]
-async fn test_json_get_one_arg() {
-    let e = run_query(r"select json_get('{}')").await.unwrap_err();
+async fn test_json_get_no_path() {
+    let batches = run_query(r#"select json_get('"foo"')::string"#).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "foo".to_string()));
 
-    assert_eq!(
-        e.to_string(),
-        "Error during planning: The `json_get` function requires two or more arguments."
-    );
+    let batches = run_query(r#"select json_get('123')::int"#).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Int64, "123".to_string()));
+
+    let batches = run_query(r#"select json_get('true')::int"#).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Int64, "".to_string()));
 }
 
 #[tokio::test]

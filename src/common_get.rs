@@ -7,10 +7,11 @@ use datafusion_expr::ColumnarValue;
 use jiter::{Jiter, JiterError, Peek};
 
 pub fn check_args(args: &[DataType], fn_name: &str) -> DataFusionResult<()> {
-    if args.len() < 2 {
-        return plan_err!("The `{fn_name}` function requires two or more arguments.");
-    }
-    if !matches!(&args[0], DataType::Utf8) {
+    let first = match args.get(0) {
+        Some(arg) => arg,
+        None => return plan_err!("The `{fn_name}` function requires one or more arguments."),
+    };
+    if !matches!(first, DataType::Utf8) {
         return plan_err!("Unexpected argument type to `{fn_name}` at position 1, expected a string.");
     }
     args[1..].iter().enumerate().try_for_each(|(index, arg)| match arg {
@@ -45,7 +46,7 @@ impl From<i64> for JsonPath<'_> {
 }
 
 impl<'s> JsonPath<'s> {
-    pub fn extract_args(args: &'s [ColumnarValue]) -> Vec<Self> {
+    pub fn extract_path(args: &'s [ColumnarValue]) -> Vec<Self> {
         args[1..]
             .iter()
             .map(|arg| match arg {
@@ -79,7 +80,7 @@ pub fn get_invoke<C: FromIterator<Option<I>> + 'static, I>(
                     }
                 }
                 ColumnarValue::Scalar(_) => {
-                    let path = JsonPath::extract_args(args);
+                    let path = JsonPath::extract_path(args);
                     as_string_array(json_array)
                         .iter()
                         .map(|opt_json| jiter_find(opt_json, &path).ok())
@@ -89,7 +90,7 @@ pub fn get_invoke<C: FromIterator<Option<I>> + 'static, I>(
             to_array(result_collect).map(ColumnarValue::from)
         }
         ColumnarValue::Scalar(ScalarValue::Utf8(s)) => {
-            let path = JsonPath::extract_args(args);
+            let path = JsonPath::extract_path(args);
             let v = jiter_find(s.as_ref().map(String::as_str), &path).ok();
             Ok(ColumnarValue::Scalar(to_scalar(v)))
         }
@@ -136,7 +137,10 @@ macro_rules! get_err {
 pub(crate) use get_err;
 
 fn jiter_json_find_step(jiter: &mut Jiter, peek: Peek, path: &[JsonPath]) -> Result<Peek, GetError> {
-    let (first, rest) = path.split_first().unwrap();
+    let (first, rest) = match path.split_first() {
+        Some(first_rest) => first_rest,
+        None => return Ok(peek),
+    };
     let next_peek = match peek {
         Peek::Array => match first {
             JsonPath::Index(index) => jiter_array_get(jiter, *index),
@@ -148,13 +152,7 @@ fn jiter_json_find_step(jiter: &mut Jiter, peek: Peek, path: &[JsonPath]) -> Res
         },
         _ => get_err!(),
     }?;
-
-    if rest.is_empty() {
-        Ok(next_peek)
-    } else {
-        // we still have more of the path to traverse, recurse
-        jiter_json_find_step(jiter, next_peek, rest)
-    }
+    jiter_json_find_step(jiter, next_peek, rest)
 }
 
 fn jiter_array_get(jiter: &mut Jiter, find_key: usize) -> Result<Peek, GetError> {
