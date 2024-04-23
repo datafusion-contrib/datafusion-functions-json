@@ -1,14 +1,14 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use arrow::array::{as_string_array, UnionArray};
+use arrow::array::UnionArray;
 use arrow_schema::DataType;
 use datafusion_common::arrow::array::ArrayRef;
-use datafusion_common::{exec_err, Result as DataFusionResult, ScalarValue};
+use datafusion_common::Result as DataFusionResult;
 use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::{Jiter, NumberAny, NumberInt, Peek};
 
-use crate::common_get::{check_args, jiter_json_find, GetError, JsonPath};
+use crate::common_get::{check_args, get_invoke, jiter_json_find, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 use crate::common_union::{JsonUnion, JsonUnionField};
 
@@ -18,6 +18,8 @@ make_udf_function!(
     json_data key, // arg name
     r#"Get a value from a JSON object by it's "path""#
 );
+
+// build_typed_get!(JsonGet, "json_get", Union, Float64Array, jiter_json_get_float);
 
 #[derive(Debug)]
 pub(super) struct JsonGet {
@@ -40,7 +42,7 @@ impl ScalarUDFImpl for JsonGet {
     }
 
     fn name(&self) -> &str {
-        "json_get"
+        self.aliases[0].as_str()
     }
 
     fn signature(&self) -> &Signature {
@@ -48,31 +50,15 @@ impl ScalarUDFImpl for JsonGet {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        check_args(arg_types, self.name()).map(|_| JsonUnion::data_type())
+        check_args(arg_types, self.name()).map(|()| JsonUnion::data_type())
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        let path = JsonPath::extract_args(args);
-
-        match &args[0] {
-            ColumnarValue::Array(array) => {
-                let union = as_string_array(array)
-                    .iter()
-                    .map(|opt_json| jiter_json_get_union(opt_json, &path).ok())
-                    .collect::<JsonUnion>();
-
-                let array: UnionArray = union.try_into()?;
-
-                Ok(ColumnarValue::from(Arc::new(array) as ArrayRef))
-            }
-            ColumnarValue::Scalar(ScalarValue::Utf8(s)) => {
-                let v = jiter_json_get_union(s.as_ref().map(|s| s.as_str()), &path).ok();
-                Ok(JsonUnionField::column_scalar(v))
-            }
-            ColumnarValue::Scalar(_) => {
-                exec_err!("unexpected first argument type, expected string")
-            }
-        }
+        let to_array = |c: JsonUnion| {
+            let array: UnionArray = c.try_into()?;
+            Ok(Arc::new(array) as ArrayRef)
+        };
+        get_invoke::<JsonUnion, JsonUnionField>(args, jiter_json_get_union, to_array, JsonUnionField::scalar_value)
     }
 
     fn aliases(&self) -> &[String] {
@@ -81,7 +67,7 @@ impl ScalarUDFImpl for JsonGet {
 }
 
 fn jiter_json_get_union(opt_json: Option<&str>, path: &[JsonPath]) -> Result<JsonUnionField, GetError> {
-    if let Some((mut jiter, peek)) = jiter_json_find(opt_json, &path) {
+    if let Some((mut jiter, peek)) = jiter_json_find(opt_json, path) {
         build_union(&mut jiter, peek)
     } else {
         Err(GetError)

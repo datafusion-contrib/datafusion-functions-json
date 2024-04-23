@@ -1,14 +1,14 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use arrow::array::{as_string_array, StringArray};
+use arrow::array::{ArrayRef, StringArray};
+
 use arrow_schema::DataType;
-use datafusion_common::arrow::array::ArrayRef;
-use datafusion_common::{exec_err, Result as DataFusionResult, ScalarValue};
+use datafusion_common::{Result as DataFusionResult, ScalarValue};
 use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::Peek;
 
-use crate::common_get::{check_args, jiter_json_find, GetError, JsonPath};
+use crate::common_get::{check_args, get_invoke, jiter_json_find, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
@@ -39,7 +39,7 @@ impl ScalarUDFImpl for JsonGetStr {
     }
 
     fn name(&self) -> &str {
-        "json_get_str"
+        self.aliases[0].as_str()
     }
 
     fn signature(&self) -> &Signature {
@@ -47,29 +47,16 @@ impl ScalarUDFImpl for JsonGetStr {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        check_args(arg_types, self.name()).map(|_| DataType::Utf8)
+        check_args(arg_types, self.name()).map(|()| DataType::Utf8)
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        let path = JsonPath::extract_args(args);
-
-        match &args[0] {
-            ColumnarValue::Array(array) => {
-                let array = as_string_array(array)
-                    .iter()
-                    .map(|opt_json| jiter_json_get_str(opt_json, &path).ok())
-                    .collect::<StringArray>();
-
-                Ok(ColumnarValue::from(Arc::new(array) as ArrayRef))
-            }
-            ColumnarValue::Scalar(ScalarValue::Utf8(s)) => {
-                let v = jiter_json_get_str(s.as_ref().map(|s| s.as_str()), &path).ok();
-                Ok(ColumnarValue::Scalar(ScalarValue::Utf8(v)))
-            }
-            ColumnarValue::Scalar(_) => {
-                exec_err!("unexpected first argument type, expected string")
-            }
-        }
+        get_invoke::<StringArray, String>(
+            args,
+            jiter_json_get_str,
+            |c| Ok(Arc::new(c) as ArrayRef),
+            ScalarValue::Utf8,
+        )
     }
 
     fn aliases(&self) -> &[String] {

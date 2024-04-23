@@ -41,8 +41,8 @@ async fn create_test_table() -> Result<SessionContext> {
     let other_data = [
         (r#" {"foo": 42} "#, "foo", 0),
         (r#" {"foo": 42} "#, "bar", 1),
-        (r#" [42] "#, "foo", 0),
-        (r#" [42] "#, "bar", 1),
+        (r" [42] ", "foo", 0),
+        (r" [42] ", "bar", 1),
     ];
     let other_batch = RecordBatch::try_new(
         Arc::new(Schema::new(vec![

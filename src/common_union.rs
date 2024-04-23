@@ -1,9 +1,9 @@
+use std::sync::Arc;
+
 use arrow::array::{Array, BooleanArray, Float64Array, Int64Array, StringArray, UnionArray};
 use arrow::buffer::Buffer;
 use arrow_schema::{DataType, Field, UnionFields, UnionMode};
 use datafusion_common::ScalarValue;
-use datafusion_expr::ColumnarValue;
-use std::sync::Arc;
 
 #[derive(Debug)]
 pub(crate) struct JsonUnion {
@@ -138,12 +138,12 @@ impl JsonUnionField {
         }
     }
 
-    pub fn column_scalar(f: Option<Self>) -> ColumnarValue {
-        ColumnarValue::Scalar(ScalarValue::Union(
+    pub fn scalar_value(f: Option<Self>) -> ScalarValue {
+        ScalarValue::Union(
             f.map(|f| (f.type_id(), Box::new(f.into()))),
             UnionFields::new(TYPE_IDS.to_vec(), union_fields().to_vec()),
             UnionMode::Sparse,
-        ))
+        )
     }
 }
 
@@ -154,9 +154,7 @@ impl From<JsonUnionField> for ScalarValue {
             JsonUnionField::Bool(b) => Self::Boolean(Some(b)),
             JsonUnionField::Int(i) => Self::Int64(Some(i)),
             JsonUnionField::Float(f) => Self::Float64(Some(f)),
-            JsonUnionField::Str(s) => Self::Utf8(Some(s)),
-            JsonUnionField::Array(s) => Self::Utf8(Some(s)),
-            JsonUnionField::Object(s) => Self::Utf8(Some(s)),
+            JsonUnionField::Str(s) | JsonUnionField::Array(s) | JsonUnionField::Object(s) => Self::Utf8(Some(s)),
         }
     }
 }

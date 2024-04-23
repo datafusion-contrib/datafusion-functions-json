@@ -1,14 +1,15 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use arrow::array::{as_string_array, Float64Array};
+use arrow::array::{ArrayRef, Float64Array};
+
 use arrow_schema::DataType;
-use datafusion_common::arrow::array::ArrayRef;
-use datafusion_common::{exec_err, Result as DataFusionResult, ScalarValue};
+
+use datafusion_common::{Result as DataFusionResult, ScalarValue};
 use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::{NumberAny, Peek};
 
-use crate::common_get::{check_args, jiter_json_find, GetError, JsonPath};
+use crate::common_get::{check_args, get_invoke, jiter_json_find, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
@@ -39,7 +40,7 @@ impl ScalarUDFImpl for JsonGetFloat {
     }
 
     fn name(&self) -> &str {
-        "json_get_float"
+        self.aliases[0].as_str()
     }
 
     fn signature(&self) -> &Signature {
@@ -47,29 +48,16 @@ impl ScalarUDFImpl for JsonGetFloat {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        check_args(arg_types, self.name()).map(|_| DataType::Float64)
+        check_args(arg_types, self.name()).map(|()| DataType::Float64)
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        let path = JsonPath::extract_args(args);
-
-        match &args[0] {
-            ColumnarValue::Array(array) => {
-                let array = as_string_array(array)
-                    .iter()
-                    .map(|opt_json| jiter_json_get_float(opt_json, &path).ok())
-                    .collect::<Float64Array>();
-
-                Ok(ColumnarValue::from(Arc::new(array) as ArrayRef))
-            }
-            ColumnarValue::Scalar(ScalarValue::Utf8(s)) => {
-                let v = jiter_json_get_float(s.as_ref().map(|s| s.as_str()), &path).ok();
-                Ok(ColumnarValue::Scalar(ScalarValue::Float64(v)))
-            }
-            ColumnarValue::Scalar(_) => {
-                exec_err!("unexpected first argument type, expected string")
-            }
-        }
+        get_invoke::<Float64Array, f64>(
+            args,
+            jiter_json_get_float,
+            |c| Ok(Arc::new(c) as ArrayRef),
+            ScalarValue::Float64,
+        )
     }
 
     fn aliases(&self) -> &[String] {

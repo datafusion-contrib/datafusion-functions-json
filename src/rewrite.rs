@@ -15,19 +15,16 @@ impl FunctionRewrite for JsonFunctionRewriter {
     }
 
     fn rewrite(&self, expr: Expr, _schema: &DFSchema, _config: &ConfigOptions) -> Result<Transformed<Expr>> {
-        match &expr {
-            Expr::Cast(cast) => {
-                if let Expr::ScalarFunction(func) = &*cast.expr {
-                    if let ScalarFunctionDefinition::UDF(udf) = &func.func_def {
-                        if udf.name() == "json_get" {
-                            if let Some(t) = switch_json_get(&cast.data_type, &func.args) {
-                                return Ok(t);
-                            }
+        if let Expr::Cast(cast) = &expr {
+            if let Expr::ScalarFunction(func) = &*cast.expr {
+                if let ScalarFunctionDefinition::UDF(udf) = &func.func_def {
+                    if udf.name() == "json_get" {
+                        if let Some(t) = switch_json_get(&cast.data_type, &func.args) {
+                            return Ok(t);
                         }
                     }
                 }
             }
-            _ => (),
         }
         Ok(Transformed::no(expr))
     }
