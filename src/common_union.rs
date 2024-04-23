@@ -20,7 +20,7 @@ pub(crate) struct JsonUnion {
 }
 
 impl JsonUnion {
-    pub fn new(capacity: usize) -> Self {
+    fn new(capacity: usize) -> Self {
         Self {
             nulls: vec![None; capacity],
             bools: vec![None; capacity],
@@ -42,7 +42,7 @@ impl JsonUnion {
         )
     }
 
-    pub fn push(&mut self, field: JsonUnionField) {
+    fn push(&mut self, field: JsonUnionField) {
         self.type_ids[self.index] = field.type_id();
         match field {
             JsonUnionField::JsonNull => self.nulls[self.index] = Some(true),
@@ -57,10 +57,28 @@ impl JsonUnion {
         debug_assert!(self.index <= self.capacity);
     }
 
-    pub fn push_none(&mut self) {
+    fn push_none(&mut self) {
         self.type_ids[self.index] = TYPE_IDS[0];
         self.index += 1;
         debug_assert!(self.index <= self.capacity);
+    }
+}
+
+/// So we can do `collect::<JsonUnion>()`
+impl FromIterator<Option<JsonUnionField>> for JsonUnion {
+    fn from_iter<I: IntoIterator<Item = Option<JsonUnionField>>>(iter: I) -> Self {
+        let inner = iter.into_iter();
+        let (lower, upper) = inner.size_hint();
+        let mut union = Self::new(upper.unwrap_or(lower));
+
+        for opt_field in inner {
+            if let Some(union_field) = opt_field {
+                union.push(union_field);
+            } else {
+                union.push_none();
+            }
+        }
+        union
     }
 }
 

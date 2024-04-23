@@ -1,7 +1,7 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use arrow::array::{as_string_array, Array, UnionArray};
+use arrow::array::{as_string_array, UnionArray};
 use arrow_schema::DataType;
 use datafusion_common::arrow::array::ArrayRef;
 use datafusion_common::{exec_err, Result as DataFusionResult, ScalarValue};
@@ -56,25 +56,21 @@ impl ScalarUDFImpl for JsonGet {
 
         match &args[0] {
             ColumnarValue::Array(array) => {
-                let json_array = as_string_array(array);
-                let mut union = JsonUnion::new(json_array.len());
-                for opt_json in as_string_array(array) {
-                    if let Some(union_field) = jiter_json_get_union(opt_json, &path) {
-                        union.push(union_field);
-                    } else {
-                        union.push_none();
-                    }
-                }
+                let union = as_string_array(array)
+                    .iter()
+                    .map(|opt_json| jiter_json_get_union(opt_json, &path).ok())
+                    .collect::<JsonUnion>();
+
                 let array: UnionArray = union.try_into()?;
 
                 Ok(ColumnarValue::from(Arc::new(array) as ArrayRef))
             }
             ColumnarValue::Scalar(ScalarValue::Utf8(s)) => {
-                let v = jiter_json_get_union(s.as_ref().map(|s| s.as_str()), &path);
+                let v = jiter_json_get_union(s.as_ref().map(|s| s.as_str()), &path).ok();
                 Ok(JsonUnionField::column_scalar(v))
             }
             ColumnarValue::Scalar(_) => {
-                exec_err!("unexpected first argument type, expected string array")
+                exec_err!("unexpected first argument type, expected string")
             }
         }
     }
@@ -84,11 +80,11 @@ impl ScalarUDFImpl for JsonGet {
     }
 }
 
-fn jiter_json_get_union(opt_json: Option<&str>, path: &[JsonPath]) -> Option<JsonUnionField> {
+fn jiter_json_get_union(opt_json: Option<&str>, path: &[JsonPath]) -> Result<JsonUnionField, GetError> {
     if let Some((mut jiter, peek)) = jiter_json_find(opt_json, &path) {
-        build_union(&mut jiter, peek).ok()
+        build_union(&mut jiter, peek)
     } else {
-        None
+        Err(GetError)
     }
 }
 
