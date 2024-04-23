@@ -7,14 +7,14 @@ use datafusion_common::{Result as DataFusionResult, ScalarValue};
 use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::Peek;
 
-use crate::common::{check_args, get_err, get_invoke, jiter_json_find, GetError, JsonPath};
+use crate::common::{check_args, get_err, invoke, jiter_json_find, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
     JsonGetBool,
     json_get_bool,
     json_data path,
-    r#"Get an boolean value from a JSON object by it's "path""#
+    r#"Get an boolean value from a JSON object by its "path""#
 );
 
 #[derive(Debug)]
@@ -50,7 +50,7 @@ impl ScalarUDFImpl for JsonGetBool {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        get_invoke::<BooleanArray, bool>(
+        invoke::<BooleanArray, bool>(
             args,
             jiter_json_get_bool,
             |c| Ok(Arc::new(c) as ArrayRef),

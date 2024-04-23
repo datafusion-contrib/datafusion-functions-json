@@ -6,7 +6,7 @@ use datafusion_common::arrow::array::{ArrayRef, BooleanArray};
 use datafusion_common::{plan_err, Result, ScalarValue};
 use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 
-use crate::common::{check_args, get_invoke, jiter_json_find, GetError, JsonPath};
+use crate::common::{check_args, invoke, jiter_json_find, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
@@ -53,7 +53,7 @@ impl ScalarUDFImpl for JsonContains {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> Result<ColumnarValue> {
-        get_invoke::<BooleanArray, bool>(
+        invoke::<BooleanArray, bool>(
             args,
             jiter_json_contains,
             |c| Ok(Arc::new(c) as ArrayRef),
@@ -66,7 +66,7 @@ impl ScalarUDFImpl for JsonContains {
     }
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn jiter_json_contains(json_data: Option<&str>, path: &[JsonPath]) -> Result<bool, GetError> {
-    dbg!(path);
     Ok(jiter_json_find(json_data, path).is_some())
 }

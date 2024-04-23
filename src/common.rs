@@ -1,15 +1,14 @@
 use std::str::Utf8Error;
 
-use arrow::array::{as_string_array, Array, ArrayRef, Int64Array, StringArray};
+use arrow::array::{as_string_array, Array, ArrayRef, Int64Array, StringArray, UInt64Array};
 use arrow_schema::DataType;
 use datafusion_common::{exec_err, plan_err, Result as DataFusionResult, ScalarValue};
 use datafusion_expr::ColumnarValue;
 use jiter::{Jiter, JiterError, Peek};
 
 pub fn check_args(args: &[DataType], fn_name: &str) -> DataFusionResult<()> {
-    let first = match args.get(0) {
-        Some(arg) => arg,
-        None => return plan_err!("The `{fn_name}` function requires one or more arguments."),
+    let Some(first) = args.first() else {
+        return plan_err!("The `{fn_name}` function requires one or more arguments.");
     };
     if !matches!(first, DataType::Utf8) {
         return plan_err!("Unexpected argument type to `{fn_name}` at position 1, expected a string.");
@@ -59,7 +58,7 @@ impl<'s> JsonPath<'s> {
     }
 }
 
-pub fn get_invoke<C: FromIterator<Option<I>> + 'static, I>(
+pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
     args: &[ColumnarValue],
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
     to_array: impl Fn(C) -> DataFusionResult<ArrayRef>,
@@ -73,6 +72,9 @@ pub fn get_invoke<C: FromIterator<Option<I>> + 'static, I>(
                         let paths = str_path_array.iter().map(|opt_key| opt_key.map(JsonPath::Key));
                         zip_apply(json_array, paths, jiter_find)
                     } else if let Some(int_path_array) = a.as_any().downcast_ref::<Int64Array>() {
+                        let paths = int_path_array.iter().map(|opt_index| opt_index.map(Into::into));
+                        zip_apply(json_array, paths, jiter_find)
+                    } else if let Some(int_path_array) = a.as_any().downcast_ref::<UInt64Array>() {
                         let paths = int_path_array.iter().map(|opt_index| opt_index.map(Into::into));
                         zip_apply(json_array, paths, jiter_find)
                     } else {
@@ -137,9 +139,8 @@ macro_rules! get_err {
 pub(crate) use get_err;
 
 fn jiter_json_find_step(jiter: &mut Jiter, peek: Peek, path: &[JsonPath]) -> Result<Peek, GetError> {
-    let (first, rest) = match path.split_first() {
-        Some(first_rest) => first_rest,
-        None => return Ok(peek),
+    let Some((first, rest)) = path.split_first() else {
+        return Ok(peek);
     };
     let next_peek = match peek {
         Peek::Array => match first {
@@ -163,7 +164,7 @@ fn jiter_array_get(jiter: &mut Jiter, find_key: usize) -> Result<Peek, GetError>
         if index == find_key {
             return Ok(peek);
         }
-        jiter.next_skip()?;
+        jiter.known_skip(peek)?;
         index += 1;
         peek_opt = jiter.array_step()?;
     }

@@ -8,7 +8,7 @@ use datafusion_common::Result as DataFusionResult;
 use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::{Jiter, NumberAny, NumberInt, Peek};
 
-use crate::common::{check_args, get_err, get_invoke, jiter_json_find, GetError, JsonPath};
+use crate::common::{check_args, get_err, invoke, jiter_json_find, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 use crate::common_union::{JsonUnion, JsonUnionField};
 
@@ -16,7 +16,7 @@ make_udf_function!(
     JsonGet,
     json_get,
     json_data path,
-    r#"Get a value from a JSON object by it's "path""#
+    r#"Get a value from a JSON object by its "path""#
 );
 
 // build_typed_get!(JsonGet, "json_get", Union, Float64Array, jiter_json_get_float);
@@ -58,7 +58,7 @@ impl ScalarUDFImpl for JsonGet {
             let array: UnionArray = c.try_into()?;
             Ok(Arc::new(array) as ArrayRef)
         };
-        get_invoke::<JsonUnion, JsonUnionField>(args, jiter_json_get_union, to_array, JsonUnionField::scalar_value)
+        invoke::<JsonUnion, JsonUnionField>(args, jiter_json_get_union, to_array, JsonUnionField::scalar_value)
     }
 
     fn aliases(&self) -> &[String] {

@@ -25,11 +25,31 @@ async fn test_json_contains() {
         .unwrap();
     assert_batches_eq!(expected, &batches);
 }
+
 #[tokio::test]
 async fn test_json_contains_array() {
     let sql = "select json_contains('[1, 2, 3]', 2)";
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Boolean, "true".to_string()));
+
+    let sql = "select json_contains('[1, 2, 3]', 3)";
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Boolean, "false".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_contains_nested() {
+    let sql = r#"select json_contains('[1, 2, {"foo": null}]', 2)"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Boolean, "true".to_string()));
+
+    let sql = r#"select json_contains('[1, 2, {"foo": null}]', 2, 'foo')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Boolean, "true".to_string()));
+
+    let sql = r#"select json_contains('[1, 2, {"foo": null}]', 2, 'bar')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Boolean, "false".to_string()));
 }
 
 #[tokio::test]
@@ -291,4 +311,40 @@ async fn test_json_get_json_float() {
     let sql = r#"select json_get_json('{"x": 4.2e-1}', 'x')"#;
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Utf8, "4.2e-1".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_length_array() {
+    let sql = "select json_length('[1, 2, 3]')";
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::UInt64, "3".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_length_object() {
+    let sql = r#"select json_length('{"a": 1, "b": 2, "c": 3}')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::UInt64, "3".to_string()));
+
+    let sql = r#"select json_length('{}')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::UInt64, "0".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_length_string() {
+    let sql = r#"select json_length('"foobar"')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::UInt64, "".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_length_object_nested() {
+    let sql = r#"select json_length('{"a": 1, "b": 2, "c": [1, 2]}', 'c')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::UInt64, "2".to_string()));
+
+    let sql = r#"select json_length('{"a": 1, "b": 2, "c": []}', 'b')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::UInt64, "".to_string()));
 }
