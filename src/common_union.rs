@@ -1,6 +1,8 @@
 use arrow::array::{Array, BooleanArray, Float64Array, Int64Array, StringArray, UnionArray};
 use arrow::buffer::Buffer;
 use arrow_schema::{DataType, Field, UnionFields, UnionMode};
+use datafusion_common::ScalarValue;
+use datafusion_expr::ColumnarValue;
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -47,7 +49,7 @@ impl JsonUnion {
             JsonUnionField::Bool(value) => self.bools[self.index] = Some(value),
             JsonUnionField::Int(value) => self.ints[self.index] = Some(value),
             JsonUnionField::Float(value) => self.floats[self.index] = Some(value),
-            JsonUnionField::String(value) => self.strings[self.index] = Some(value),
+            JsonUnionField::Str(value) => self.strings[self.index] = Some(value),
             JsonUnionField::Array(value) => self.arrays[self.index] = Some(value),
             JsonUnionField::Object(value) => self.objects[self.index] = Some(value),
         }
@@ -86,7 +88,7 @@ pub(crate) enum JsonUnionField {
     Bool(bool),
     Int(i64),
     Float(f64),
-    String(String),
+    Str(String),
     Array(String),
     Object(String),
 }
@@ -99,7 +101,7 @@ fn union_fields() -> [Field; 7] {
         Field::new("bool", DataType::Boolean, false),
         Field::new("int", DataType::Int64, false),
         Field::new("float", DataType::Float64, false),
-        Field::new("string", DataType::Utf8, false),
+        Field::new("str", DataType::Utf8, false),
         Field::new("array", DataType::Utf8, false),
         Field::new("object", DataType::Utf8, false),
     ]
@@ -112,9 +114,31 @@ impl JsonUnionField {
             Self::Bool(_) => 1,
             Self::Int(_) => 2,
             Self::Float(_) => 3,
-            Self::String(_) => 4,
+            Self::Str(_) => 4,
             Self::Array(_) => 5,
             Self::Object(_) => 6,
+        }
+    }
+
+    pub fn column_scalar(f: Option<Self>) -> ColumnarValue {
+        ColumnarValue::Scalar(ScalarValue::Union(
+            f.map(|f| (f.type_id(), Box::new(f.into()))),
+            UnionFields::new(TYPE_IDS.to_vec(), union_fields().to_vec()),
+            UnionMode::Sparse,
+        ))
+    }
+}
+
+impl From<JsonUnionField> for ScalarValue {
+    fn from(value: JsonUnionField) -> Self {
+        match value {
+            JsonUnionField::JsonNull => Self::Null,
+            JsonUnionField::Bool(b) => Self::Boolean(Some(b)),
+            JsonUnionField::Int(i) => Self::Int64(Some(i)),
+            JsonUnionField::Float(f) => Self::Float64(Some(f)),
+            JsonUnionField::Str(s) => Self::Utf8(Some(s)),
+            JsonUnionField::Array(s) => Self::Utf8(Some(s)),
+            JsonUnionField::Object(s) => Self::Utf8(Some(s)),
         }
     }
 }

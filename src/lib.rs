@@ -8,17 +8,23 @@ mod common_get;
 mod common_macros;
 mod common_union;
 mod json_get;
+mod json_get_str;
 mod json_obj_contains;
 mod rewrite;
 
 pub mod functions {
     pub use crate::json_get::json_get;
+    pub use crate::json_get_str::json_get_str;
     pub use crate::json_obj_contains::json_obj_contains;
 }
 
 /// Register all JSON UDFs
 pub fn register_all(registry: &mut dyn FunctionRegistry) -> Result<()> {
-    let functions: Vec<Arc<ScalarUDF>> = vec![json_obj_contains::json_obj_contains_udf(), json_get::json_get_udf()];
+    let functions: Vec<Arc<ScalarUDF>> = vec![
+        json_get::json_get_udf(),
+        json_get_str::json_get_str_udf(),
+        json_obj_contains::json_obj_contains_udf(),
+    ];
     functions.into_iter().try_for_each(|udf| {
         let existing_udf = registry.register_udf(udf)?;
         if let Some(existing_udf) = existing_udf {

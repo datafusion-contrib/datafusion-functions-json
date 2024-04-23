@@ -13,7 +13,7 @@ async fn create_test_table() -> Result<SessionContext> {
     ]));
 
     let data = [
-        ("object_foo", r#" {"foo": 123} "#),
+        ("object_foo", r#" {"foo": "abc"} "#),
         ("object_foo_array", r#" {"foo": [1]} "#),
         ("object_foo_obj", r#" {"foo": {}} "#),
         ("object_foo_null", r#" {"foo": null} "#),
