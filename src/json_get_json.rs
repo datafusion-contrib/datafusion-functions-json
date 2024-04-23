@@ -6,7 +6,7 @@ use arrow_schema::DataType;
 use datafusion_common::{Result as DataFusionResult, ScalarValue};
 use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 
-use crate::common::{check_args, get_err, get_invoke, jiter_json_find, GetError, JsonPath};
+use crate::common::{check_args, get_err, invoke, jiter_json_find, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
@@ -49,7 +49,7 @@ impl ScalarUDFImpl for JsonGetJson {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        get_invoke::<StringArray, String>(
+        invoke::<StringArray, String>(
             args,
             jiter_json_get_json,
             |c| Ok(Arc::new(c) as ArrayRef),

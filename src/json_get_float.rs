@@ -7,7 +7,7 @@ use datafusion_common::{Result as DataFusionResult, ScalarValue};
 use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::{NumberAny, Peek};
 
-use crate::common::{check_args, get_err, get_invoke, jiter_json_find, GetError, JsonPath};
+use crate::common::{check_args, get_err, invoke, jiter_json_find, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
@@ -50,7 +50,7 @@ impl ScalarUDFImpl for JsonGetFloat {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        get_invoke::<Float64Array, f64>(
+        invoke::<Float64Array, f64>(
             args,
             jiter_json_get_float,
             |c| Ok(Arc::new(c) as ArrayRef),

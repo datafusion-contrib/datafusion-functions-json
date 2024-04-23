@@ -1,6 +1,6 @@
 use std::str::Utf8Error;
 
-use arrow::array::{as_string_array, Array, ArrayRef, Int64Array, StringArray};
+use arrow::array::{as_string_array, Array, ArrayRef, Int64Array, StringArray, UInt64Array};
 use arrow_schema::DataType;
 use datafusion_common::{exec_err, plan_err, Result as DataFusionResult, ScalarValue};
 use datafusion_expr::ColumnarValue;
@@ -59,7 +59,7 @@ impl<'s> JsonPath<'s> {
     }
 }
 
-pub fn get_invoke<C: FromIterator<Option<I>> + 'static, I>(
+pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
     args: &[ColumnarValue],
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
     to_array: impl Fn(C) -> DataFusionResult<ArrayRef>,
@@ -73,6 +73,9 @@ pub fn get_invoke<C: FromIterator<Option<I>> + 'static, I>(
                         let paths = str_path_array.iter().map(|opt_key| opt_key.map(JsonPath::Key));
                         zip_apply(json_array, paths, jiter_find)
                     } else if let Some(int_path_array) = a.as_any().downcast_ref::<Int64Array>() {
+                        let paths = int_path_array.iter().map(|opt_index| opt_index.map(Into::into));
+                        zip_apply(json_array, paths, jiter_find)
+                    } else if let Some(int_path_array) = a.as_any().downcast_ref::<UInt64Array>() {
                         let paths = int_path_array.iter().map(|opt_index| opt_index.map(Into::into));
                         zip_apply(json_array, paths, jiter_find)
                     } else {
