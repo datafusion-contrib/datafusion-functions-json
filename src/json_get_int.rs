@@ -1,7 +1,7 @@
-use arrow::array::{ArrayRef, Int64Array};
 use std::any::Any;
 use std::sync::Arc;
 
+use arrow::array::{ArrayRef, Int64Array};
 use arrow_schema::DataType;
 use datafusion_common::{Result as DataFusionResult, ScalarValue};
 use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};

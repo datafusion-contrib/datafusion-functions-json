@@ -194,11 +194,11 @@ async fn test_json_get_int_lookup() {
 
 #[tokio::test]
 async fn test_json_get_float() {
-    let batches = run_query(r"select json_get_float('[1.5]', 0) as v").await.unwrap();
+    let batches = run_query("select json_get_float('[1.5]', 0) as v").await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Float64, "1.5".to_string()));
 
     // coerce int to float
-    let batches = run_query(r"select json_get_float('[1]', 0) as v").await.unwrap();
+    let batches = run_query("select json_get_float('[1]', 0) as v").await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Float64, "1.0".to_string()));
 }
 
@@ -207,4 +207,22 @@ async fn test_json_get_cast_float() {
     let sql = r#"select json_get('{"foo": 4.2}', 'foo')::float as v"#;
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Float64, "4.2".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_get_bool() {
+    let batches = run_query("select json_get_bool('[true]', 0) as v").await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Boolean, "true".to_string()));
+
+    let batches = run_query(r#"select json_get_bool('{"": false}', '') as v"#)
+        .await
+        .unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Boolean, "false".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_get_cast_bool() {
+    let sql = r#"select json_get('{"foo": true}', 'foo')::bool as v"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Boolean, "true".to_string()));
 }

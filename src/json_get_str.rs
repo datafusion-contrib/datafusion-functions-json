@@ -2,7 +2,6 @@ use std::any::Any;
 use std::sync::Arc;
 
 use arrow::array::{ArrayRef, StringArray};
-
 use arrow_schema::DataType;
 use datafusion_common::{Result as DataFusionResult, ScalarValue};
 use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};

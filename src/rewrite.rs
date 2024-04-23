@@ -32,9 +32,10 @@ impl FunctionRewrite for JsonFunctionRewriter {
 
 fn switch_json_get(cast_data_type: &DataType, args: &[Expr]) -> Option<Transformed<Expr>> {
     let udf = match cast_data_type {
-        DataType::Utf8 => crate::json_get_str::json_get_str_udf(),
-        DataType::Int64 | DataType::Int32 => crate::json_get_int::json_get_int_udf(),
+        DataType::Boolean => crate::json_get_bool::json_get_bool_udf(),
         DataType::Float64 | DataType::Float32 => crate::json_get_float::json_get_float_udf(),
+        DataType::Int64 | DataType::Int32 => crate::json_get_int::json_get_int_udf(),
+        DataType::Utf8 => crate::json_get_str::json_get_str_udf(),
         _ => return None,
     };
     let f = ScalarFunction {
