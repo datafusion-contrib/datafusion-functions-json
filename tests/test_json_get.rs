@@ -1,7 +1,8 @@
+use arrow_schema::DataType;
 use datafusion::assert_batches_eq;
 
 mod utils;
-use utils::run_query;
+use utils::{display_val, run_query};
 
 #[tokio::test]
 async fn test_json_get_union() {
@@ -119,6 +120,28 @@ async fn test_json_get_str_path() {
         .await
         .unwrap();
 
-    let expected = ["+---+", "| v |", "+---+", "| x |", "+---+"];
-    assert_batches_eq!(expected, &batches);
+    assert_eq!(
+        display_val(batches).await,
+        ("v".to_string(), DataType::Utf8, "x".to_string())
+    );
+}
+
+#[tokio::test]
+async fn test_json_get_str_null() {
+    let e = run_query(r#"select json_get_str('{}', null)"#).await.unwrap_err();
+
+    assert_eq!(
+        e.to_string(),
+        "Error during planning: Unexpected argument type to `json_get_str` at position 2, expected string or int."
+    );
+}
+
+#[tokio::test]
+async fn test_json_get_one_arg() {
+    let e = run_query(r#"select json_get('{}')"#).await.unwrap_err();
+
+    assert_eq!(
+        e.to_string(),
+        "Error during planning: The `json_get` function requires two or more arguments."
+    );
 }

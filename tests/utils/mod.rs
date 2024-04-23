@@ -1,4 +1,6 @@
+#![allow(dead_code)]
 use arrow::datatypes::{DataType, Field, Schema};
+use arrow::util::display::{ArrayFormatter, FormatOptions};
 use arrow::{array::StringArray, record_batch::RecordBatch};
 use std::sync::Arc;
 
@@ -44,4 +46,17 @@ pub async fn run_query(sql: &str) -> Result<Vec<RecordBatch>> {
     let ctx = create_test_table().await?;
     let df = ctx.sql(sql).await?;
     df.collect().await
+}
+
+pub async fn display_val(batch: Vec<RecordBatch>) -> (String, DataType, String) {
+    assert_eq!(batch.len(), 1);
+    let batch = batch.first().unwrap();
+    assert_eq!(batch.num_rows(), 1);
+    let schema = batch.schema();
+    let schema_col = schema.field(0);
+    let c = batch.column(0);
+    let options = FormatOptions::default().with_display_error(true);
+    let f = ArrayFormatter::try_new(c.as_ref(), &options).unwrap();
+    let repr = f.value(0).try_to_string().unwrap();
+    (schema_col.name().clone(), schema_col.data_type().clone(), repr)
 }

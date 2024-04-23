@@ -1,28 +1,43 @@
+use arrow_schema::DataType;
 use std::str::Utf8Error;
 
-use datafusion_common::{exec_err, Result as DatafusionResult, ScalarValue};
+use datafusion_common::{plan_err, Result as DataFusionResult, ScalarValue};
 use datafusion_expr::ColumnarValue;
 use jiter::{Jiter, JiterError, Peek};
+
+pub fn check_args(args: &[DataType], fn_name: &str) -> DataFusionResult<()> {
+    if args.len() < 2 {
+        return plan_err!("The `{fn_name}` function requires two or more arguments.");
+    }
+    args[1..]
+        .iter()
+        .enumerate()
+        .map(|(index, arg)| match arg {
+            DataType::Utf8 | DataType::UInt64 | DataType::Int64 => Ok(()),
+            _ => plan_err!(
+                "Unexpected argument type to `{fn_name}` at position {}, expected string or int.",
+                index + 2
+            ),
+        })
+        .collect()
+}
 
 #[derive(Debug)]
 pub enum JsonPath<'s> {
     Key(&'s str),
     Index(usize),
+    None,
 }
 
 impl<'s> JsonPath<'s> {
-    pub fn extract_args(args: &'s [ColumnarValue], fn_name: &str) -> DatafusionResult<Vec<Self>> {
+    pub fn extract_args(args: &'s [ColumnarValue]) -> Vec<Self> {
         args[1..]
             .iter()
-            .enumerate()
-            .map(|(index, arg)| match arg {
-                ColumnarValue::Scalar(ScalarValue::Utf8(Some(s))) => Ok(Self::Key(s)),
-                ColumnarValue::Scalar(ScalarValue::UInt64(Some(i))) => Ok(Self::Index(*i as usize)),
-                ColumnarValue::Scalar(ScalarValue::Int64(Some(i))) => Ok(Self::Index(*i as usize)),
-                _ => exec_err!(
-                    "`{fn_name}`: unexpected argument type at {}, expected string or int",
-                    index + 2
-                ),
+            .map(|arg| match arg {
+                ColumnarValue::Scalar(ScalarValue::Utf8(Some(s))) => Self::Key(s),
+                ColumnarValue::Scalar(ScalarValue::UInt64(Some(i))) => Self::Index(*i as usize),
+                ColumnarValue::Scalar(ScalarValue::Int64(Some(i))) => Self::Index(*i as usize),
+                _ => Self::None,
             })
             .collect()
     }
@@ -45,11 +60,11 @@ fn jiter_json_find_step(jiter: &mut Jiter, peek: Peek, path: &[JsonPath]) -> Res
     let next_peek = match peek {
         Peek::Array => match first {
             JsonPath::Index(index) => jiter_array_get(jiter, *index),
-            JsonPath::Key(_) => Err(GetError),
+            _ => Err(GetError),
         },
         Peek::Object => match first {
             JsonPath::Key(key) => jiter_object_get(jiter, key),
-            JsonPath::Index(_) => Err(GetError),
+            _ => Err(GetError),
         },
         _ => Err(GetError),
     }?;

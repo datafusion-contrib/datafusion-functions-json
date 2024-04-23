@@ -4,11 +4,11 @@ use std::sync::Arc;
 use arrow::array::{as_string_array, StringArray};
 use arrow_schema::DataType;
 use datafusion_common::arrow::array::ArrayRef;
-use datafusion_common::{exec_err, plan_err, Result as DatafusionResult, ScalarValue};
+use datafusion_common::{exec_err, Result as DataFusionResult, ScalarValue};
 use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::Peek;
 
-use crate::common_get::{jiter_json_find, GetError, JsonPath};
+use crate::common_get::{check_args, jiter_json_find, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
@@ -46,18 +46,12 @@ impl ScalarUDFImpl for JsonGet {
         &self.signature
     }
 
-    fn return_type(&self, arg_types: &[DataType]) -> DatafusionResult<DataType> {
-        if arg_types.len() < 2 {
-            return plan_err!("The `json_get_str` function requires two or more arguments.");
-        }
-        match arg_types[0] {
-            DataType::Utf8 | DataType::UInt64 | DataType::Int64 => Ok(DataType::Utf8),
-            _ => plan_err!("The `json_get_str` function can only accepts string or int arguments."),
-        }
+    fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
+        check_args(arg_types, self.name()).map(|_| DataType::Utf8)
     }
 
-    fn invoke(&self, args: &[ColumnarValue]) -> DatafusionResult<ColumnarValue> {
-        let path = JsonPath::extract_args(args, self.name())?;
+    fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
+        let path = JsonPath::extract_args(args);
 
         match &args[0] {
             ColumnarValue::Array(array) => {
