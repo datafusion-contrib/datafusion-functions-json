@@ -1,7 +1,7 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use arrow::array::{as_string_array, Int64Array};
+use arrow::array::{as_string_array, Int64Array, StringArray};
 use arrow_schema::DataType;
 use datafusion_common::arrow::array::ArrayRef;
 use datafusion_common::{exec_err, Result as DataFusionResult, ScalarValue};
@@ -51,18 +51,34 @@ impl ScalarUDFImpl for JsonGetInt {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        let path = JsonPath::extract_args(args);
-
         match &args[0] {
-            ColumnarValue::Array(array) => {
-                let array = as_string_array(array)
-                    .iter()
-                    .map(|opt_json| jiter_json_get_int(opt_json, &path).ok())
-                    .collect::<Int64Array>();
-
-                Ok(ColumnarValue::from(Arc::new(array) as ArrayRef))
+            ColumnarValue::Array(json_array) => {
+                let result_array = match &args[1] {
+                    ColumnarValue::Array(a) => {
+                        if let Some(str_path_array) = a.as_any().downcast_ref::<StringArray>() {
+                            let paths = str_path_array.iter().map(|opt_key| opt_key.map(|s| JsonPath::Key(s)));
+                            zip_apply(json_array, paths)
+                        } else if let Some(int_path_array) = a.as_any().downcast_ref::<Int64Array>() {
+                            let paths = int_path_array
+                                .iter()
+                                .map(|opt_index| opt_index.map(|i| JsonPath::Index(i as usize)));
+                            zip_apply(json_array, paths)
+                        } else {
+                            return exec_err!("unexpected second argument type, expected string or int array");
+                        }
+                    }
+                    _ => {
+                        let path = JsonPath::extract_args(args);
+                        as_string_array(json_array)
+                            .iter()
+                            .map(|opt_json| jiter_json_get_int(opt_json, &path).ok())
+                            .collect::<Int64Array>()
+                    }
+                };
+                Ok(ColumnarValue::from(Arc::new(result_array) as ArrayRef))
             }
             ColumnarValue::Scalar(ScalarValue::Utf8(s)) => {
+                let path = JsonPath::extract_args(args);
                 let v = jiter_json_get_int(s.as_ref().map(|s| s.as_str()), &path).ok();
                 Ok(ColumnarValue::Scalar(ScalarValue::Int64(v)))
             }
@@ -75,6 +91,20 @@ impl ScalarUDFImpl for JsonGetInt {
     fn aliases(&self) -> &[String] {
         &self.aliases
     }
+}
+
+fn zip_apply<'a, T: Iterator<Item = Option<JsonPath<'a>>>>(json_array: &ArrayRef, paths: T) -> Int64Array {
+    as_string_array(json_array)
+        .iter()
+        .zip(paths)
+        .map(|(opt_json, opt_path)| {
+            if let Some(path) = opt_path {
+                jiter_json_get_int(opt_json, &[path]).ok()
+            } else {
+                None
+            }
+        })
+        .collect::<Int64Array>()
 }
 
 fn jiter_json_get_int(json_data: Option<&str>, path: &[JsonPath]) -> Result<i64, GetError> {

@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use arrow::array::Int64Array;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::util::display::{ArrayFormatter, FormatOptions};
 use arrow::{array::StringArray, record_batch::RecordBatch};
@@ -9,12 +10,10 @@ use datafusion::execution::context::SessionContext;
 use datafusion_functions_json::register_all;
 
 async fn create_test_table() -> Result<SessionContext> {
-    let schema = Arc::new(Schema::new(vec![
-        Field::new("name", DataType::Utf8, false),
-        Field::new("json_data", DataType::Utf8, false),
-    ]));
+    let mut ctx = SessionContext::new();
+    register_all(&mut ctx)?;
 
-    let data = [
+    let test_data = [
         ("object_foo", r#" {"foo": "abc"} "#),
         ("object_foo_array", r#" {"foo": [1]} "#),
         ("object_foo_obj", r#" {"foo": {}} "#),
@@ -23,22 +22,48 @@ async fn create_test_table() -> Result<SessionContext> {
         ("list_foo", r#" ["foo"] "#),
         ("invalid_json", "is not json"),
     ];
-
-    let batch = RecordBatch::try_new(
-        schema,
+    let test_batch = RecordBatch::try_new(
+        Arc::new(Schema::new(vec![
+            Field::new("name", DataType::Utf8, false),
+            Field::new("json_data", DataType::Utf8, false),
+        ])),
         vec![
             Arc::new(StringArray::from(
-                data.iter().map(|(name, _)| *name).collect::<Vec<_>>(),
+                test_data.iter().map(|(name, _)| *name).collect::<Vec<_>>(),
             )),
             Arc::new(StringArray::from(
-                data.iter().map(|(_, json)| *json).collect::<Vec<_>>(),
+                test_data.iter().map(|(_, json)| *json).collect::<Vec<_>>(),
             )),
         ],
     )?;
+    ctx.register_batch("test", test_batch)?;
 
-    let mut ctx = SessionContext::new();
-    register_all(&mut ctx)?;
-    ctx.register_batch("test", batch)?;
+    let other_data = [
+        (r#" {"foo": 42} "#, "foo", 0),
+        (r#" {"foo": 42} "#, "bar", 1),
+        (r#" [42] "#, "foo", 0),
+        (r#" [42] "#, "bar", 1),
+    ];
+    let other_batch = RecordBatch::try_new(
+        Arc::new(Schema::new(vec![
+            Field::new("json_data", DataType::Utf8, false),
+            Field::new("str_key", DataType::Utf8, false),
+            Field::new("int_key", DataType::Int64, false),
+        ])),
+        vec![
+            Arc::new(StringArray::from(
+                other_data.iter().map(|(json, _, _)| *json).collect::<Vec<_>>(),
+            )),
+            Arc::new(StringArray::from(
+                other_data.iter().map(|(_, str_key, _)| *str_key).collect::<Vec<_>>(),
+            )),
+            Arc::new(Int64Array::from(
+                other_data.iter().map(|(_, _, int_key)| *int_key).collect::<Vec<_>>(),
+            )),
+        ],
+    )?;
+    ctx.register_batch("other", other_batch)?;
+
     Ok(ctx)
 }
 

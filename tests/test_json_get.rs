@@ -84,9 +84,8 @@ async fn test_json_get_str() {
 
 #[tokio::test]
 async fn test_json_get_str_equals() {
-    let batches = run_query("select name, json_get_str(json_data, 'foo')='abc' from test")
-        .await
-        .unwrap();
+    let sql = "select name, json_get_str(json_data, 'foo')='abc' from test";
+    let batches = run_query(sql).await.unwrap();
 
     let expected = [
         "+------------------+--------------------------------------------------------+",
@@ -165,6 +164,32 @@ async fn test_json_get_cast_int_path() {
     let sql = r#"select json_get('{"foo": [null, {"x": false, "bar": 73}}', 'foo', 1, 'bar')::int as v"#;
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Int64, "73".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_get_int_lookup() {
+    let sql = "select str_key, json_data from other where json_get_int(json_data, str_key) is not null";
+    let batches = run_query(sql).await.unwrap();
+    let expected = [
+        "+---------+---------------+",
+        "| str_key | json_data     |",
+        "+---------+---------------+",
+        "| foo     |  {\"foo\": 42}  |",
+        "+---------+---------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+
+    // lookup by int
+    let sql = "select int_key, json_data from other where json_get_int(json_data, int_key) is not null";
+    let batches = run_query(sql).await.unwrap();
+    let expected = [
+        "+---------+-----------+",
+        "| int_key | json_data |",
+        "+---------+-----------+",
+        "| 0       |  [42]     |",
+        "+---------+-----------+",
+    ];
+    assert_batches_eq!(expected, &batches);
 }
 
 #[tokio::test]
