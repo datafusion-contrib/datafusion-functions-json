@@ -13,7 +13,7 @@ impl FunctionRewrite for JsonFunctionRewriter {
     }
 
     fn rewrite(&self, expr: Expr, _schema: &DFSchema, _config: &ConfigOptions) -> Result<Transformed<Expr>> {
-        dbg!(&expr, _schema);
+        // TODO: Implement the rewrite logic
         Ok(Transformed::no(expr))
     }
 }

@@ -4,11 +4,12 @@ use datafusion_expr::ScalarUDF;
 use log::debug;
 use std::sync::Arc;
 
+mod common_get;
+mod common_macros;
+mod common_union;
 mod json_get;
 mod json_obj_contains;
-mod macros;
 mod rewrite;
-mod union;
 
 pub mod functions {
     pub use crate::json_get::json_get;

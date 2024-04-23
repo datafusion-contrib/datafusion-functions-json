@@ -1,12 +1,14 @@
-use crate::macros::make_udf_function;
+use std::any::Any;
+use std::sync::Arc;
+
 use arrow_schema::DataType;
 use arrow_schema::DataType::{LargeUtf8, Utf8};
 use datafusion_common::arrow::array::{as_string_array, ArrayRef, BooleanArray};
 use datafusion_common::{exec_err, plan_err, Result, ScalarValue};
 use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::{Jiter, JiterResult};
-use std::any::Any;
-use std::sync::Arc;
+
+use crate::common_macros::make_udf_function;
 
 make_udf_function!(
     JsonObjContains,
