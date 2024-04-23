@@ -7,8 +7,6 @@ use datafusion_expr::expr::ScalarFunction;
 use datafusion_expr::expr_rewriter::FunctionRewrite;
 use datafusion_expr::{Expr, ScalarFunctionDefinition};
 
-use crate::json_get_str::json_get_str_udf;
-
 pub(crate) struct JsonFunctionRewriter;
 
 impl FunctionRewrite for JsonFunctionRewriter {
@@ -36,11 +34,13 @@ impl FunctionRewrite for JsonFunctionRewriter {
 }
 
 fn switch_json_get(cast_data_type: &DataType, args: &[Expr]) -> Option<Transformed<Expr>> {
-    if cast_data_type != &DataType::Utf8 {
-        return None;
-    }
+    let udf = match cast_data_type {
+        DataType::Utf8 => crate::json_get_str::json_get_str_udf(),
+        DataType::Int64 | DataType::Int32 => crate::json_get_int::json_get_int_udf(),
+        _ => return None,
+    };
     let f = ScalarFunction {
-        func_def: ScalarFunctionDefinition::UDF(json_get_str_udf()),
+        func_def: ScalarFunctionDefinition::UDF(udf),
         args: args.to_vec(),
     };
     Some(Transformed::yes(Expr::ScalarFunction(f)))

@@ -106,24 +106,23 @@ async fn test_json_get_str_equals() {
 
 #[tokio::test]
 async fn test_json_get_str_int() {
-    let batches = run_query(r#"select json_get_str('["a", "b", "c"]', 1) as v"#)
-        .await
-        .unwrap();
+    let sql = r#"select json_get_str('["a", "b", "c"]', 1) as v"#;
+    let batches = run_query(sql).await.unwrap();
 
-    let expected = ["+---+", "| v |", "+---+", "| b |", "+---+"];
-    assert_batches_eq!(expected, &batches);
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "b".to_string()));
+
+    let sql = r#"select json_get_str('["a", "b", "c"]', 3) as v"#;
+    let batches = run_query(sql).await.unwrap();
+
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "".to_string()));
 }
 
 #[tokio::test]
 async fn test_json_get_str_path() {
-    let batches = run_query(r#"select json_get_str('{"a": {"aa": "x", "ab: "y"}, "b": []}', 'a', 'aa') as v"#)
-        .await
-        .unwrap();
+    let sql = r#"select json_get_str('{"a": {"aa": "x", "ab: "y"}, "b": []}', 'a', 'aa') as v"#;
+    let batches = run_query(sql).await.unwrap();
 
-    assert_eq!(
-        display_val(batches).await,
-        ("v".to_string(), DataType::Utf8, "x".to_string())
-    );
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "x".to_string()));
 }
 
 #[tokio::test]
@@ -144,4 +143,27 @@ async fn test_json_get_one_arg() {
         e.to_string(),
         "Error during planning: The `json_get` function requires two or more arguments."
     );
+}
+
+#[tokio::test]
+async fn test_json_get_int() {
+    let batches = run_query(r#"select json_get_int('[1, 2, 3]', 1) as v"#).await.unwrap();
+
+    assert_eq!(display_val(batches).await, (DataType::Int64, "2".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_get_cast_int() {
+    let sql = r#"select json_get('{"foo": 42}', 'foo')::int as v"#;
+    let batches = run_query(sql).await.unwrap();
+
+    assert_eq!(display_val(batches).await, (DataType::Int64, "42".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_get_cast_int_path() {
+    let sql = r#"select json_get('{"foo": [null, {"x": false, "bar": 73}}', 'foo', 1, 'bar')::int as v"#;
+    let batches = run_query(sql).await.unwrap();
+
+    assert_eq!(display_val(batches).await, (DataType::Int64, "73".to_string()));
 }

@@ -37,7 +37,7 @@ macro_rules! make_udf_function {
                 [< STATIC_ $expr_fn_name:upper >]
                     .get_or_init(|| {
                         std::sync::Arc::new(datafusion_expr::ScalarUDF::new_from_impl(
-                            <$udf_impl>::new(),
+                            <$udf_impl>::default(),
                         ))
                     })
                     .clone()

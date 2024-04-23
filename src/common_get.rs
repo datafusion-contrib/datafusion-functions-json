@@ -9,6 +9,9 @@ pub fn check_args(args: &[DataType], fn_name: &str) -> DataFusionResult<()> {
     if args.len() < 2 {
         return plan_err!("The `{fn_name}` function requires two or more arguments.");
     }
+    if !matches!(&args[0], DataType::Utf8) {
+        return plan_err!("Unexpected argument type to `{fn_name}` at position 1, expected a string.");
+    }
     args[1..]
         .iter()
         .enumerate()

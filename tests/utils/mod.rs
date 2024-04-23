@@ -48,7 +48,7 @@ pub async fn run_query(sql: &str) -> Result<Vec<RecordBatch>> {
     df.collect().await
 }
 
-pub async fn display_val(batch: Vec<RecordBatch>) -> (String, DataType, String) {
+pub async fn display_val(batch: Vec<RecordBatch>) -> (DataType, String) {
     assert_eq!(batch.len(), 1);
     let batch = batch.first().unwrap();
     assert_eq!(batch.num_rows(), 1);
@@ -58,5 +58,5 @@ pub async fn display_val(batch: Vec<RecordBatch>) -> (String, DataType, String) 
     let options = FormatOptions::default().with_display_error(true);
     let f = ArrayFormatter::try_new(c.as_ref(), &options).unwrap();
     let repr = f.value(0).try_to_string().unwrap();
-    (schema_col.name().clone(), schema_col.data_type().clone(), repr)
+    (schema_col.data_type().clone(), repr)
 }

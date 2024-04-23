@@ -23,8 +23,8 @@ pub(super) struct JsonObjContains {
     aliases: Vec<String>,
 }
 
-impl JsonObjContains {
-    pub fn new() -> Self {
+impl Default for JsonObjContains {
+    fn default() -> Self {
         Self {
             signature: Signature::uniform(2, vec![Utf8, LargeUtf8], Volatility::Immutable),
             aliases: vec!["json_obj_contains".to_string(), "json_object_contains".to_string()],

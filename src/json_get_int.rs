@@ -1,45 +1,45 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use arrow::array::{as_string_array, StringArray};
+use arrow::array::{as_string_array, Int64Array};
 use arrow_schema::DataType;
 use datafusion_common::arrow::array::ArrayRef;
 use datafusion_common::{exec_err, Result as DataFusionResult, ScalarValue};
 use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
-use jiter::Peek;
+use jiter::{NumberInt, Peek};
 
 use crate::common_get::{check_args, jiter_json_find, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
-    JsonGetStr,
-    json_get_str,
+    JsonGetInt,
+    json_get_int,
     json_data path, // arg name
-    r#"Get a string value from a JSON object by it's "path""#
+    r#"Get an integer value from a JSON object by it's "path""#
 );
 
 #[derive(Debug)]
-pub(super) struct JsonGetStr {
+pub(super) struct JsonGetInt {
     signature: Signature,
     aliases: Vec<String>,
 }
 
-impl Default for JsonGetStr {
+impl Default for JsonGetInt {
     fn default() -> Self {
         Self {
             signature: Signature::variadic_any(Volatility::Immutable),
-            aliases: vec!["json_get_str".to_string()],
+            aliases: vec!["json_get_int".to_string()],
         }
     }
 }
 
-impl ScalarUDFImpl for JsonGetStr {
+impl ScalarUDFImpl for JsonGetInt {
     fn as_any(&self) -> &dyn Any {
         self
     }
 
     fn name(&self) -> &str {
-        "json_get_str"
+        "json_get_int"
     }
 
     fn signature(&self) -> &Signature {
@@ -47,7 +47,7 @@ impl ScalarUDFImpl for JsonGetStr {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        check_args(arg_types, self.name()).map(|_| DataType::Utf8)
+        check_args(arg_types, self.name()).map(|_| DataType::Int64)
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
@@ -57,14 +57,14 @@ impl ScalarUDFImpl for JsonGetStr {
             ColumnarValue::Array(array) => {
                 let array = as_string_array(array)
                     .iter()
-                    .map(|opt_json| jiter_json_get_str(opt_json, &path).ok())
-                    .collect::<StringArray>();
+                    .map(|opt_json| jiter_json_get_int(opt_json, &path).ok())
+                    .collect::<Int64Array>();
 
                 Ok(ColumnarValue::from(Arc::new(array) as ArrayRef))
             }
             ColumnarValue::Scalar(ScalarValue::Utf8(s)) => {
-                let v = jiter_json_get_str(s.as_ref().map(|s| s.as_str()), &path).ok();
-                Ok(ColumnarValue::Scalar(ScalarValue::Utf8(v)))
+                let v = jiter_json_get_int(s.as_ref().map(|s| s.as_str()), &path).ok();
+                Ok(ColumnarValue::Scalar(ScalarValue::Int64(v)))
             }
             ColumnarValue::Scalar(_) => {
                 exec_err!("unexpected first argument type, expected string")
@@ -77,11 +77,23 @@ impl ScalarUDFImpl for JsonGetStr {
     }
 }
 
-fn jiter_json_get_str(json_data: Option<&str>, path: &[JsonPath]) -> Result<String, GetError> {
+fn jiter_json_get_int(json_data: Option<&str>, path: &[JsonPath]) -> Result<i64, GetError> {
     if let Some((mut jiter, peek)) = jiter_json_find(json_data, path) {
         match peek {
-            Peek::String => Ok(jiter.known_str()?.to_owned()),
-            _ => Err(GetError),
+            // numbers are represented by everything else in peek, hence doing it this way
+            Peek::Null
+            | Peek::True
+            | Peek::False
+            | Peek::Minus
+            | Peek::Infinity
+            | Peek::NaN
+            | Peek::String
+            | Peek::Array
+            | Peek::Object => Err(GetError),
+            _ => match jiter.known_int(peek)? {
+                NumberInt::Int(i) => Ok(i),
+                NumberInt::BigInt(_) => Err(GetError),
+            },
         }
     } else {
         Err(GetError)

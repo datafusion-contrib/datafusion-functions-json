@@ -25,11 +25,11 @@ pub(super) struct JsonGet {
     aliases: Vec<String>,
 }
 
-impl JsonGet {
-    pub fn new() -> Self {
+impl Default for JsonGet {
+    fn default() -> Self {
         Self {
             signature: Signature::variadic(vec![DataType::Utf8, DataType::UInt64], Volatility::Immutable),
-            aliases: vec!["json_get".to_string()],
+            aliases: vec!["json_get".to_string(), "json_get_union".to_string()],
         }
     }
 }
