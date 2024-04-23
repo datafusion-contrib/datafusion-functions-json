@@ -8,7 +8,7 @@ use datafusion_common::Result as DataFusionResult;
 use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::{Jiter, NumberAny, NumberInt, Peek};
 
-use crate::common_get::{check_args, get_invoke, jiter_json_find, GetError, JsonPath};
+use crate::common_get::{check_args, get_err, get_invoke, jiter_json_find, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 use crate::common_union::{JsonUnion, JsonUnionField};
 
@@ -70,7 +70,7 @@ fn jiter_json_get_union(opt_json: Option<&str>, path: &[JsonPath]) -> Result<Jso
     if let Some((mut jiter, peek)) = jiter_json_find(opt_json, path) {
         build_union(&mut jiter, peek)
     } else {
-        Err(GetError)
+        get_err!()
     }
 }
 

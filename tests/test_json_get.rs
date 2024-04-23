@@ -204,9 +204,9 @@ async fn test_json_get_float() {
 
 #[tokio::test]
 async fn test_json_get_cast_float() {
-    let sql = r#"select json_get('{"foo": 4.2}', 'foo')::float as v"#;
+    let sql = r#"select json_get('{"foo": 4.2e2}', 'foo')::float as v"#;
     let batches = run_query(sql).await.unwrap();
-    assert_eq!(display_val(batches).await, (DataType::Float64, "4.2".to_string()));
+    assert_eq!(display_val(batches).await, (DataType::Float64, "420.0".to_string()));
 }
 
 #[tokio::test]
@@ -225,4 +225,33 @@ async fn test_json_get_cast_bool() {
     let sql = r#"select json_get('{"foo": true}', 'foo')::bool as v"#;
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Boolean, "true".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_get_json() {
+    let batches = run_query("select name, json_get_json(json_data, 'foo') from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+-------------------------------------------+",
+        "| name             | json_get_json(test.json_data,Utf8(\"foo\")) |",
+        "+------------------+-------------------------------------------+",
+        "| object_foo       | \"abc\"                                     |",
+        "| object_foo_array | [1]                                       |",
+        "| object_foo_obj   | {}                                        |",
+        "| object_foo_null  | null                                      |",
+        "| object_bar       |                                           |",
+        "| list_foo         |                                           |",
+        "| invalid_json     |                                           |",
+        "+------------------+-------------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_get_json_float() {
+    let sql = r#"select json_get_json('{"x": 4.2e-1}', 'x')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "4.2e-1".to_string()));
 }

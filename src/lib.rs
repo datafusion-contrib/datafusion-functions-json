@@ -11,6 +11,7 @@ mod json_get;
 mod json_get_bool;
 mod json_get_float;
 mod json_get_int;
+mod json_get_json;
 mod json_get_str;
 mod json_obj_contains;
 mod rewrite;
@@ -20,6 +21,7 @@ pub mod functions {
     pub use crate::json_get_bool::json_get_bool;
     pub use crate::json_get_float::json_get_float;
     pub use crate::json_get_int::json_get_int;
+    pub use crate::json_get_json::json_get_json;
     pub use crate::json_get_str::json_get_str;
     pub use crate::json_obj_contains::json_obj_contains;
 }
@@ -31,6 +33,7 @@ pub fn register_all(registry: &mut dyn FunctionRegistry) -> Result<()> {
         json_get_bool::json_get_bool_udf(),
         json_get_float::json_get_float_udf(),
         json_get_int::json_get_int_udf(),
+        json_get_json::json_get_json_udf(),
         json_get_str::json_get_str_udf(),
         json_obj_contains::json_obj_contains_udf(),
     ];

@@ -7,7 +7,7 @@ use datafusion_common::{Result as DataFusionResult, ScalarValue};
 use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::{NumberInt, Peek};
 
-use crate::common_get::{check_args, get_invoke, jiter_json_find, GetError, JsonPath};
+use crate::common_get::{check_args, get_err, get_invoke, jiter_json_find, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
@@ -75,13 +75,13 @@ fn jiter_json_get_int(json_data: Option<&str>, path: &[JsonPath]) -> Result<i64,
             | Peek::NaN
             | Peek::String
             | Peek::Array
-            | Peek::Object => Err(GetError),
+            | Peek::Object => get_err!(),
             _ => match jiter.known_int(peek)? {
                 NumberInt::Int(i) => Ok(i),
-                NumberInt::BigInt(_) => Err(GetError),
+                NumberInt::BigInt(_) => get_err!(),
             },
         }
     } else {
-        Err(GetError)
+        get_err!()
     }
 }

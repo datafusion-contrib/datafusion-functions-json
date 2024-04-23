@@ -7,7 +7,7 @@ use datafusion_common::{Result as DataFusionResult, ScalarValue};
 use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::Peek;
 
-use crate::common_get::{check_args, get_invoke, jiter_json_find, GetError, JsonPath};
+use crate::common_get::{check_args, get_err, get_invoke, jiter_json_find, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
@@ -67,9 +67,9 @@ fn jiter_json_get_str(json_data: Option<&str>, path: &[JsonPath]) -> Result<Stri
     if let Some((mut jiter, peek)) = jiter_json_find(json_data, path) {
         match peek {
             Peek::String => Ok(jiter.known_str()?.to_owned()),
-            _ => Err(GetError),
+            _ => get_err!(),
         }
     } else {
-        Err(GetError)
+        get_err!()
     }
 }

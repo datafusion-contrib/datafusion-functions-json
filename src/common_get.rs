@@ -128,19 +128,25 @@ pub fn jiter_json_find<'j>(opt_json: Option<&'j str>, path: &[JsonPath]) -> Opti
     }
     None
 }
+macro_rules! get_err {
+    () => {
+        Err(GetError)
+    };
+}
+pub(crate) use get_err;
 
 fn jiter_json_find_step(jiter: &mut Jiter, peek: Peek, path: &[JsonPath]) -> Result<Peek, GetError> {
     let (first, rest) = path.split_first().unwrap();
     let next_peek = match peek {
         Peek::Array => match first {
             JsonPath::Index(index) => jiter_array_get(jiter, *index),
-            _ => Err(GetError),
+            _ => get_err!(),
         },
         Peek::Object => match first {
             JsonPath::Key(key) => jiter_object_get(jiter, key),
-            _ => Err(GetError),
+            _ => get_err!(),
         },
-        _ => Err(GetError),
+        _ => get_err!(),
     }?;
 
     if rest.is_empty() {
@@ -163,7 +169,7 @@ fn jiter_array_get(jiter: &mut Jiter, find_key: usize) -> Result<Peek, GetError>
         index += 1;
         peek_opt = jiter.array_step()?;
     }
-    Err(GetError)
+    get_err!()
 }
 
 fn jiter_object_get(jiter: &mut Jiter, find_key: &str) -> Result<Peek, GetError> {
@@ -177,7 +183,7 @@ fn jiter_object_get(jiter: &mut Jiter, find_key: &str) -> Result<Peek, GetError>
         jiter.next_skip()?;
         opt_key = jiter.next_key()?;
     }
-    Err(GetError)
+    get_err!()
 }
 
 pub struct GetError;
