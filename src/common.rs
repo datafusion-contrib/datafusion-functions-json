@@ -163,7 +163,7 @@ fn jiter_array_get(jiter: &mut Jiter, find_key: usize) -> Result<Peek, GetError>
         if index == find_key {
             return Ok(peek);
         }
-        jiter.next_skip()?;
+        jiter.known_skip(peek)?;
         index += 1;
         peek_opt = jiter.array_step()?;
     }
