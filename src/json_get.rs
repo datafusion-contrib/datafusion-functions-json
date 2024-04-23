@@ -8,14 +8,14 @@ use datafusion_common::Result as DataFusionResult;
 use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::{Jiter, NumberAny, NumberInt, Peek};
 
-use crate::common_get::{check_args, get_err, get_invoke, jiter_json_find, GetError, JsonPath};
+use crate::common::{check_args, get_err, get_invoke, jiter_json_find, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 use crate::common_union::{JsonUnion, JsonUnionField};
 
 make_udf_function!(
     JsonGet,
     json_get,
-    json_data key, // arg name
+    json_data path,
     r#"Get a value from a JSON object by it's "path""#
 );
 
@@ -24,14 +24,14 @@ make_udf_function!(
 #[derive(Debug)]
 pub(super) struct JsonGet {
     signature: Signature,
-    aliases: Vec<String>,
+    aliases: [String; 1],
 }
 
 impl Default for JsonGet {
     fn default() -> Self {
         Self {
-            signature: Signature::variadic(vec![DataType::Utf8, DataType::UInt64], Volatility::Immutable),
-            aliases: vec!["json_get".to_string(), "json_get_union".to_string()],
+            signature: Signature::variadic_any(Volatility::Immutable),
+            aliases: ["json_get".to_string()],
         }
     }
 }

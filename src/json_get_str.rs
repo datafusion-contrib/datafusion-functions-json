@@ -7,27 +7,27 @@ use datafusion_common::{Result as DataFusionResult, ScalarValue};
 use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::Peek;
 
-use crate::common_get::{check_args, get_err, get_invoke, jiter_json_find, GetError, JsonPath};
+use crate::common::{check_args, get_err, get_invoke, jiter_json_find, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
     JsonGetStr,
     json_get_str,
-    json_data path, // arg name
+    json_data path,
     r#"Get a string value from a JSON object by it's "path""#
 );
 
 #[derive(Debug)]
 pub(super) struct JsonGetStr {
     signature: Signature,
-    aliases: Vec<String>,
+    aliases: [String; 1],
 }
 
 impl Default for JsonGetStr {
     fn default() -> Self {
         Self {
             signature: Signature::variadic_any(Volatility::Immutable),
-            aliases: vec!["json_get_str".to_string()],
+            aliases: ["json_get_str".to_string()],
         }
     }
 }

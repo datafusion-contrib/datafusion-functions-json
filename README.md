@@ -2,13 +2,13 @@
 
 ## Done
 
+* [x] `json_contains(json: str, *keys: str | int) -> bool` - true if a JSON object has a specific key
 * [x] `json_get(json: str, *keys: str | int) -> JsonUnion` - Get a value from a JSON object by it's "path"
 * [x] `json_get_str(json: str, *keys: str | int) -> str` - Get a string value from a JSON object by it's "path"
 * [x] `json_get_int(json: str, *keys: str | int) -> int` - Get an integer value from a JSON object by it's "path"
 * [x] `json_get_float(json: str, *keys: str | int) -> float` - Get a float value from a JSON object by it's "path"
 * [x] `json_get_bool(json: str, *keys: str | int) -> bool` - Get a boolean value from a JSON object by it's "path"
 * [x] `json_get_json(json: str, *keys: str | int) -> str` - Get any value from a JSON object by it's "path", represented as a string
-* [x] `json_obj_contains(json: str, key: str) -> bool` - true if a JSON object has a specific key
 
 ## TODO
 

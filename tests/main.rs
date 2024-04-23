@@ -5,6 +5,34 @@ mod utils;
 use utils::{display_val, run_query};
 
 #[tokio::test]
+async fn test_json_contains() {
+    let expected = [
+        "+------------------+-------------------------------------------+",
+        "| name             | json_contains(test.json_data,Utf8(\"foo\")) |",
+        "+------------------+-------------------------------------------+",
+        "| object_foo       | true                                      |",
+        "| object_foo_array | true                                      |",
+        "| object_foo_obj   | true                                      |",
+        "| object_foo_null  | true                                      |",
+        "| object_bar       | false                                     |",
+        "| list_foo         | false                                     |",
+        "| invalid_json     | false                                     |",
+        "+------------------+-------------------------------------------+",
+    ];
+
+    let batches = run_query("select name, json_contains(json_data, 'foo') from test")
+        .await
+        .unwrap();
+    assert_batches_eq!(expected, &batches);
+}
+#[tokio::test]
+async fn test_json_contains_array() {
+    let sql = "select json_contains('[1, 2, 3]', 2)";
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Boolean, "true".to_string()));
+}
+
+#[tokio::test]
 async fn test_json_get_union() {
     let batches = run_query("select name, json_get(json_data, 'foo') from test")
         .await
@@ -24,6 +52,15 @@ async fn test_json_get_union() {
         "+------------------+--------------------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_get_array() {
+    let sql = "select json_get('[1, 2, 3]', 2)";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::Union(_, _)));
+    assert_eq!(value_repr, "{int=3}");
 }
 
 #[tokio::test]
@@ -105,18 +142,18 @@ async fn test_json_get_str_equals() {
 
 #[tokio::test]
 async fn test_json_get_str_int() {
-    let sql = r#"select json_get_str('["a", "b", "c"]', 1) as v"#;
+    let sql = r#"select json_get_str('["a", "b", "c"]', 1)"#;
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Utf8, "b".to_string()));
 
-    let sql = r#"select json_get_str('["a", "b", "c"]', 3) as v"#;
+    let sql = r#"select json_get_str('["a", "b", "c"]', 3)"#;
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Utf8, String::new()));
 }
 
 #[tokio::test]
 async fn test_json_get_str_path() {
-    let sql = r#"select json_get_str('{"a": {"aa": "x", "ab: "y"}, "b": []}', 'a', 'aa') as v"#;
+    let sql = r#"select json_get_str('{"a": {"aa": "x", "ab: "y"}, "b": []}', 'a', 'aa')"#;
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Utf8, "x".to_string()));
 }
@@ -145,25 +182,25 @@ async fn test_json_get_no_path() {
 
 #[tokio::test]
 async fn test_json_get_int() {
-    let batches = run_query(r"select json_get_int('[1, 2, 3]', 1) as v").await.unwrap();
+    let batches = run_query(r"select json_get_int('[1, 2, 3]', 1)").await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Int64, "2".to_string()));
 }
 
 #[tokio::test]
 async fn test_json_get_cast_int() {
-    let sql = r#"select json_get('{"foo": 42}', 'foo')::int as v"#;
+    let sql = r#"select json_get('{"foo": 42}', 'foo')::int"#;
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Int64, "42".to_string()));
 
     // floats not allowed
-    let sql = r#"select json_get('{"foo": 4.2}', 'foo')::int as v"#;
+    let sql = r#"select json_get('{"foo": 4.2}', 'foo')::int"#;
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Int64, String::new()));
 }
 
 #[tokio::test]
 async fn test_json_get_cast_int_path() {
-    let sql = r#"select json_get('{"foo": [null, {"x": false, "bar": 73}}', 'foo', 1, 'bar')::int as v"#;
+    let sql = r#"select json_get('{"foo": [null, {"x": false, "bar": 73}}', 'foo', 1, 'bar')::int"#;
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Int64, "73".to_string()));
 }
@@ -196,35 +233,33 @@ async fn test_json_get_int_lookup() {
 
 #[tokio::test]
 async fn test_json_get_float() {
-    let batches = run_query("select json_get_float('[1.5]', 0) as v").await.unwrap();
+    let batches = run_query("select json_get_float('[1.5]', 0)").await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Float64, "1.5".to_string()));
 
     // coerce int to float
-    let batches = run_query("select json_get_float('[1]', 0) as v").await.unwrap();
+    let batches = run_query("select json_get_float('[1]', 0)").await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Float64, "1.0".to_string()));
 }
 
 #[tokio::test]
 async fn test_json_get_cast_float() {
-    let sql = r#"select json_get('{"foo": 4.2e2}', 'foo')::float as v"#;
+    let sql = r#"select json_get('{"foo": 4.2e2}', 'foo')::float"#;
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Float64, "420.0".to_string()));
 }
 
 #[tokio::test]
 async fn test_json_get_bool() {
-    let batches = run_query("select json_get_bool('[true]', 0) as v").await.unwrap();
+    let batches = run_query("select json_get_bool('[true]', 0)").await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Boolean, "true".to_string()));
 
-    let batches = run_query(r#"select json_get_bool('{"": false}', '') as v"#)
-        .await
-        .unwrap();
+    let batches = run_query(r#"select json_get_bool('{"": false}', '')"#).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Boolean, "false".to_string()));
 }
 
 #[tokio::test]
 async fn test_json_get_cast_bool() {
-    let sql = r#"select json_get('{"foo": true}', 'foo')::bool as v"#;
+    let sql = r#"select json_get('{"foo": true}', 'foo')::bool"#;
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Boolean, "true".to_string()));
 }
