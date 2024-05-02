@@ -2,7 +2,7 @@ use arrow_schema::DataType;
 use datafusion::assert_batches_eq;
 
 mod utils;
-use utils::{display_val, run_query};
+use utils::{display_val, run_query, run_query_large};
 
 #[tokio::test]
 async fn test_json_contains() {
@@ -347,4 +347,52 @@ async fn test_json_length_object_nested() {
     let sql = r#"select json_length('{"a": 1, "b": 2, "c": []}', 'b')"#;
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::UInt64, "".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_contains_large() {
+    let expected = [
+    "+----------+",
+    "| COUNT(*) |",
+    "+----------+",
+    "| 4        |",
+    "+----------+",
+];
+
+    let batches = run_query_large("select count(*) from test where json_contains(json_data, 'foo')")
+        .await
+        .unwrap();
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_contains_large_vec() {
+    let expected = [
+        "+----------+",
+        "| COUNT(*) |",
+        "+----------+",
+        "| 0        |",
+        "+----------+",
+    ];
+
+    let batches = run_query_large("select count(*) from test where json_contains(json_data, name)")
+        .await
+        .unwrap();
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_contains_large_both() {
+    let expected = [
+        "+----------+",
+        "| COUNT(*) |",
+        "+----------+",
+        "| 0        |",
+        "+----------+",
+    ];
+
+    let batches = run_query_large("select count(*) from test where json_contains(json_data, json_data)")
+        .await
+        .unwrap();
+    assert_batches_eq!(expected, &batches);
 }
