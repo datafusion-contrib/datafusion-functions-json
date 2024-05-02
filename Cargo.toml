@@ -2,6 +2,12 @@
 name = "datafusion-functions-json"
 version = "0.1.0"
 edition = "2021"
+description = "JSON functions for DataFusion"
+readme = "README.md"
+license = "Apache-2.0"
+keywords = ["datafusion", "JSON", "SQL"]
+categories = ["database-implementations", "parsing"]
+repository = "https://github.com/datafusion-contrib/datafusion-functions-json/"
 
 [dependencies]
 arrow = "51.0.0"
