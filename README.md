@@ -1,5 +1,17 @@
 # datafusion-functions-json
 
+**Note:** This is not an official Apache Software Foundation release, see [datafusion-contrib/datafusion-functions-json#5](https://github.com/datafusion-contrib/datafusion-functions-json/issues/5).
+
+This crate provides a set of functions for querying JSON strings in DataFusion. The functions are implemented as scalar functions that can be used in SQL queries.
+
+To use these functions, you'll just need to call:
+
+```rust
+datafusion_functions_json::register_all(&mut ctx)?;
+```
+
+To register the below JSON functions in your `SessionContext`.
+
 ## Done
 
 * [x] `json_contains(json: str, *keys: str | int) -> bool` - true if a JSON object has a specific key
