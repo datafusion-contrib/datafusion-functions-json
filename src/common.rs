@@ -84,7 +84,7 @@ pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
                         return exec_err!("unexpected second argument type, expected string or int array");
                     }
                 }
-                ColumnarValue::Scalar(_) => scalar_apply(json_array, JsonPath::extract_path(args), jiter_find),
+                ColumnarValue::Scalar(_) => scalar_apply(json_array, &JsonPath::extract_path(args), jiter_find),
             };
             to_array(result_collect?).map(ColumnarValue::from)
         }
@@ -132,7 +132,7 @@ fn zip_apply_iter<'a, 'j, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromItera
 
 fn scalar_apply<'a, C: FromIterator<Option<I>> + 'static, I>(
     json_array: &ArrayRef,
-    path: Vec<JsonPath>,
+    path: &[JsonPath],
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
 ) -> DataFusionResult<C> {
     if let Some(string_array) = json_array.as_any().downcast_ref::<StringArray>() {
@@ -146,12 +146,10 @@ fn scalar_apply<'a, C: FromIterator<Option<I>> + 'static, I>(
 
 fn scalar_apply_iter<'a, 'j, C: FromIterator<Option<I>> + 'static, I>(
     json_iter: impl Iterator<Item = Option<&'j str>>,
-    path: Vec<JsonPath>,
+    path: &[JsonPath],
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
 ) -> C {
-    json_iter
-        .map(|opt_json| jiter_find(opt_json, &path).ok())
-        .collect::<C>()
+    json_iter.map(|opt_json| jiter_find(opt_json, path).ok()).collect::<C>()
 }
 
 pub fn jiter_json_find<'j>(opt_json: Option<&'j str>, path: &[JsonPath]) -> Option<(Jiter<'j>, Peek)> {

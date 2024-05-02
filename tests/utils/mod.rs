@@ -1,12 +1,14 @@
 #![allow(dead_code)]
+use std::sync::Arc;
+
 use arrow::array::{ArrayRef, Int64Array};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::util::display::{ArrayFormatter, FormatOptions};
 use arrow::{array::LargeStringArray, array::StringArray, record_batch::RecordBatch};
-use std::sync::Arc;
 
 use datafusion::error::Result;
 use datafusion::execution::context::SessionContext;
+use datafusion_common::ParamValues;
 use datafusion_functions_json::register_all;
 
 async fn create_test_table(large_utf8: bool) -> Result<SessionContext> {
@@ -73,14 +75,21 @@ async fn create_test_table(large_utf8: bool) -> Result<SessionContext> {
 
 pub async fn run_query(sql: &str) -> Result<Vec<RecordBatch>> {
     let ctx = create_test_table(false).await?;
-    let df = ctx.sql(sql).await?;
-    df.collect().await
+    ctx.sql(sql).await?.collect().await
 }
 
 pub async fn run_query_large(sql: &str) -> Result<Vec<RecordBatch>> {
-    let ctx = create_test_table(true).await.unwrap();
-    let df = ctx.sql(sql).await.unwrap();
-    df.collect().await
+    let ctx = create_test_table(true).await?;
+    ctx.sql(sql).await?.collect().await
+}
+
+pub async fn run_query_params(
+    sql: &str,
+    large_utf8: bool,
+    query_values: impl Into<ParamValues>,
+) -> Result<Vec<RecordBatch>> {
+    let ctx = create_test_table(large_utf8).await?;
+    ctx.sql(sql).await?.with_param_values(query_values)?.collect().await
 }
 
 pub async fn display_val(batch: Vec<RecordBatch>) -> (DataType, String) {

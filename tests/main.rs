@@ -1,8 +1,9 @@
 use arrow_schema::DataType;
 use datafusion::assert_batches_eq;
+use datafusion_common::ScalarValue;
 
 mod utils;
-use utils::{display_val, run_query, run_query_large};
+use utils::{display_val, run_query, run_query_large, run_query_params};
 
 #[tokio::test]
 async fn test_json_contains() {
@@ -352,12 +353,12 @@ async fn test_json_length_object_nested() {
 #[tokio::test]
 async fn test_json_contains_large() {
     let expected = [
-    "+----------+",
-    "| COUNT(*) |",
-    "+----------+",
-    "| 4        |",
-    "+----------+",
-];
+        "+----------+",
+        "| COUNT(*) |",
+        "+----------+",
+        "| 4        |",
+        "+----------+",
+    ];
 
     let batches = run_query_large("select count(*) from test where json_contains(json_data, 'foo')")
         .await
@@ -394,5 +395,37 @@ async fn test_json_contains_large_both() {
     let batches = run_query_large("select count(*) from test where json_contains(json_data, json_data)")
         .await
         .unwrap();
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_contains_large_params() {
+    let expected = [
+        "+----------+",
+        "| COUNT(*) |",
+        "+----------+",
+        "| 4        |",
+        "+----------+",
+    ];
+
+    let sql = "select count(*) from test where json_contains(json_data, 'foo')";
+    let params = vec![ScalarValue::LargeUtf8(Some("foo".to_string()))];
+    let batches = run_query_params(sql, false, params).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_contains_large_both_params() {
+    let expected = [
+        "+----------+",
+        "| COUNT(*) |",
+        "+----------+",
+        "| 4        |",
+        "+----------+",
+    ];
+
+    let sql = "select count(*) from test where json_contains(json_data, 'foo')";
+    let params = vec![ScalarValue::LargeUtf8(Some("foo".to_string()))];
+    let batches = run_query_params(sql, true, params).await.unwrap();
     assert_batches_eq!(expected, &batches);
 }
