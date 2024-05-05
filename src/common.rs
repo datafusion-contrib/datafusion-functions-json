@@ -8,15 +8,15 @@ use jiter::{Jiter, JiterError, Peek};
 
 pub fn check_args(args: &[DataType], fn_name: &str) -> DataFusionResult<()> {
     let Some(first) = args.first() else {
-        return plan_err!("The `{fn_name}` function requires one or more arguments.");
+        return plan_err!("The '{fn_name}' function requires one or more arguments.");
     };
     if !matches!(first, DataType::Utf8 | DataType::LargeUtf8) {
-        return plan_err!("Unexpected argument type to `{fn_name}` at position 1, expected a string.");
+        return plan_err!("Unexpected argument type to '{fn_name}' at position 1, expected a string.");
     }
     args[1..].iter().enumerate().try_for_each(|(index, arg)| match arg {
         DataType::Utf8 | DataType::LargeUtf8 | DataType::UInt64 | DataType::Int64 => Ok(()),
         _ => plan_err!(
-            "Unexpected argument type to `{fn_name}` at position {}, expected string or int.",
+            "Unexpected argument type to '{fn_name}' at position {}, expected string or int.",
             index + 2
         ),
     })

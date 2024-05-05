@@ -46,7 +46,7 @@ impl ScalarUDFImpl for JsonContains {
 
     fn return_type(&self, arg_types: &[DataType]) -> Result<DataType> {
         if arg_types.len() < 2 {
-            plan_err!("The `json_contains` function requires two or more arguments.")
+            plan_err!("The 'json_contains' function requires two or more arguments.")
         } else {
             check_args(arg_types, self.name()).map(|()| DataType::Boolean)
         }

@@ -185,7 +185,7 @@ async fn test_json_get_str_null() {
 
     assert_eq!(
         e.to_string(),
-        "Error during planning: Unexpected argument type to `json_get_str` at position 2, expected string or int."
+        "Error during planning: Unexpected argument type to 'json_get_str' at position 2, expected string or int."
     );
 }
 
