@@ -1,6 +1,6 @@
 use std::str::Utf8Error;
 
-use arrow::array::{as_string_array, Array, ArrayRef, Int64Array, StringArray, UInt64Array};
+use arrow::array::{Array, ArrayRef, Int64Array, LargeStringArray, StringArray, UInt64Array};
 use arrow_schema::DataType;
 use datafusion_common::{exec_err, plan_err, Result as DataFusionResult, ScalarValue};
 use datafusion_expr::ColumnarValue;
@@ -10,11 +10,11 @@ pub fn check_args(args: &[DataType], fn_name: &str) -> DataFusionResult<()> {
     let Some(first) = args.first() else {
         return plan_err!("The `{fn_name}` function requires one or more arguments.");
     };
-    if !matches!(first, DataType::Utf8) {
+    if !matches!(first, DataType::Utf8 | DataType::LargeUtf8) {
         return plan_err!("Unexpected argument type to `{fn_name}` at position 1, expected a string.");
     }
     args[1..].iter().enumerate().try_for_each(|(index, arg)| match arg {
-        DataType::Utf8 | DataType::UInt64 | DataType::Int64 => Ok(()),
+        DataType::Utf8 | DataType::LargeUtf8 | DataType::UInt64 | DataType::Int64 => Ok(()),
         _ => plan_err!(
             "Unexpected argument type to `{fn_name}` at position {}, expected string or int.",
             index + 2
@@ -71,6 +71,9 @@ pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
                     if let Some(str_path_array) = a.as_any().downcast_ref::<StringArray>() {
                         let paths = str_path_array.iter().map(|opt_key| opt_key.map(JsonPath::Key));
                         zip_apply(json_array, paths, jiter_find)
+                    } else if let Some(str_path_array) = a.as_any().downcast_ref::<LargeStringArray>() {
+                        let paths = str_path_array.iter().map(|opt_key| opt_key.map(JsonPath::Key));
+                        zip_apply(json_array, paths, jiter_find)
                     } else if let Some(int_path_array) = a.as_any().downcast_ref::<Int64Array>() {
                         let paths = int_path_array.iter().map(|opt_index| opt_index.map(Into::into));
                         zip_apply(json_array, paths, jiter_find)
@@ -81,15 +84,9 @@ pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
                         return exec_err!("unexpected second argument type, expected string or int array");
                     }
                 }
-                ColumnarValue::Scalar(_) => {
-                    let path = JsonPath::extract_path(args);
-                    as_string_array(json_array)
-                        .iter()
-                        .map(|opt_json| jiter_find(opt_json, &path).ok())
-                        .collect::<C>()
-                }
+                ColumnarValue::Scalar(_) => scalar_apply(json_array, &JsonPath::extract_path(args), jiter_find),
             };
-            to_array(result_collect).map(ColumnarValue::from)
+            to_array(result_collect?).map(ColumnarValue::from)
         }
         ColumnarValue::Scalar(ScalarValue::Utf8(s)) => {
             let path = JsonPath::extract_path(args);
@@ -106,9 +103,22 @@ fn zip_apply<'a, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Optio
     json_array: &ArrayRef,
     paths: P,
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
+) -> DataFusionResult<C> {
+    if let Some(string_array) = json_array.as_any().downcast_ref::<StringArray>() {
+        Ok(zip_apply_iter(string_array.iter(), paths, jiter_find))
+    } else if let Some(large_string_array) = json_array.as_any().downcast_ref::<LargeStringArray>() {
+        Ok(zip_apply_iter(large_string_array.iter(), paths, jiter_find))
+    } else {
+        exec_err!("unexpected json array type")
+    }
+}
+
+fn zip_apply_iter<'a, 'j, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Option<I>> + 'static, I>(
+    json_iter: impl Iterator<Item = Option<&'j str>>,
+    paths: P,
+    jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
 ) -> C {
-    as_string_array(json_array)
-        .iter()
+    json_iter
         .zip(paths)
         .map(|(opt_json, opt_path)| {
             if let Some(path) = opt_path {
@@ -118,6 +128,28 @@ fn zip_apply<'a, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Optio
             }
         })
         .collect::<C>()
+}
+
+fn scalar_apply<'a, C: FromIterator<Option<I>> + 'static, I>(
+    json_array: &ArrayRef,
+    path: &[JsonPath],
+    jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
+) -> DataFusionResult<C> {
+    if let Some(string_array) = json_array.as_any().downcast_ref::<StringArray>() {
+        Ok(scalar_apply_iter(string_array.iter(), path, jiter_find))
+    } else if let Some(large_string_array) = json_array.as_any().downcast_ref::<LargeStringArray>() {
+        Ok(scalar_apply_iter(large_string_array.iter(), path, jiter_find))
+    } else {
+        exec_err!("unexpected json array type")
+    }
+}
+
+fn scalar_apply_iter<'a, 'j, C: FromIterator<Option<I>> + 'static, I>(
+    json_iter: impl Iterator<Item = Option<&'j str>>,
+    path: &[JsonPath],
+    jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
+) -> C {
+    json_iter.map(|opt_json| jiter_find(opt_json, path).ok()).collect::<C>()
 }
 
 pub fn jiter_json_find<'j>(opt_json: Option<&'j str>, path: &[JsonPath]) -> Option<(Jiter<'j>, Peek)> {

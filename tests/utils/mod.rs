@@ -1,15 +1,17 @@
 #![allow(dead_code)]
-use arrow::array::Int64Array;
+use std::sync::Arc;
+
+use arrow::array::{ArrayRef, Int64Array};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::util::display::{ArrayFormatter, FormatOptions};
-use arrow::{array::StringArray, record_batch::RecordBatch};
-use std::sync::Arc;
+use arrow::{array::LargeStringArray, array::StringArray, record_batch::RecordBatch};
 
 use datafusion::error::Result;
 use datafusion::execution::context::SessionContext;
+use datafusion_common::ParamValues;
 use datafusion_functions_json::register_all;
 
-async fn create_test_table() -> Result<SessionContext> {
+async fn create_test_table(large_utf8: bool) -> Result<SessionContext> {
     let mut ctx = SessionContext::new();
     register_all(&mut ctx)?;
 
@@ -22,18 +24,22 @@ async fn create_test_table() -> Result<SessionContext> {
         ("list_foo", r#" ["foo"] "#),
         ("invalid_json", "is not json"),
     ];
+    let json_values = test_data.iter().map(|(_, json)| *json).collect::<Vec<_>>();
+    let (json_data_type, json_array): (DataType, ArrayRef) = if large_utf8 {
+        (DataType::LargeUtf8, Arc::new(LargeStringArray::from(json_values)))
+    } else {
+        (DataType::Utf8, Arc::new(StringArray::from(json_values)))
+    };
     let test_batch = RecordBatch::try_new(
         Arc::new(Schema::new(vec![
             Field::new("name", DataType::Utf8, false),
-            Field::new("json_data", DataType::Utf8, false),
+            Field::new("json_data", json_data_type, false),
         ])),
         vec![
             Arc::new(StringArray::from(
                 test_data.iter().map(|(name, _)| *name).collect::<Vec<_>>(),
             )),
-            Arc::new(StringArray::from(
-                test_data.iter().map(|(_, json)| *json).collect::<Vec<_>>(),
-            )),
+            json_array,
         ],
     )?;
     ctx.register_batch("test", test_batch)?;
@@ -68,9 +74,22 @@ async fn create_test_table() -> Result<SessionContext> {
 }
 
 pub async fn run_query(sql: &str) -> Result<Vec<RecordBatch>> {
-    let ctx = create_test_table().await?;
-    let df = ctx.sql(sql).await?;
-    df.collect().await
+    let ctx = create_test_table(false).await?;
+    ctx.sql(sql).await?.collect().await
+}
+
+pub async fn run_query_large(sql: &str) -> Result<Vec<RecordBatch>> {
+    let ctx = create_test_table(true).await?;
+    ctx.sql(sql).await?.collect().await
+}
+
+pub async fn run_query_params(
+    sql: &str,
+    large_utf8: bool,
+    query_values: impl Into<ParamValues>,
+) -> Result<Vec<RecordBatch>> {
+    let ctx = create_test_table(large_utf8).await?;
+    ctx.sql(sql).await?.with_param_values(query_values)?.collect().await
 }
 
 pub async fn display_val(batch: Vec<RecordBatch>) -> (DataType, String) {
