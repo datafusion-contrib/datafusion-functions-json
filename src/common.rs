@@ -64,7 +64,11 @@ pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
     to_array: impl Fn(C) -> DataFusionResult<ArrayRef>,
     to_scalar: impl Fn(Option<I>) -> ScalarValue,
 ) -> DataFusionResult<ColumnarValue> {
-    match &args[0] {
+    let Some(first_arg) = args.first() else {
+        // I think this can't happen, but I assumed the same about args[1] and I was wrong, so better to be safe
+        return exec_err!("expected at least one argument");
+    };
+    match first_arg {
         ColumnarValue::Array(json_array) => {
             let result_collect = match args.get(1) {
                 Some(ColumnarValue::Array(a)) => {

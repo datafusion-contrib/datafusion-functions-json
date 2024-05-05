@@ -453,3 +453,11 @@ async fn test_json_length_vec() {
     let batches = run_query_large(sql).await.unwrap();
     assert_batches_eq!(expected, &batches);
 }
+
+#[tokio::test]
+async fn test_no_args() {
+    let err = run_query(r#"select json_len()"#).await.unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("No function matches the given name and argument types 'json_length()'."));
+}
