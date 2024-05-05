@@ -429,3 +429,27 @@ async fn test_json_contains_large_both_params() {
     let batches = run_query_params(sql, true, params).await.unwrap();
     assert_batches_eq!(expected, &batches);
 }
+
+#[tokio::test]
+async fn test_json_length_vec() {
+    let sql = r#"select name, json_len(json_data) as len from test"#;
+    let batches = run_query(sql).await.unwrap();
+
+    let expected = [
+        "+------------------+-----+",
+        "| name             | len |",
+        "+------------------+-----+",
+        "| object_foo       | 1   |",
+        "| object_foo_array | 1   |",
+        "| object_foo_obj   | 1   |",
+        "| object_foo_null  | 1   |",
+        "| object_bar       | 1   |",
+        "| list_foo         | 1   |",
+        "| invalid_json     |     |",
+        "+------------------+-----+",
+    ];
+    assert_batches_eq!(expected, &batches);
+
+    let batches = run_query_large(sql).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+}

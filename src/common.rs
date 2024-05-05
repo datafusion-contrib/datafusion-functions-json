@@ -66,8 +66,8 @@ pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
 ) -> DataFusionResult<ColumnarValue> {
     match &args[0] {
         ColumnarValue::Array(json_array) => {
-            let result_collect = match &args[1] {
-                ColumnarValue::Array(a) => {
+            let result_collect = match args.get(1) {
+                Some(ColumnarValue::Array(a)) => {
                     if let Some(str_path_array) = a.as_any().downcast_ref::<StringArray>() {
                         let paths = str_path_array.iter().map(|opt_key| opt_key.map(JsonPath::Key));
                         zip_apply(json_array, paths, jiter_find)
@@ -84,7 +84,8 @@ pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
                         return exec_err!("unexpected second argument type, expected string or int array");
                     }
                 }
-                ColumnarValue::Scalar(_) => scalar_apply(json_array, &JsonPath::extract_path(args), jiter_find),
+                Some(ColumnarValue::Scalar(_)) => scalar_apply(json_array, &JsonPath::extract_path(args), jiter_find),
+                None => scalar_apply(json_array, &[], jiter_find),
             };
             to_array(result_collect?).map(ColumnarValue::from)
         }
