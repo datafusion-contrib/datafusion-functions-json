@@ -20,14 +20,14 @@ make_udf_function!(
 #[derive(Debug)]
 pub(super) struct JsonLength {
     signature: Signature,
-    aliases: [String; 1],
+    aliases: [String; 2],
 }
 
 impl Default for JsonLength {
     fn default() -> Self {
         Self {
             signature: Signature::variadic_any(Volatility::Immutable),
-            aliases: ["json_length".to_string()],
+            aliases: ["json_length".to_string(), "json_len".to_string()],
         }
     }
 }
