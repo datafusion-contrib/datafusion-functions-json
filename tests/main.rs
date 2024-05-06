@@ -185,7 +185,7 @@ async fn test_json_get_str_null() {
 
     assert_eq!(
         e.to_string(),
-        "Error during planning: Unexpected argument type to 'json_get_str' at position 2, expected string or int."
+        "Error during planning: Unexpected argument type to 'json_get_str' at position 2, expected string or int, got Null."
     );
 }
 
@@ -205,6 +205,12 @@ async fn test_json_get_no_path() {
 async fn test_json_get_int() {
     let batches = run_query(r"select json_get_int('[1, 2, 3]', 1)").await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Int64, "2".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_get_path() {
+    let batches = run_query(r#"select json_get('{"i": 19}', 'i')::int<20"#).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Boolean, "true".to_string()));
 }
 
 #[tokio::test]

@@ -11,12 +11,12 @@ pub fn check_args(args: &[DataType], fn_name: &str) -> DataFusionResult<()> {
         return plan_err!("The '{fn_name}' function requires one or more arguments.");
     };
     if !matches!(first, DataType::Utf8 | DataType::LargeUtf8) {
-        return plan_err!("Unexpected argument type to '{fn_name}' at position 1, expected a string.");
+        return plan_err!("Unexpected argument type to '{fn_name}' at position 1, expected a string, got {first:?}.");
     }
     args[1..].iter().enumerate().try_for_each(|(index, arg)| match arg {
         DataType::Utf8 | DataType::LargeUtf8 | DataType::UInt64 | DataType::Int64 => Ok(()),
-        _ => plan_err!(
-            "Unexpected argument type to '{fn_name}' at position {}, expected string or int.",
+        t => plan_err!(
+            "Unexpected argument type to '{fn_name}' at position {}, expected string or int, got {t:?}.",
             index + 2
         ),
     })
