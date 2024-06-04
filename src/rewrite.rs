@@ -5,7 +5,7 @@ use datafusion_common::DFSchema;
 use datafusion_common::Result;
 use datafusion_expr::expr::ScalarFunction;
 use datafusion_expr::expr_rewriter::FunctionRewrite;
-use datafusion_expr::{Expr, ScalarFunctionDefinition};
+use datafusion_expr::Expr;
 
 pub(crate) struct JsonFunctionRewriter;
 
@@ -17,8 +17,7 @@ impl FunctionRewrite for JsonFunctionRewriter {
     fn rewrite(&self, expr: Expr, _schema: &DFSchema, _config: &ConfigOptions) -> Result<Transformed<Expr>> {
         if let Expr::Cast(cast) = &expr {
             if let Expr::ScalarFunction(func) = &*cast.expr {
-                let ScalarFunctionDefinition::UDF(udf) = &func.func_def;
-                if udf.name() == "json_get" {
+                if func.name() == "json_get" {
                     if let Some(t) = switch_json_get(&cast.data_type, &func.args) {
                         return Ok(t);
                     }
@@ -38,7 +37,7 @@ fn switch_json_get(cast_data_type: &DataType, args: &[Expr]) -> Option<Transform
         _ => return None,
     };
     let f = ScalarFunction {
-        func_def: ScalarFunctionDefinition::UDF(udf),
+        func: udf,
         args: args.to_vec(),
     };
     Some(Transformed::yes(Expr::ScalarFunction(f)))
