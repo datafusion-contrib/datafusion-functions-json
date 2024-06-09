@@ -10,17 +10,17 @@ categories = ["database-implementations", "parsing"]
 repository = "https://github.com/datafusion-contrib/datafusion-functions-json/"
 
 [dependencies]
-arrow = "51"
-arrow-schema = "51"
-datafusion-common = "38"
-datafusion-expr = "38"
-datafusion-execution = "38"
+arrow = "52"
+arrow-schema = "52"
+datafusion-common = { version = "39" }
+datafusion-expr = { version = "39" }
+datafusion-execution = { version = "39" }
 jiter = "0.4"
 paste = ">=1.0.14"
 log = ">=0.4.21"
 
 [dev-dependencies]
-datafusion = "38"
+datafusion = { version = "39", default-features = false }
 tokio = { version = "1.37.0", features = ["full"] }
 
 [lints.clippy]
@@ -32,10 +32,3 @@ print_stdout = "deny"
 pedantic = { level = "deny", priority = -1 }
 missing_errors_doc = "allow"
 cast_possible_truncation = "allow"
-
-
-[patch.crates-io]
-datafusion = { git = 'https://github.com/apache/datafusion.git', branch = 'main' }
-datafusion-common = { git = 'https://github.com/apache/datafusion.git', branch = 'main' }
-datafusion-execution = { git = 'https://github.com/apache/datafusion.git', branch = 'main' }
-datafusion-expr = { git = 'https://github.com/apache/datafusion.git', branch = 'main' }

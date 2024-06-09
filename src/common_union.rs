@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use arrow::array::{Array, BooleanArray, Float64Array, Int64Array, StringArray, UnionArray};
-use arrow::buffer::Buffer;
+use arrow::array::{BooleanArray, Float64Array, Int64Array, StringArray, UnionArray};
+use arrow::buffer::ScalarBuffer;
 use arrow_schema::{DataType, Field, UnionFields, UnionMode};
 use datafusion_common::ScalarValue;
 
@@ -86,17 +86,20 @@ impl TryFrom<JsonUnion> for UnionArray {
     type Error = arrow::error::ArrowError;
 
     fn try_from(value: JsonUnion) -> Result<Self, Self::Error> {
-        let [f0, f1, f2, f3, f4, f5, f6] = union_fields();
-        let children: Vec<(Field, Arc<dyn Array>)> = vec![
-            (f0, Arc::new(BooleanArray::from(value.nulls))),
-            (f1, Arc::new(BooleanArray::from(value.bools))),
-            (f2, Arc::new(Int64Array::from(value.ints))),
-            (f3, Arc::new(Float64Array::from(value.floats))),
-            (f4, Arc::new(StringArray::from(value.strings))),
-            (f5, Arc::new(StringArray::from(value.arrays))),
-            (f6, Arc::new(StringArray::from(value.objects))),
-        ];
-        UnionArray::try_new(TYPE_IDS, Buffer::from_slice_ref(&value.type_ids), None, children)
+        UnionArray::try_new(
+            UnionFields::new(TYPE_IDS.iter().cloned(), union_fields()),
+            ScalarBuffer::from_iter(TYPE_IDS.iter().cloned()),
+            None,
+            vec![
+                Arc::new(BooleanArray::from(value.nulls)),
+                Arc::new(BooleanArray::from(value.bools)),
+                Arc::new(Int64Array::from(value.ints)),
+                Arc::new(Float64Array::from(value.floats)),
+                Arc::new(StringArray::from(value.strings)),
+                Arc::new(StringArray::from(value.arrays)),
+                Arc::new(StringArray::from(value.objects)),
+            ],
+        )
     }
 }
 
