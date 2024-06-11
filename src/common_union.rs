@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use arrow::array::{Array, BooleanArray, Float64Array, Int64Array, StringArray, UnionArray};
 use arrow::buffer::Buffer;
@@ -36,10 +36,7 @@ impl JsonUnion {
     }
 
     pub fn data_type() -> DataType {
-        DataType::Union(
-            UnionFields::new(TYPE_IDS.to_vec(), union_fields().to_vec()),
-            UnionMode::Sparse,
-        )
+        DataType::Union(union_fields(), UnionMode::Sparse)
     }
 
     fn push(&mut self, field: JsonUnionField) {
@@ -58,7 +55,7 @@ impl JsonUnion {
     }
 
     fn push_none(&mut self) {
-        self.type_ids[self.index] = TYPE_IDS[0];
+        self.type_ids[self.index] = TYPE_ID_NULL;
         self.index += 1;
         debug_assert!(self.index <= self.capacity);
     }
@@ -86,17 +83,16 @@ impl TryFrom<JsonUnion> for UnionArray {
     type Error = arrow::error::ArrowError;
 
     fn try_from(value: JsonUnion) -> Result<Self, Self::Error> {
-        let [f0, f1, f2, f3, f4, f5, f6] = union_fields();
-        let children: Vec<(Field, Arc<dyn Array>)> = vec![
-            (f0, Arc::new(BooleanArray::from(value.nulls))),
-            (f1, Arc::new(BooleanArray::from(value.bools))),
-            (f2, Arc::new(Int64Array::from(value.ints))),
-            (f3, Arc::new(Float64Array::from(value.floats))),
-            (f4, Arc::new(StringArray::from(value.strings))),
-            (f5, Arc::new(StringArray::from(value.arrays))),
-            (f6, Arc::new(StringArray::from(value.objects))),
+        let children: Vec<Arc<dyn Array>> = vec![
+            Arc::new(BooleanArray::from(value.nulls)),
+            Arc::new(BooleanArray::from(value.bools)),
+            Arc::new(Int64Array::from(value.ints)),
+            Arc::new(Float64Array::from(value.floats)),
+            Arc::new(StringArray::from(value.strings)),
+            Arc::new(StringArray::from(value.arrays)),
+            Arc::new(StringArray::from(value.objects)),
         ];
-        UnionArray::try_new(TYPE_IDS, Buffer::from_slice_ref(&value.type_ids), None, children)
+        UnionArray::try_new(union_fields(), Buffer::from_vec(value.type_ids).into(), None, children)
     }
 }
 
@@ -111,18 +107,29 @@ pub(crate) enum JsonUnionField {
     Object(String),
 }
 
-const TYPE_IDS: &[i8] = &[0, 1, 2, 3, 4, 5, 6];
+const TYPE_ID_NULL: i8 = 0;
+const TYPE_ID_BOOL: i8 = 1;
+const TYPE_ID_INT: i8 = 2;
+const TYPE_ID_FLOAT: i8 = 3;
+const TYPE_ID_STR: i8 = 4;
+const TYPE_ID_ARRAY: i8 = 5;
+const TYPE_ID_OBJECT: i8 = 6;
 
-fn union_fields() -> [Field; 7] {
-    [
-        Field::new("null", DataType::Boolean, true),
-        Field::new("bool", DataType::Boolean, false),
-        Field::new("int", DataType::Int64, false),
-        Field::new("float", DataType::Float64, false),
-        Field::new("str", DataType::Utf8, false),
-        Field::new("array", DataType::Utf8, false),
-        Field::new("object", DataType::Utf8, false),
-    ]
+fn union_fields() -> UnionFields {
+    static FIELDS: OnceLock<UnionFields> = OnceLock::new();
+    FIELDS
+        .get_or_init(|| {
+            UnionFields::from_iter([
+                (TYPE_ID_NULL, Arc::new(Field::new("null", DataType::Boolean, true))),
+                (TYPE_ID_BOOL, Arc::new(Field::new("bool", DataType::Boolean, false))),
+                (TYPE_ID_INT, Arc::new(Field::new("int", DataType::Int64, false))),
+                (TYPE_ID_FLOAT, Arc::new(Field::new("float", DataType::Float64, false))),
+                (TYPE_ID_STR, Arc::new(Field::new("str", DataType::Utf8, false))),
+                (TYPE_ID_ARRAY, Arc::new(Field::new("array", DataType::Utf8, false))),
+                (TYPE_ID_OBJECT, Arc::new(Field::new("object", DataType::Utf8, false))),
+            ])
+        })
+        .clone()
 }
 
 impl JsonUnionField {
@@ -141,7 +148,7 @@ impl JsonUnionField {
     pub fn scalar_value(f: Option<Self>) -> ScalarValue {
         ScalarValue::Union(
             f.map(|f| (f.type_id(), Box::new(f.into()))),
-            UnionFields::new(TYPE_IDS.to_vec(), union_fields().to_vec()),
+            union_fields(),
             UnionMode::Sparse,
         )
     }

@@ -159,7 +159,7 @@ fn scalar_apply_iter<'a, 'j, C: FromIterator<Option<I>> + 'static, I>(
 
 pub fn jiter_json_find<'j>(opt_json: Option<&'j str>, path: &[JsonPath]) -> Option<(Jiter<'j>, Peek)> {
     if let Some(json_str) = opt_json {
-        let mut jiter = Jiter::new(json_str.as_bytes(), false);
+        let mut jiter = Jiter::new(json_str.as_bytes());
         if let Ok(peek) = jiter.peek() {
             if let Ok(peek_found) = jiter_json_find_step(&mut jiter, peek, path) {
                 return Some((jiter, peek_found));
