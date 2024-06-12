@@ -1,6 +1,6 @@
 [package]
 name = "datafusion-functions-json"
-version = "0.1.3"
+version = "0.2.0"
 edition = "2021"
 description = "JSON functions for DataFusion"
 readme = "README.md"
