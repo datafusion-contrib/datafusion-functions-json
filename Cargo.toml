@@ -8,20 +8,21 @@ license = "Apache-2.0"
 keywords = ["datafusion", "JSON", "SQL"]
 categories = ["database-implementations", "parsing"]
 repository = "https://github.com/datafusion-contrib/datafusion-functions-json/"
+rust-version = "1.73.0"
 
 [dependencies]
-arrow = ">=51"
-arrow-schema = ">=51"
-datafusion-common = ">=38"
-datafusion-expr = ">=38"
-jiter = ">=0.3"
-paste = ">=1.0.14"
-log = ">=0.4.21"
-datafusion-execution = ">=38"
+arrow = "52"
+arrow-schema = "52"
+datafusion-common = "39"
+datafusion-expr = "39"
+jiter = "0.4"
+paste = "1"
+log = "0.4"
+datafusion-execution = "39"
 
 [dev-dependencies]
-datafusion = "38.0.0"
-tokio = { version = "1.37.0", features = ["full"] }
+datafusion = "39"
+tokio = { version = "1.37", features = ["full"] }
 
 [lints.clippy]
 dbg_macro = "deny"
