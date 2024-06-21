@@ -158,69 +158,45 @@ fn scalar_apply_iter<'a, 'j, C: FromIterator<Option<I>> + 'static, I>(
 }
 
 pub fn jiter_json_find<'j>(opt_json: Option<&'j str>, path: &[JsonPath]) -> Option<(Jiter<'j>, Peek)> {
-    if let Some(json_str) = opt_json {
-        let mut jiter = Jiter::new(json_str.as_bytes());
-        if let Ok(peek) = jiter.peek() {
-            if let Ok(peek_found) = jiter_json_find_step(&mut jiter, peek, path) {
-                return Some((jiter, peek_found));
+    let json_str = opt_json?;
+    let mut jiter = Jiter::new(json_str.as_bytes());
+    let mut peek = jiter.peek().ok()?;
+    for element in path {
+        match element {
+            JsonPath::Key(key) if peek == Peek::Object => {
+                let mut next_key = jiter.known_object().ok()??;
+
+                while next_key != *key {
+                    jiter.next_skip().ok()?;
+                    next_key = jiter.next_key().ok()??;
+                }
+
+                peek = jiter.peek().ok()?;
+            }
+            JsonPath::Index(index) if peek == Peek::Array => {
+                let mut array_item = jiter.known_array().ok()??;
+
+                for _ in 0..*index {
+                    jiter.known_skip(array_item).ok()?;
+                    array_item = jiter.array_step().ok()??;
+                }
+
+                peek = array_item
+            }
+            _ => {
+                return None;
             }
         }
     }
-    None
+    Some((jiter, peek))
 }
+
 macro_rules! get_err {
     () => {
         Err(GetError)
     };
 }
 pub(crate) use get_err;
-
-fn jiter_json_find_step(jiter: &mut Jiter, peek: Peek, path: &[JsonPath]) -> Result<Peek, GetError> {
-    let Some((first, rest)) = path.split_first() else {
-        return Ok(peek);
-    };
-    let next_peek = match peek {
-        Peek::Array => match first {
-            JsonPath::Index(index) => jiter_array_get(jiter, *index),
-            _ => get_err!(),
-        },
-        Peek::Object => match first {
-            JsonPath::Key(key) => jiter_object_get(jiter, key),
-            _ => get_err!(),
-        },
-        _ => get_err!(),
-    }?;
-    jiter_json_find_step(jiter, next_peek, rest)
-}
-
-fn jiter_array_get(jiter: &mut Jiter, find_key: usize) -> Result<Peek, GetError> {
-    let mut peek_opt = jiter.known_array()?;
-
-    let mut index: usize = 0;
-    while let Some(peek) = peek_opt {
-        if index == find_key {
-            return Ok(peek);
-        }
-        jiter.known_skip(peek)?;
-        index += 1;
-        peek_opt = jiter.array_step()?;
-    }
-    get_err!()
-}
-
-fn jiter_object_get(jiter: &mut Jiter, find_key: &str) -> Result<Peek, GetError> {
-    let mut opt_key = jiter.known_object()?;
-
-    while let Some(key) = opt_key {
-        if key == find_key {
-            let value_peek = jiter.peek()?;
-            return Ok(value_peek);
-        }
-        jiter.next_skip()?;
-        opt_key = jiter.next_key()?;
-    }
-    get_err!()
-}
 
 pub struct GetError;
 
