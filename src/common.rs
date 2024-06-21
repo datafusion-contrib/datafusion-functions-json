@@ -107,7 +107,7 @@ pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
             Ok(ColumnarValue::Scalar(to_scalar(v)))
         }
         ColumnarValue::Scalar(_) => {
-            exec_err!("unexpected first argument type, expected string")
+            exec_err!("unexpected first argument type, expected string or JSON union")
         }
     }
 }
