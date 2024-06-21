@@ -93,20 +93,14 @@ fn build_union(jiter: &mut Jiter, peek: Peek) -> Result<JsonUnionField, GetError
             jiter.known_skip(peek)?;
             let array_slice = jiter.slice_to_current(start);
             let array_string = std::str::from_utf8(array_slice)?;
-            Ok(JsonUnionField::Json {
-                is_object: false,
-                nested_json: array_string.to_owned(),
-            })
+            Ok(JsonUnionField::Array(array_string.to_owned()))
         }
         Peek::Object => {
             let start = jiter.current_index();
             jiter.known_skip(peek)?;
             let object_slice = jiter.slice_to_current(start);
             let object_string = std::str::from_utf8(object_slice)?;
-            Ok(JsonUnionField::Json {
-                is_object: true,
-                nested_json: object_string.to_owned(),
-            })
+            Ok(JsonUnionField::Object(object_string.to_owned()))
         }
         _ => match jiter.known_number(peek)? {
             NumberAny::Int(NumberInt::Int(value)) => Ok(JsonUnionField::Int(value)),

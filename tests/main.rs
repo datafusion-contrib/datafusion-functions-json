@@ -62,17 +62,17 @@ async fn test_json_get_union() {
         .unwrap();
 
     let expected = [
-        "+------------------+---------------------------------------------+",
-        "| name             | json_get(test.json_data,Utf8(\"foo\"))        |",
-        "+------------------+---------------------------------------------+",
-        "| object_foo       | {str=abc}                                   |",
-        "| object_foo_array | {json={is_object: false, nested_json: [1]}} |",
-        "| object_foo_obj   | {json={is_object: true, nested_json: {}}}   |",
-        "| object_foo_null  | {null=true}                                 |",
-        "| object_bar       | {null=}                                     |",
-        "| list_foo         | {null=}                                     |",
-        "| invalid_json     | {null=}                                     |",
-        "+------------------+---------------------------------------------+",
+        "+------------------+--------------------------------------+",
+        "| name             | json_get(test.json_data,Utf8(\"foo\")) |",
+        "+------------------+--------------------------------------+",
+        "| object_foo       | {str=abc}                            |",
+        "| object_foo_array | {array=[1]}                          |",
+        "| object_foo_obj   | {object={}}                          |",
+        "| object_foo_null  | {null=true}                          |",
+        "| object_bar       | {null=}                              |",
+        "| list_foo         | {null=}                              |",
+        "| invalid_json     | {null=}                              |",
+        "+------------------+--------------------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
 }
@@ -547,13 +547,13 @@ async fn test_json_get_union_array() {
 #[tokio::test]
 async fn test_json_get_union_array_skip() {
     let expected = [
-        "+---------------------------------------------+",
-        "| v                                           |",
-        "+---------------------------------------------+",
-        "| {json={is_object: false, nested_json: [0]}} |",
-        "| {null=}                                     |",
-        "| {null=true}                                 |",
-        "+---------------------------------------------+",
+        "+-------------+",
+        "| v           |",
+        "+-------------+",
+        "| {array=[0]} |",
+        "| {null=}     |",
+        "| {null=true} |",
+        "+-------------+",
     ];
 
     let sql = "select json_get(json_get(json_data, str_key1), str_key2) v from more_nested";

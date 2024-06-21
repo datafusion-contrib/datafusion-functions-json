@@ -6,7 +6,7 @@ use datafusion_common::{exec_err, plan_err, Result as DataFusionResult, ScalarVa
 use datafusion_expr::ColumnarValue;
 use jiter::{Jiter, JiterError, Peek};
 
-use crate::common_union::{extract_nested_json, is_json_union, nested_json_struct};
+use crate::common_union::{is_json_union, nested_json_array};
 
 pub fn check_args(args: &[DataType], fn_name: &str) -> DataFusionResult<()> {
     let Some(first) = args.first() else {
@@ -77,16 +77,16 @@ pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
                 Some(ColumnarValue::Array(a)) => {
                     if let Some(str_path_array) = a.as_any().downcast_ref::<StringArray>() {
                         let paths = str_path_array.iter().map(|opt_key| opt_key.map(JsonPath::Key));
-                        zip_apply(json_array, paths, jiter_find)
+                        zip_apply(json_array, paths, jiter_find, true)
                     } else if let Some(str_path_array) = a.as_any().downcast_ref::<LargeStringArray>() {
                         let paths = str_path_array.iter().map(|opt_key| opt_key.map(JsonPath::Key));
-                        zip_apply(json_array, paths, jiter_find)
+                        zip_apply(json_array, paths, jiter_find, true)
                     } else if let Some(int_path_array) = a.as_any().downcast_ref::<Int64Array>() {
                         let paths = int_path_array.iter().map(|opt_index| opt_index.map(Into::into));
-                        zip_apply(json_array, paths, jiter_find)
+                        zip_apply(json_array, paths, jiter_find, false)
                     } else if let Some(int_path_array) = a.as_any().downcast_ref::<UInt64Array>() {
                         let paths = int_path_array.iter().map(|opt_index| opt_index.map(Into::into));
-                        zip_apply(json_array, paths, jiter_find)
+                        zip_apply(json_array, paths, jiter_find, false)
                     } else {
                         return exec_err!("unexpected second argument type, expected string or int array");
                     }
@@ -102,18 +102,17 @@ pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
             Ok(ColumnarValue::Scalar(to_scalar(v)))
         }
         ColumnarValue::Scalar(ScalarValue::Union(type_id_value, _, _)) => {
-            let path = JsonPath::extract_path(args);
-            if let Some((_, value)) = type_id_value {
+            let opt_json = if let Some((_, value)) = type_id_value {
                 if let ScalarValue::Utf8(s) = value.as_ref() {
-                    let v = jiter_find(s.as_ref().map(String::as_str), &path).ok();
-                    Ok(ColumnarValue::Scalar(to_scalar(v)))
+                    s.as_ref()
                 } else {
-                    exec_err!("unexpected first argument type, union does include a string")
+                    None
                 }
             } else {
-                let v = jiter_find(None, &path).ok();
-                Ok(ColumnarValue::Scalar(to_scalar(v)))
-            }
+                None
+            };
+            let v = jiter_find(opt_json.map(String::as_str), &JsonPath::extract_path(args)).ok();
+            Ok(ColumnarValue::Scalar(to_scalar(v)))
         }
         ColumnarValue::Scalar(_) => {
             exec_err!("unexpected first argument type, expected string")
@@ -125,17 +124,14 @@ fn zip_apply<'a, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Optio
     json_array: &ArrayRef,
     paths: P,
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
+    object_lookup: bool,
 ) -> DataFusionResult<C> {
     if let Some(string_array) = json_array.as_any().downcast_ref::<StringArray>() {
         Ok(zip_apply_iter(string_array.iter(), paths, jiter_find))
     } else if let Some(large_string_array) = json_array.as_any().downcast_ref::<LargeStringArray>() {
         Ok(zip_apply_iter(large_string_array.iter(), paths, jiter_find))
-    } else if let Some(struct_array) = nested_json_struct(json_array) {
-        if let Some(string_array) = extract_nested_json(struct_array) {
-            Ok(zip_apply_iter(string_array.iter(), paths, jiter_find))
-        } else {
-            exec_err!("unexpected json array union type {:?}", json_array.data_type())
-        }
+    } else if let Some(string_array) = nested_json_array(json_array, object_lookup) {
+        Ok(zip_apply_iter(string_array.iter(), paths, jiter_find))
     } else {
         exec_err!("unexpected json array type {:?}", json_array.data_type())
     }
@@ -167,14 +163,18 @@ fn scalar_apply<C: FromIterator<Option<I>>, I>(
         Ok(scalar_apply_iter(string_array.iter(), path, jiter_find))
     } else if let Some(large_string_array) = json_array.as_any().downcast_ref::<LargeStringArray>() {
         Ok(scalar_apply_iter(large_string_array.iter(), path, jiter_find))
-    } else if let Some(struct_array) = nested_json_struct(json_array) {
-        if let Some(string_array) = extract_nested_json(struct_array) {
-            Ok(scalar_apply_iter(string_array.iter(), path, jiter_find))
-        } else {
-            exec_err!("unexpected json array union type {:?}", json_array.data_type())
-        }
+    } else if let Some(string_array) = nested_json_array(json_array, is_object_lookup(path)) {
+        Ok(scalar_apply_iter(string_array.iter(), path, jiter_find))
     } else {
         exec_err!("unexpected json array type {:?}", json_array.data_type())
+    }
+}
+
+fn is_object_lookup(path: &[JsonPath]) -> bool {
+    if let Some(first) = path.first() {
+        matches!(first, JsonPath::Key(_))
+    } else {
+        false
     }
 }
 
