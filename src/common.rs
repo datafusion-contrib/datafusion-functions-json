@@ -181,7 +181,7 @@ pub fn jiter_json_find<'j>(opt_json: Option<&'j str>, path: &[JsonPath]) -> Opti
                     array_item = jiter.array_step().ok()??;
                 }
 
-                peek = array_item
+                peek = array_item;
             }
             _ => {
                 return None;
