@@ -70,6 +70,44 @@ async fn create_test_table(large_utf8: bool) -> Result<SessionContext> {
     )?;
     ctx.register_batch("other", other_batch)?;
 
+    let more_nested = [
+        (r#" {"foo": {"bar": [0]}} "#, "foo", "bar", 0),
+        (r#" {"foo": {"bar": [1]}} "#, "foo", "spam", 0),
+        (r#" {"foo": {"bar": null}} "#, "foo", "bar", 0),
+    ];
+    let more_nested_batch = RecordBatch::try_new(
+        Arc::new(Schema::new(vec![
+            Field::new("json_data", DataType::Utf8, false),
+            Field::new("str_key1", DataType::Utf8, false),
+            Field::new("str_key2", DataType::Utf8, false),
+            Field::new("int_key", DataType::Int64, false),
+        ])),
+        vec![
+            Arc::new(StringArray::from(
+                more_nested.iter().map(|(json, _, _, _)| *json).collect::<Vec<_>>(),
+            )),
+            Arc::new(StringArray::from(
+                more_nested
+                    .iter()
+                    .map(|(_, str_key1, _, _)| *str_key1)
+                    .collect::<Vec<_>>(),
+            )),
+            Arc::new(StringArray::from(
+                more_nested
+                    .iter()
+                    .map(|(_, _, str_key2, _)| *str_key2)
+                    .collect::<Vec<_>>(),
+            )),
+            Arc::new(Int64Array::from(
+                more_nested
+                    .iter()
+                    .map(|(_, _, _, int_key)| *int_key)
+                    .collect::<Vec<_>>(),
+            )),
+        ],
+    )?;
+    ctx.register_batch("more_nested", more_nested_batch)?;
+
     Ok(ctx)
 }
 

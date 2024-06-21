@@ -1,9 +1,25 @@
 use std::sync::{Arc, OnceLock};
 
-use arrow::array::{Array, BooleanArray, Float64Array, Int64Array, StringArray, UnionArray};
+use arrow::array::{Array, ArrayRef, BooleanArray, Float64Array, Int64Array, StringArray, StructArray, UnionArray};
 use arrow::buffer::Buffer;
-use arrow_schema::{DataType, Field, UnionFields, UnionMode};
+use arrow_schema::{DataType, Field, Fields, UnionFields, UnionMode};
 use datafusion_common::ScalarValue;
+
+pub(crate) fn is_json_union(data_type: &DataType) -> bool {
+    match data_type {
+        DataType::Union(fields, UnionMode::Sparse) => fields == &union_fields(),
+        _ => false,
+    }
+}
+
+pub(crate) fn nested_json_struct(array: &ArrayRef) -> Option<&StructArray> {
+    let union_array: &UnionArray = array.as_any().downcast_ref::<UnionArray>()?;
+    union_array.child(TYPE_ID_JSON).as_any().downcast_ref()
+}
+
+pub(crate) fn extract_nested_json(struct_array: &StructArray) -> Option<&StringArray> {
+    struct_array.column_by_name("nested_json")?.as_any().downcast_ref()
+}
 
 #[derive(Debug)]
 pub(crate) struct JsonUnion {
@@ -12,8 +28,7 @@ pub(crate) struct JsonUnion {
     ints: Vec<Option<i64>>,
     floats: Vec<Option<f64>>,
     strings: Vec<Option<String>>,
-    arrays: Vec<Option<String>>,
-    objects: Vec<Option<String>>,
+    json: Vec<Option<(bool, String)>>,
     type_ids: Vec<i8>,
     index: usize,
     capacity: usize,
@@ -27,8 +42,7 @@ impl JsonUnion {
             ints: vec![None; capacity],
             floats: vec![None; capacity],
             strings: vec![None; capacity],
-            arrays: vec![None; capacity],
-            objects: vec![None; capacity],
+            json: vec![None; capacity],
             type_ids: vec![0; capacity],
             index: 0,
             capacity,
@@ -47,8 +61,7 @@ impl JsonUnion {
             JsonUnionField::Int(value) => self.ints[self.index] = Some(value),
             JsonUnionField::Float(value) => self.floats[self.index] = Some(value),
             JsonUnionField::Str(value) => self.strings[self.index] = Some(value),
-            JsonUnionField::Array(value) => self.arrays[self.index] = Some(value),
-            JsonUnionField::Object(value) => self.objects[self.index] = Some(value),
+            JsonUnionField::Json { is_object, nested_json } => self.json[self.index] = Some((is_object, nested_json)),
         }
         self.index += 1;
         debug_assert!(self.index <= self.capacity);
@@ -82,15 +95,23 @@ impl FromIterator<Option<JsonUnionField>> for JsonUnion {
 impl TryFrom<JsonUnion> for UnionArray {
     type Error = arrow::error::ArrowError;
 
+    #[allow(clippy::from_iter_instead_of_collect)]
     fn try_from(value: JsonUnion) -> Result<Self, Self::Error> {
+        let struct_arrays: Vec<Arc<dyn Array>> = vec![
+            Arc::new(BooleanArray::from_iter(
+                value.json.iter().map(|v| v.as_ref().map(|(is_object, _)| *is_object)),
+            )),
+            Arc::new(StringArray::from_iter(
+                value.json.into_iter().map(|v| v.map(|(_, nested_json)| nested_json)),
+            )),
+        ];
         let children: Vec<Arc<dyn Array>> = vec![
             Arc::new(BooleanArray::from(value.nulls)),
             Arc::new(BooleanArray::from(value.bools)),
             Arc::new(Int64Array::from(value.ints)),
             Arc::new(Float64Array::from(value.floats)),
             Arc::new(StringArray::from(value.strings)),
-            Arc::new(StringArray::from(value.arrays)),
-            Arc::new(StringArray::from(value.objects)),
+            Arc::new(StructArray::new(nested_json_fields(), struct_arrays, None)),
         ];
         UnionArray::try_new(union_fields(), Buffer::from_vec(value.type_ids).into(), None, children)
     }
@@ -103,8 +124,7 @@ pub(crate) enum JsonUnionField {
     Int(i64),
     Float(f64),
     Str(String),
-    Array(String),
-    Object(String),
+    Json { is_object: bool, nested_json: String },
 }
 
 const TYPE_ID_NULL: i8 = 0;
@@ -112,8 +132,7 @@ const TYPE_ID_BOOL: i8 = 1;
 const TYPE_ID_INT: i8 = 2;
 const TYPE_ID_FLOAT: i8 = 3;
 const TYPE_ID_STR: i8 = 4;
-const TYPE_ID_ARRAY: i8 = 5;
-const TYPE_ID_OBJECT: i8 = 6;
+const TYPE_ID_JSON: i8 = 5;
 
 fn union_fields() -> UnionFields {
     static FIELDS: OnceLock<UnionFields> = OnceLock::new();
@@ -125,8 +144,22 @@ fn union_fields() -> UnionFields {
                 (TYPE_ID_INT, Arc::new(Field::new("int", DataType::Int64, false))),
                 (TYPE_ID_FLOAT, Arc::new(Field::new("float", DataType::Float64, false))),
                 (TYPE_ID_STR, Arc::new(Field::new("str", DataType::Utf8, false))),
-                (TYPE_ID_ARRAY, Arc::new(Field::new("array", DataType::Utf8, false))),
-                (TYPE_ID_OBJECT, Arc::new(Field::new("object", DataType::Utf8, false))),
+                (
+                    TYPE_ID_JSON,
+                    Arc::new(Field::new("json", DataType::Struct(nested_json_fields()), false)),
+                ),
+            ])
+        })
+        .clone()
+}
+
+fn nested_json_fields() -> Fields {
+    static NESTED_JSON_FIELDS: OnceLock<Fields> = OnceLock::new();
+    NESTED_JSON_FIELDS
+        .get_or_init(|| {
+            Fields::from_iter([
+                Field::new("is_object", DataType::Boolean, true),
+                Field::new("nested_json", DataType::Utf8, true),
             ])
         })
         .clone()
@@ -135,13 +168,12 @@ fn union_fields() -> UnionFields {
 impl JsonUnionField {
     fn type_id(&self) -> i8 {
         match self {
-            Self::JsonNull => 0,
-            Self::Bool(_) => 1,
-            Self::Int(_) => 2,
-            Self::Float(_) => 3,
-            Self::Str(_) => 4,
-            Self::Array(_) => 5,
-            Self::Object(_) => 6,
+            Self::JsonNull => TYPE_ID_NULL,
+            Self::Bool(_) => TYPE_ID_BOOL,
+            Self::Int(_) => TYPE_ID_INT,
+            Self::Float(_) => TYPE_ID_FLOAT,
+            Self::Str(_) => TYPE_ID_STR,
+            Self::Json { .. } => TYPE_ID_JSON,
         }
     }
 
@@ -161,7 +193,8 @@ impl From<JsonUnionField> for ScalarValue {
             JsonUnionField::Bool(b) => Self::Boolean(Some(b)),
             JsonUnionField::Int(i) => Self::Int64(Some(i)),
             JsonUnionField::Float(f) => Self::Float64(Some(f)),
-            JsonUnionField::Str(s) | JsonUnionField::Array(s) | JsonUnionField::Object(s) => Self::Utf8(Some(s)),
+            JsonUnionField::Str(s) => Self::Utf8(Some(s)),
+            JsonUnionField::Json { nested_json, .. } => Self::Utf8(Some(nested_json)),
         }
     }
 }
