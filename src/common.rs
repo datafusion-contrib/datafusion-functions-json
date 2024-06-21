@@ -93,7 +93,7 @@ pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
             };
             to_array(result_collect?).map(ColumnarValue::from)
         }
-        ColumnarValue::Scalar(ScalarValue::Utf8(s)) => {
+        ColumnarValue::Scalar(ScalarValue::Utf8(s) | ScalarValue::LargeUtf8(s)) => {
             let path = JsonPath::extract_path(args);
             let v = jiter_find(s.as_ref().map(String::as_str), &path).ok();
             Ok(ColumnarValue::Scalar(to_scalar(v)))
