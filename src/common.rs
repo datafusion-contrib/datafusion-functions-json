@@ -135,7 +135,7 @@ fn zip_apply_iter<'a, 'j, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromItera
         .collect::<C>()
 }
 
-fn scalar_apply<'a, C: FromIterator<Option<I>> + 'static, I>(
+fn scalar_apply<C: FromIterator<Option<I>>, I>(
     json_array: &ArrayRef,
     path: &[JsonPath],
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
@@ -149,7 +149,7 @@ fn scalar_apply<'a, C: FromIterator<Option<I>> + 'static, I>(
     }
 }
 
-fn scalar_apply_iter<'a, 'j, C: FromIterator<Option<I>> + 'static, I>(
+fn scalar_apply_iter<'j, C: FromIterator<Option<I>>, I>(
     json_iter: impl Iterator<Item = Option<&'j str>>,
     path: &[JsonPath],
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
