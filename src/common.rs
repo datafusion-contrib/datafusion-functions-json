@@ -6,7 +6,7 @@ use datafusion_common::{exec_err, plan_err, Result as DataFusionResult, ScalarVa
 use datafusion_expr::ColumnarValue;
 use jiter::{Jiter, JiterError, Peek};
 
-use crate::common_union::{is_json_union, nested_json_array};
+use crate::common_union::{is_json_union, json_from_union_scalar, nested_json_array};
 
 pub fn check_args(args: &[DataType], fn_name: &str) -> DataFusionResult<()> {
     let Some(first) = args.first() else {
@@ -101,17 +101,9 @@ pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
             let v = jiter_find(s.as_ref().map(String::as_str), &path).ok();
             Ok(ColumnarValue::Scalar(to_scalar(v)))
         }
-        ColumnarValue::Scalar(ScalarValue::Union(type_id_value, _, _)) => {
-            let opt_json = if let Some((_, value)) = type_id_value {
-                if let ScalarValue::Utf8(s) = value.as_ref() {
-                    s.as_ref()
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-            let v = jiter_find(opt_json.map(String::as_str), &JsonPath::extract_path(args)).ok();
+        ColumnarValue::Scalar(ScalarValue::Union(type_id_value, union_fields, _)) => {
+            let opt_json = json_from_union_scalar(type_id_value, union_fields);
+            let v = jiter_find(opt_json, &JsonPath::extract_path(args)).ok();
             Ok(ColumnarValue::Scalar(to_scalar(v)))
         }
         ColumnarValue::Scalar(_) => {

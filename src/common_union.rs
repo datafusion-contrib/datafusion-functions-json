@@ -24,6 +24,22 @@ pub(crate) fn nested_json_array(array: &ArrayRef, object_lookup: bool) -> Option
     union_array.child(type_id).as_any().downcast_ref()
 }
 
+/// Extract a JSON string from a `JsonUnion` scalar
+pub(crate) fn json_from_union_scalar<'a>(
+    type_id_value: &'a Option<(i8, Box<ScalarValue>)>,
+    fields: &UnionFields,
+) -> Option<&'a str> {
+    if let Some((type_id, value)) = type_id_value {
+        // we only want to take teh ScalarValue string if the type_id indicates the value represents nested JSON
+        if fields == &union_fields() && (*type_id == TYPE_ID_ARRAY || *type_id == TYPE_ID_OBJECT) {
+            if let ScalarValue::Utf8(s) = value.as_ref() {
+                return s.as_ref().map(String::as_str);
+            }
+        }
+    }
+    None
+}
+
 #[derive(Debug)]
 pub(crate) struct JsonUnion {
     nulls: Vec<Option<bool>>,
