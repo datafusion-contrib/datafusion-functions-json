@@ -28,6 +28,17 @@ pub mod functions {
     pub use crate::json_length::json_length;
 }
 
+pub mod udfs {
+    pub use crate::json_contains::json_contains_udf;
+    pub use crate::json_get::json_get_udf;
+    pub use crate::json_get_bool::json_get_bool_udf;
+    pub use crate::json_get_float::json_get_float_udf;
+    pub use crate::json_get_int::json_get_int_udf;
+    pub use crate::json_get_json::json_get_json_udf;
+    pub use crate::json_get_str::json_get_str_udf;
+    pub use crate::json_length::json_length_udf;
+}
+
 /// Register all JSON UDFs
 pub fn register_all(registry: &mut dyn FunctionRegistry) -> Result<()> {
     let functions: Vec<Arc<ScalarUDF>> = vec![
