@@ -21,6 +21,8 @@ log = "0.4"
 datafusion-execution = "39"
 
 [dev-dependencies]
+codspeed-criterion-compat = "2.3"
+criterion = "0.5.1"
 datafusion = "39"
 tokio = { version = "1.37", features = ["full"] }
 
@@ -33,3 +35,7 @@ print_stdout = "deny"
 pedantic = { level = "deny", priority = -1 }
 missing_errors_doc = "allow"
 cast_possible_truncation = "allow"
+
+[[bench]]
+name = "main"
+harness = false
