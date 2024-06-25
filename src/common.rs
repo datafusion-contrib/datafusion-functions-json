@@ -49,7 +49,7 @@ impl<'s> JsonPath<'s> {
         args[1..]
             .iter()
             .map(|arg| match arg {
-                ColumnarValue::Scalar(ScalarValue::Utf8(Some(s))) => Self::Key(s),
+                ColumnarValue::Scalar(ScalarValue::Utf8(Some(s)) | ScalarValue::LargeUtf8(Some(s))) => Self::Key(s),
                 ColumnarValue::Scalar(ScalarValue::UInt64(Some(i))) => (*i).into(),
                 ColumnarValue::Scalar(ScalarValue::Int64(Some(i))) => (*i).into(),
                 _ => Self::None,
@@ -93,7 +93,7 @@ pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
             };
             to_array(result_collect?).map(ColumnarValue::from)
         }
-        ColumnarValue::Scalar(ScalarValue::Utf8(s)) => {
+        ColumnarValue::Scalar(ScalarValue::Utf8(s) | ScalarValue::LargeUtf8(s)) => {
             let path = JsonPath::extract_path(args);
             let v = jiter_find(s.as_ref().map(String::as_str), &path).ok();
             Ok(ColumnarValue::Scalar(to_scalar(v)))
