@@ -21,7 +21,10 @@ log = "0.4"
 datafusion-execution = "39"
 
 [dev-dependencies]
+codspeed-criterion-compat = "2.3"
+criterion = "0.5.1"
 datafusion = "39"
+clap = "~4.4" # for testing on MSRV 1.73
 tokio = { version = "1.37", features = ["full"] }
 
 [lints.clippy]
@@ -33,3 +36,7 @@ print_stdout = "deny"
 pedantic = { level = "deny", priority = -1 }
 missing_errors_doc = "allow"
 cast_possible_truncation = "allow"
+
+[[bench]]
+name = "main"
+harness = false
