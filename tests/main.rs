@@ -3,6 +3,8 @@ use datafusion::assert_batches_eq;
 use datafusion_common::ScalarValue;
 
 mod utils;
+use datafusion_expr::ColumnarValue;
+use datafusion_functions_json::udfs::json_get_str_udf;
 use utils::{display_val, run_query, run_query_large, run_query_params};
 
 #[tokio::test]
@@ -466,4 +468,40 @@ async fn test_no_args() {
     assert!(err
         .to_string()
         .contains("No function matches the given name and argument types 'json_length()'."));
+}
+
+#[test]
+fn test_json_get_utf8() {
+    let json_get_str = json_get_str_udf();
+    let args = &[
+        ColumnarValue::Scalar(ScalarValue::Utf8(Some(
+            r#"{"a": {"aa": "x", "ab: "y"}, "b": []}"#.to_string(),
+        ))),
+        ColumnarValue::Scalar(ScalarValue::Utf8(Some("a".to_string()))),
+        ColumnarValue::Scalar(ScalarValue::Utf8(Some("aa".to_string()))),
+    ];
+
+    let ColumnarValue::Scalar(sv) = json_get_str.invoke(args).unwrap() else {
+        panic!("expected scalar")
+    };
+
+    assert_eq!(sv, ScalarValue::Utf8(Some("x".to_string())));
+}
+
+#[test]
+fn test_json_get_large_utf8() {
+    let json_get_str = json_get_str_udf();
+    let args = &[
+        ColumnarValue::Scalar(ScalarValue::LargeUtf8(Some(
+            r#"{"a": {"aa": "x", "ab: "y"}, "b": []}"#.to_string(),
+        ))),
+        ColumnarValue::Scalar(ScalarValue::LargeUtf8(Some("a".to_string()))),
+        ColumnarValue::Scalar(ScalarValue::LargeUtf8(Some("aa".to_string()))),
+    ];
+
+    let ColumnarValue::Scalar(sv) = json_get_str.invoke(args).unwrap() else {
+        panic!("expected scalar")
+    };
+
+    assert_eq!(sv, ScalarValue::Utf8(Some("x".to_string())));
 }

@@ -29,6 +29,7 @@ fn bench_json_get_str(b: &mut Bencher) {
 
     b.iter(|| json_get_str.invoke(args).unwrap());
 }
+
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("json_contains", bench_json_contains);
     c.bench_function("json_get_str", bench_json_get_str);
