@@ -49,8 +49,7 @@ impl<'s> JsonPath<'s> {
         args[1..]
             .iter()
             .map(|arg| match arg {
-                ColumnarValue::Scalar(ScalarValue::Utf8(Some(s))) => Self::Key(s),
-                ColumnarValue::Scalar(ScalarValue::LargeUtf8(Some(s))) => Self::Key(s),
+                ColumnarValue::Scalar(ScalarValue::Utf8(Some(s)) | ScalarValue::LargeUtf8(Some(s))) => Self::Key(s),
                 ColumnarValue::Scalar(ScalarValue::UInt64(Some(i))) => (*i).into(),
                 ColumnarValue::Scalar(ScalarValue::Int64(Some(i))) => (*i).into(),
                 _ => Self::None,
