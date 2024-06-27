@@ -15,7 +15,7 @@ arrow = "52"
 arrow-schema = "52"
 datafusion-common = "39"
 datafusion-expr = "39"
-jiter = "0.4"
+jiter = "0.5"
 paste = "1"
 log = "0.4"
 datafusion-execution = "39"
@@ -24,18 +24,16 @@ datafusion-execution = "39"
 codspeed-criterion-compat = "2.3"
 criterion = "0.5.1"
 datafusion = "39"
-clap = "~4.4" # for testing on MSRV 1.73
+clap = "4" # for testing on MSRV 1.73
 tokio = { version = "1.37", features = ["full"] }
 
 [lints.clippy]
 dbg_macro = "deny"
 print_stdout = "deny"
 
-# in general we lint against the pedantic group, but we will whitelist
+# in general, we lint against the pedantic group, but we will whitelist
 # certain lints which we don't want to enforce (for now)
 pedantic = { level = "deny", priority = -1 }
-missing_errors_doc = "allow"
-cast_possible_truncation = "allow"
 
 [[bench]]
 name = "main"

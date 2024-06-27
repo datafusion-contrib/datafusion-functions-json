@@ -31,7 +31,7 @@ pub enum JsonPath<'s> {
 
 impl From<u64> for JsonPath<'_> {
     fn from(index: u64) -> Self {
-        JsonPath::Index(index as usize)
+        JsonPath::Index(usize::try_from(index).unwrap())
     }
 }
 
