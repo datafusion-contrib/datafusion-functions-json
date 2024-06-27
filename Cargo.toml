@@ -13,17 +13,18 @@ rust-version = "1.73.0"
 [dependencies]
 arrow = "52"
 arrow-schema = "52"
-datafusion-common = "39"
-datafusion-expr = "39"
+datafusion-common = { git = "https://github.com/samuelcolvin/datafusion.git", branch = "CustomOperator" }
+datafusion-expr = { git = "https://github.com/samuelcolvin/datafusion.git", branch = "CustomOperator" }
+datafusion-sql = { git = "https://github.com/samuelcolvin/datafusion.git", branch = "CustomOperator" }
 jiter = "0.5"
 paste = "1"
 log = "0.4"
-datafusion-execution = "39"
+datafusion-execution = { git = "https://github.com/samuelcolvin/datafusion.git", branch = "CustomOperator" }
 
 [dev-dependencies]
 codspeed-criterion-compat = "2.3"
 criterion = "0.5.1"
-datafusion = "39"
+datafusion = { git = "https://github.com/samuelcolvin/datafusion.git", branch = "CustomOperator" }
 clap = "~4.4" # for testing on MSRV 1.73
 tokio = { version = "1.37", features = ["full"] }
 
