@@ -25,7 +25,7 @@ datafusion-execution = { git = "https://github.com/samuelcolvin/datafusion.git",
 codspeed-criterion-compat = "2.3"
 criterion = "0.5.1"
 datafusion = { git = "https://github.com/samuelcolvin/datafusion.git", branch = "CustomOperator" }
-clap = "~4.4" # for testing on MSRV 1.73
+clap = "4"
 tokio = { version = "1.37", features = ["full"] }
 
 [lints.clippy]
