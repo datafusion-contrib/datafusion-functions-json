@@ -505,3 +505,76 @@ fn test_json_get_large_utf8() {
 
     assert_eq!(sv, ScalarValue::Utf8(Some("x".to_string())));
 }
+
+#[tokio::test]
+async fn test_json_get_union_scalar() {
+    let expected = [
+        "+---------+",
+        "| v       |",
+        "+---------+",
+        "| {int=1} |",
+        "+---------+",
+    ];
+
+    let batches = run_query(r#"select json_get(json_get('{"x": {"y": 1}}', 'x'), 'y') as v"#)
+        .await
+        .unwrap();
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_get_union_array() {
+    let expected = [
+        "+------------------+---------+",
+        "| name             | v       |",
+        "+------------------+---------+",
+        "| object_foo       | {null=} |",
+        "| object_foo_array | {int=1} |",
+        "| object_foo_obj   | {null=} |",
+        "| object_foo_null  | {null=} |",
+        "| object_bar       | {null=} |",
+        "| list_foo         | {null=} |",
+        "| invalid_json     | {null=} |",
+        "+------------------+---------+",
+    ];
+
+    let batches = run_query("select name, json_get(json_get(json_data, 'foo'), 0) v from test")
+        .await
+        .unwrap();
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_get_union_array_skip() {
+    let expected = [
+        "+-------------+",
+        "| v           |",
+        "+-------------+",
+        "| {array=[0]} |",
+        "| {null=}     |",
+        "| {null=true} |",
+        "+-------------+",
+    ];
+
+    let sql = "select json_get(json_get(json_data, str_key1), str_key2) v from more_nested";
+    let batches = run_query(sql).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_get_union_array_skip_double_nested() {
+    let expected = [
+        "+--------------------------+---+",
+        "| json_data                | v |",
+        "+--------------------------+---+",
+        "|  {\"foo\": {\"bar\": [0]}}   | 0 |",
+        "|  {\"foo\": {\"bar\": [1]}}   |   |",
+        "|  {\"foo\": {\"bar\": null}}  |   |",
+        "+--------------------------+---+",
+    ];
+
+    let sql =
+        "select json_data, json_get_int(json_get(json_get(json_data, str_key1), str_key2), int_key) v from more_nested";
+    let batches = run_query(sql).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+}

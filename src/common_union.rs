@@ -1,9 +1,44 @@
 use std::sync::{Arc, OnceLock};
 
-use arrow::array::{Array, BooleanArray, Float64Array, Int64Array, StringArray, UnionArray};
+use arrow::array::{Array, ArrayRef, BooleanArray, Float64Array, Int64Array, StringArray, UnionArray};
 use arrow::buffer::Buffer;
 use arrow_schema::{DataType, Field, UnionFields, UnionMode};
 use datafusion_common::ScalarValue;
+
+pub(crate) fn is_json_union(data_type: &DataType) -> bool {
+    match data_type {
+        DataType::Union(fields, UnionMode::Sparse) => fields == &union_fields(),
+        _ => false,
+    }
+}
+
+/// Extract nested JSON from a `JsonUnion` `UnionArray`
+///
+/// # Arguments
+/// * `array` - The `UnionArray` to extract the nested JSON from
+/// * `object_lookup` - If `true`, extract from the "object" member of the union,
+///   otherwise extract from the "array" member
+pub(crate) fn nested_json_array(array: &ArrayRef, object_lookup: bool) -> Option<&StringArray> {
+    let union_array: &UnionArray = array.as_any().downcast_ref::<UnionArray>()?;
+    let type_id = if object_lookup { TYPE_ID_OBJECT } else { TYPE_ID_ARRAY };
+    union_array.child(type_id).as_any().downcast_ref()
+}
+
+/// Extract a JSON string from a `JsonUnion` scalar
+pub(crate) fn json_from_union_scalar<'a>(
+    type_id_value: &'a Option<(i8, Box<ScalarValue>)>,
+    fields: &UnionFields,
+) -> Option<&'a str> {
+    if let Some((type_id, value)) = type_id_value {
+        // we only want to take teh ScalarValue string if the type_id indicates the value represents nested JSON
+        if fields == &union_fields() && (*type_id == TYPE_ID_ARRAY || *type_id == TYPE_ID_OBJECT) {
+            if let ScalarValue::Utf8(s) = value.as_ref() {
+                return s.as_ref().map(String::as_str);
+            }
+        }
+    }
+    None
+}
 
 #[derive(Debug)]
 pub(crate) struct JsonUnion {
@@ -135,13 +170,13 @@ fn union_fields() -> UnionFields {
 impl JsonUnionField {
     fn type_id(&self) -> i8 {
         match self {
-            Self::JsonNull => 0,
-            Self::Bool(_) => 1,
-            Self::Int(_) => 2,
-            Self::Float(_) => 3,
-            Self::Str(_) => 4,
-            Self::Array(_) => 5,
-            Self::Object(_) => 6,
+            Self::JsonNull => TYPE_ID_NULL,
+            Self::Bool(_) => TYPE_ID_BOOL,
+            Self::Int(_) => TYPE_ID_INT,
+            Self::Float(_) => TYPE_ID_FLOAT,
+            Self::Str(_) => TYPE_ID_STR,
+            Self::Array(_) => TYPE_ID_ARRAY,
+            Self::Object(_) => TYPE_ID_OBJECT,
         }
     }
 
