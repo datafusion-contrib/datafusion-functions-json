@@ -39,7 +39,15 @@ pub mod udfs {
     pub use crate::json_length::json_length_udf;
 }
 
-/// Register all JSON UDFs
+/// Register all JSON UDFs, and [`rewrite::JsonFunctionRewriter`] with the provided [`FunctionRegistry`].
+///
+/// # Arguments
+///
+/// * `registry`: `FunctionRegistry` to register the UDFs
+///
+/// # Errors
+///
+/// Returns an error if the UDFs cannot be registered or if the rewriter cannot be registered.
 pub fn register_all(registry: &mut dyn FunctionRegistry) -> Result<()> {
     let functions: Vec<Arc<ScalarUDF>> = vec![
         json_get::json_get_udf(),
