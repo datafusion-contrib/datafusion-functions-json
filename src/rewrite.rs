@@ -36,8 +36,16 @@ impl FunctionRewrite for JsonFunctionRewriter {
                         func,
                         args: vec![*bin_expr.left.clone(), *bin_expr.right.clone()],
                     };
-                    return Ok(Transformed::yes(Expr::ScalarFunction(f)));
+                    return if let Some(new_func) = unnest_json_calls(&f) {
+                        Ok(Transformed::yes(Expr::ScalarFunction(new_func)))
+                    } else {
+                        Ok(Transformed::yes(Expr::ScalarFunction(f)))
+                    };
                 }
+            }
+        } else if let Expr::ScalarFunction(func) = &expr {
+            if let Some(new_func) = unnest_json_calls(func) {
+                return Ok(Transformed::yes(Expr::ScalarFunction(new_func)));
             }
         }
         Ok(Transformed::no(expr))
@@ -57,6 +65,36 @@ fn switch_json_get(cast_data_type: &DataType, args: &[Expr]) -> Option<Transform
         args: args.to_vec(),
     };
     Some(Transformed::yes(Expr::ScalarFunction(f)))
+}
+
+// Replace nested JSON functions e.g. `json_get(json_get(col, 'foo'), 'bar')` with `json_get(col, 'foo', 'bar')`
+fn unnest_json_calls(func: &ScalarFunction) -> Option<ScalarFunction> {
+    if !matches!(
+        func.func.name(),
+        "json_get" | "json_get_bool" | "json_get_float" | "json_get_int" | "json_get_json" | "json_get_str"
+    ) {
+        return None;
+    }
+    let mut outer_args_iter = func.args.iter();
+    let first_arg = outer_args_iter.next()?;
+    let Expr::ScalarFunction(inner_func) = first_arg else {
+        return None;
+    };
+    if inner_func.func.name() != "json_get" {
+        return None;
+    }
+
+    let mut args = inner_func.args.clone();
+    args.extend(outer_args_iter.cloned());
+    // See #23, unnest only when all lookup arguments are literals
+    if args.iter().skip(1).all(|arg| matches!(arg, Expr::Literal(_))) {
+        Some(ScalarFunction {
+            func: func.func.clone(),
+            args,
+        })
+    } else {
+        None
+    }
 }
 
 #[derive(Debug)]
