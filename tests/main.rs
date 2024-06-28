@@ -78,6 +78,43 @@ async fn test_json_get_union() {
 }
 
 #[tokio::test]
+async fn test_union_is_null_column() {
+    let batches = run_query("select name, json_get(json_data, 'foo') is null from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+----------------------------------------------+",
+        "| name             | json_get(test.json_data,Utf8(\"foo\")) IS NULL |",
+        "+------------------+----------------------------------------------+",
+        "| object_foo       | false                                        |",
+        "| object_foo_array | false                                        |",
+        "| object_foo_obj   | false                                        |",
+        "| object_foo_null  | false                                        |",
+        "| object_bar       | false                                        |", // THIS IS WRONG!
+        "| list_foo         | false                                        |", // THIS IS WRONG!
+        "| invalid_json     | false                                        |", // THIS IS WRONG!
+        "+------------------+----------------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_union_is_null_scalar() {
+    let expected = [
+        "+-------------------------------------------------------+",
+        "| json_get(Utf8(\"{\"foo\": \"bar\"}\"),Utf8(\"spam\")) IS NULL |",
+        "+-------------------------------------------------------+",
+        "| true                                                  |",
+        "+-------------------------------------------------------+",
+    ];
+
+    let sql = r#"select json_get('{"foo": "bar"}', 'spam') is null"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
 async fn test_json_get_array() {
     let sql = "select json_get('[1, 2, 3]', 2)";
     let batches = run_query(sql).await.unwrap();
