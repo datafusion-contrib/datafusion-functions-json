@@ -1,4 +1,3 @@
-use crate::common_union::JsonUnion;
 use arrow::datatypes::DataType;
 use datafusion_common::config::ConfigOptions;
 use datafusion_common::tree_node::Transformed;
@@ -29,8 +28,8 @@ impl FunctionRewrite for JsonFunctionRewriter {
             if let Operator::Custom(WrapCustomOperator(op)) = &bin_expr.op {
                 if let Ok(json_op) = JsonOperator::try_from(op.name()) {
                     let func = match json_op {
-                        JsonOperator::Arrow => crate::json_get_str::json_get_str_udf(),
-                        JsonOperator::LongArrow => crate::json_get::json_get_udf(),
+                        JsonOperator::Arrow => crate::json_get::json_get_udf(),
+                        JsonOperator::LongArrow => crate::json_get_str::json_get_str_udf(),
                         JsonOperator::Question => crate::json_contains::json_contains_udf(),
                     };
                     let f = ScalarFunction {
@@ -83,8 +82,8 @@ impl CustomOperator for JsonOperator {
         crate::common::check_args(&args, self.name())?;
         let return_type = match self {
             JsonOperator::Question => DataType::Boolean,
-            JsonOperator::Arrow => JsonUnion::data_type(),
-            JsonOperator::LongArrow => DataType::Utf8, // really unknown until we rewrite the function
+            JsonOperator::Arrow => crate::common_union::JsonUnion::data_type(),
+            JsonOperator::LongArrow => DataType::Utf8,
         };
         Ok((lhs.clone(), rhs.clone(), return_type))
     }
