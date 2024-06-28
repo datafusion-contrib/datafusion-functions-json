@@ -141,6 +141,10 @@ impl CustomOperator for JsonOperator {
             JsonOperator::LongArrow => "LongArrow",
         }
     }
+
+    fn precedence(&self) -> u8 {
+        255
+    }
 }
 
 impl TryFrom<&str> for JsonOperator {

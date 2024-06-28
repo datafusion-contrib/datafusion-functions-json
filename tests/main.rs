@@ -856,3 +856,10 @@ async fn test_arrow_nested_double_columns() {
     let batches = run_query(sql).await.unwrap();
     assert_batches_eq!(expected, &batches);
 }
+
+#[tokio::test]
+async fn test_lexical_precedence_wrong() {
+    let sql = r#"select '{"a": "b"}'->>'a'='b' as v"#;
+    let err = run_query(sql).await.unwrap_err();
+    assert_eq!(err.to_string(), "Error during planning: Unexpected argument type to 'LongArrow' at position 2, expected string or int, got Boolean.")
+}
