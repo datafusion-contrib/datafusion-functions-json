@@ -27,6 +27,13 @@ datafusion = "39"
 clap = "4"
 tokio = { version = "1.37", features = ["full"] }
 
+[patch.crates-io]
+# TODO: remove this once we upgrade to DataFusion 40.0
+datafusion = { git = "https://github.com/samuelcolvin/datafusion.git", branch = "register_user_defined_sql_planners" }
+datafusion-execution = { git = "https://github.com/samuelcolvin/datafusion.git", branch = "register_user_defined_sql_planners" }
+datafusion-common = { git = "https://github.com/samuelcolvin/datafusion.git", branch = "register_user_defined_sql_planners" }
+datafusion-expr = { git = "https://github.com/samuelcolvin/datafusion.git", branch = "register_user_defined_sql_planners" }
+
 [lints.clippy]
 dbg_macro = "deny"
 print_stdout = "deny"
