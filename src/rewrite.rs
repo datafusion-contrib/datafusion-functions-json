@@ -25,6 +25,8 @@ impl FunctionRewrite for JsonFunctionRewriter {
     }
 }
 
+/// This replaces `get_json(foo, bar)::int` with `json_get_int(foo, bar)` so the JSON function can take care of
+/// extracting the right value type from JSON without the need to materialize the JSON union.
 fn optimise_json_get_cast(cast: &Cast) -> Option<Transformed<Expr>> {
     let Expr::ScalarFunction(scalar_func) = &*cast.expr else {
         return None;
@@ -76,6 +78,7 @@ fn unnest_json_calls(func: &ScalarFunction) -> Option<Transformed<Expr>> {
     }
 }
 
+/// Implement a custom SQL planner to replace postgres JSON operators with custom UDFs
 #[derive(Debug, Default)]
 pub struct JsonSQLPlanner;
 
