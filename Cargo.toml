@@ -8,7 +8,7 @@ license = "Apache-2.0"
 keywords = ["datafusion", "JSON", "SQL"]
 categories = ["database-implementations", "parsing"]
 repository = "https://github.com/datafusion-contrib/datafusion-functions-json/"
-rust-version = "1.73.0"
+rust-version = "1.76.0"
 
 [dependencies]
 arrow = "52"
@@ -24,7 +24,7 @@ datafusion-execution = "39"
 codspeed-criterion-compat = "2.3"
 criterion = "0.5.1"
 datafusion = "39"
-clap = "~4.4" # for testing on MSRV 1.73
+clap = "4"
 tokio = { version = "1.37", features = ["full"] }
 
 [lints.clippy]

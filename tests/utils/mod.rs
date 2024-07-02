@@ -142,3 +142,10 @@ pub async fn display_val(batch: Vec<RecordBatch>) -> (DataType, String) {
     let repr = f.value(0).try_to_string().unwrap();
     (schema_col.data_type().clone(), repr)
 }
+
+pub async fn logical_plan(sql: &str) -> Vec<String> {
+    let batches = run_query(sql).await.unwrap();
+    let plan_col = batches[0].column(1).as_any().downcast_ref::<StringArray>().unwrap();
+    let logical_plan = plan_col.value(0);
+    logical_plan.split('\n').map(|s| s.to_string()).collect()
+}
