@@ -75,6 +75,12 @@ pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
         ColumnarValue::Array(json_array) => {
             let result_collect = match args.get(1) {
                 Some(ColumnarValue::Array(a)) => {
+                    if args.len() > 2 {
+                        // TODO perhaps we could support this by zipping the arrays, but it's not trivial, #23
+                        return exec_err!(
+                            "More than 1 path element is not supported when querying JSON using an array."
+                        );
+                    }
                     if let Some(str_path_array) = a.as_any().downcast_ref::<StringArray>() {
                         let paths = str_path_array.iter().map(|opt_key| opt_key.map(JsonPath::Key));
                         zip_apply(json_array, paths, jiter_find, true)
@@ -114,16 +120,16 @@ pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
 
 fn zip_apply<'a, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Option<I>> + 'static, I>(
     json_array: &ArrayRef,
-    paths: P,
+    path_array: P,
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
     object_lookup: bool,
 ) -> DataFusionResult<C> {
     if let Some(string_array) = json_array.as_any().downcast_ref::<StringArray>() {
-        Ok(zip_apply_iter(string_array.iter(), paths, jiter_find))
+        Ok(zip_apply_iter(string_array.iter(), path_array, jiter_find))
     } else if let Some(large_string_array) = json_array.as_any().downcast_ref::<LargeStringArray>() {
-        Ok(zip_apply_iter(large_string_array.iter(), paths, jiter_find))
+        Ok(zip_apply_iter(large_string_array.iter(), path_array, jiter_find))
     } else if let Some(string_array) = nested_json_array(json_array, object_lookup) {
-        Ok(zip_apply_iter(string_array.iter(), paths, jiter_find))
+        Ok(zip_apply_iter(string_array.iter(), path_array, jiter_find))
     } else {
         exec_err!("unexpected json array type {:?}", json_array.data_type())
     }
@@ -131,11 +137,11 @@ fn zip_apply<'a, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Optio
 
 fn zip_apply_iter<'a, 'j, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Option<I>> + 'static, I>(
     json_iter: impl Iterator<Item = Option<&'j str>>,
-    paths: P,
+    path_array: P,
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
 ) -> C {
     json_iter
-        .zip(paths)
+        .zip(path_array)
         .map(|(opt_json, opt_path)| {
             if let Some(path) = opt_path {
                 jiter_find(opt_json, &[path]).ok()
