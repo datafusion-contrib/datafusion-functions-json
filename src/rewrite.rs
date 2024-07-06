@@ -3,7 +3,7 @@ use datafusion_common::config::ConfigOptions;
 use datafusion_common::tree_node::Transformed;
 use datafusion_common::DFSchema;
 use datafusion_common::Result;
-use datafusion_expr::expr::{Cast, Expr, ScalarFunction};
+use datafusion_expr::expr::{Alias, Cast, Expr, ScalarFunction};
 use datafusion_expr::expr_rewriter::FunctionRewrite;
 use datafusion_expr::planner::{PlannerResult, RawBinaryExpr, UserDefinedSQLPlanner};
 use datafusion_expr::sqlparser::ast::BinaryOperator;
@@ -28,9 +28,7 @@ impl FunctionRewrite for JsonFunctionRewriter {
 /// This replaces `get_json(foo, bar)::int` with `json_get_int(foo, bar)` so the JSON function can take care of
 /// extracting the right value type from JSON without the need to materialize the JSON union.
 fn optimise_json_get_cast(cast: &Cast) -> Option<Transformed<Expr>> {
-    let Expr::ScalarFunction(scalar_func) = &*cast.expr else {
-        return None;
-    };
+    let scalar_func = extract_scalar_function(&cast.expr)?;
     if scalar_func.func.name() != "json_get" {
         return None;
     }
@@ -41,11 +39,10 @@ fn optimise_json_get_cast(cast: &Cast) -> Option<Transformed<Expr>> {
         DataType::Utf8 => crate::json_get_str::json_get_str_udf(),
         _ => return None,
     };
-    let f = ScalarFunction {
+    Some(Transformed::yes(Expr::ScalarFunction(ScalarFunction {
         func,
         args: scalar_func.args.clone(),
-    };
-    Some(Transformed::yes(Expr::ScalarFunction(f)))
+    })))
 }
 
 // Replace nested JSON functions e.g. `json_get(json_get(col, 'foo'), 'bar')` with `json_get(col, 'foo', 'bar')`
@@ -58,9 +55,7 @@ fn unnest_json_calls(func: &ScalarFunction) -> Option<Transformed<Expr>> {
     }
     let mut outer_args_iter = func.args.iter();
     let first_arg = outer_args_iter.next()?;
-    let Expr::ScalarFunction(inner_func) = first_arg else {
-        return None;
-    };
+    let inner_func = extract_scalar_function(first_arg)?;
     if inner_func.func.name() != "json_get" {
         return None;
     }
@@ -78,22 +73,39 @@ fn unnest_json_calls(func: &ScalarFunction) -> Option<Transformed<Expr>> {
     }
 }
 
+fn extract_scalar_function(expr: &Expr) -> Option<&ScalarFunction> {
+    match expr {
+        Expr::ScalarFunction(func) => Some(func),
+        Expr::Alias(alias) => extract_scalar_function(&*alias.expr),
+        _ => None,
+    }
+}
+
 /// Implement a custom SQL planner to replace postgres JSON operators with custom UDFs
 #[derive(Debug, Default)]
 pub struct JsonSQLPlanner;
 
 impl UserDefinedSQLPlanner for JsonSQLPlanner {
     fn plan_binary_op(&self, expr: RawBinaryExpr, _schema: &DFSchema) -> Result<PlannerResult<RawBinaryExpr>> {
-        let func = match &expr.op {
-            BinaryOperator::Arrow => crate::json_get::json_get_udf(),
-            BinaryOperator::LongArrow => crate::json_get_str::json_get_str_udf(),
-            BinaryOperator::Question => crate::json_contains::json_contains_udf(),
+        let (func, op_display) = match &expr.op {
+            BinaryOperator::Arrow => (crate::json_get::json_get_udf(), "->"),
+            BinaryOperator::LongArrow => (crate::json_get_str::json_get_str_udf(), "->>"),
+            BinaryOperator::Question => (crate::json_contains::json_contains_udf(), "?"),
             _ => return Ok(PlannerResult::Original(expr)),
         };
+        let alias_name = match &expr.left {
+            Expr::Alias(alias) => format!("{} {} {}", alias.name, op_display, expr.right),
+            left_expr => format!("{} {} {}", left_expr, op_display, expr.right),
+        };
 
-        Ok(PlannerResult::Planned(Expr::ScalarFunction(ScalarFunction {
-            func,
-            args: vec![expr.left.clone(), expr.right.clone()],
-        })))
+        // we put the alias in so that default column titles are `foo -> bar` instead of `json_get(foo, bar)`
+        Ok(PlannerResult::Planned(Expr::Alias(Alias::new(
+            Expr::ScalarFunction(ScalarFunction {
+                func,
+                args: vec![expr.left, expr.right],
+            }),
+            None::<&str>,
+            alias_name,
+        ))))
     }
 }
