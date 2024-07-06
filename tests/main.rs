@@ -779,7 +779,7 @@ async fn test_plan_long_arrow() {
 }
 
 #[tokio::test]
-async fn test_long_arrow_cast_str() {
+async fn test_long_arrow_eq_str() {
     let batches = run_query(r"select name, (json_data->>'foo')='abc' from test")
         .await
         .unwrap();
@@ -801,14 +801,24 @@ async fn test_long_arrow_cast_str() {
 }
 
 #[tokio::test]
-async fn test_long_arrow_cast_int() {
+async fn test_arrow_cast_int() {
     let sql = r#"select ('{"foo": 42}'->'foo')::int"#;
     let batches = run_query(sql).await.unwrap();
+
+    let expected = [
+        "+------------------------------------+",
+        "| Utf8(\"{\"foo\": 42}\") -> Utf8(\"foo\") |",
+        "+------------------------------------+",
+        "| 42                                 |",
+        "+------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+
     assert_eq!(display_val(batches).await, (DataType::Int64, "42".to_string()));
 }
 
 #[tokio::test]
-async fn test_plan_arrow_cast() {
+async fn test_plan_arrow_cast_int() {
     let lines = logical_plan(r#"explain select (json_data->'foo')::int from test"#).await;
 
     let expected = [
