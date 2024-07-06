@@ -955,3 +955,19 @@ async fn test_question_mark_contains() {
     let batches = run_query("select name, json_data ? 'foo' from test").await.unwrap();
     assert_batches_eq!(expected, &batches);
 }
+
+#[tokio::test]
+async fn test_arrow_filter() {
+    let batches = run_query("select name from test where (json_data->>'foo') = 'abc'")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------+",
+        "| name       |",
+        "+------------+",
+        "| object_foo |",
+        "+------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
