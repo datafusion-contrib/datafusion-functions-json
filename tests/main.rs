@@ -893,3 +893,23 @@ async fn test_lexical_precedence_wrong() {
     let err = run_query(sql).await.unwrap_err();
     assert_eq!(err.to_string(), "Error during planning: Unexpected argument type to 'json_get_str' at position 2, expected string or int, got Boolean.")
 }
+
+#[tokio::test]
+async fn test_question_mark_contains() {
+    let expected = [
+        "+------------------+-------------------------------------------+",
+        "| name             | json_contains(test.json_data,Utf8(\"foo\")) |",
+        "+------------------+-------------------------------------------+",
+        "| object_foo       | true                                      |",
+        "| object_foo_array | true                                      |",
+        "| object_foo_obj   | true                                      |",
+        "| object_foo_null  | true                                      |",
+        "| object_bar       | false                                     |",
+        "| list_foo         | false                                     |",
+        "| invalid_json     | false                                     |",
+        "+------------------+-------------------------------------------+",
+    ];
+
+    let batches = run_query("select name, json_data ? 'foo' from test").await.unwrap();
+    assert_batches_eq!(expected, &batches);
+}
