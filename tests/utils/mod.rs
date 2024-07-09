@@ -9,10 +9,12 @@ use arrow::{array::LargeStringArray, array::StringArray, record_batch::RecordBat
 use datafusion::error::Result;
 use datafusion::execution::context::SessionContext;
 use datafusion_common::ParamValues;
+use datafusion_execution::config::SessionConfig;
 use datafusion_functions_json::register_all;
 
 async fn create_test_table(large_utf8: bool) -> Result<SessionContext> {
-    let mut ctx = SessionContext::new();
+    let config = SessionConfig::new().set_str("datafusion.sql_parser.dialect", "postgres");
+    let mut ctx = SessionContext::new_with_config(config);
     register_all(&mut ctx)?;
 
     let test_data = [

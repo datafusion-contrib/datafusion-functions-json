@@ -67,6 +67,7 @@ pub fn register_all(registry: &mut dyn FunctionRegistry) -> Result<()> {
         Ok(()) as Result<()>
     })?;
     registry.register_function_rewrite(Arc::new(rewrite::JsonFunctionRewriter))?;
+    registry.register_expr_planner(Arc::new(rewrite::JsonExprPlanner))?;
 
     Ok(())
 }
