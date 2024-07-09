@@ -77,11 +77,8 @@ pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
                 Some(ColumnarValue::Array(a)) => {
                     if args.len() > 2 {
                         // TODO perhaps we could support this by zipping the arrays, but it's not trivial, #23
-                        return exec_err!(
-                            "More than 1 path element is not supported when querying JSON using an array."
-                        );
-                    }
-                    if let Some(str_path_array) = a.as_any().downcast_ref::<StringArray>() {
+                        exec_err!("More than 1 path element is not supported when querying JSON using an array.")
+                    } else if let Some(str_path_array) = a.as_any().downcast_ref::<StringArray>() {
                         let paths = str_path_array.iter().map(|opt_key| opt_key.map(JsonPath::Key));
                         zip_apply(json_array, paths, jiter_find, true)
                     } else if let Some(str_path_array) = a.as_any().downcast_ref::<LargeStringArray>() {
@@ -94,7 +91,7 @@ pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
                         let paths = int_path_array.iter().map(|opt_index| opt_index.map(Into::into));
                         zip_apply(json_array, paths, jiter_find, false)
                     } else {
-                        return exec_err!("unexpected second argument type, expected string or int array");
+                        exec_err!("unexpected second argument type, expected string or int array")
                     }
                 }
                 Some(ColumnarValue::Scalar(_)) => scalar_apply(json_array, &JsonPath::extract_path(args), jiter_find),

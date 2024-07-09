@@ -1,6 +1,6 @@
 use std::sync::{Arc, OnceLock};
 
-use arrow::array::{Array, ArrayRef, BooleanArray, Float64Array, Int64Array, StringArray, UnionArray};
+use arrow::array::{Array, ArrayRef, BooleanArray, Float64Array, Int64Array, NullArray, StringArray, UnionArray};
 use arrow::buffer::Buffer;
 use arrow_schema::{DataType, Field, UnionFields, UnionMode};
 use datafusion_common::ScalarValue;
@@ -42,7 +42,6 @@ pub(crate) fn json_from_union_scalar<'a>(
 
 #[derive(Debug)]
 pub(crate) struct JsonUnion {
-    nulls: Vec<Option<bool>>,
     bools: Vec<Option<bool>>,
     ints: Vec<Option<i64>>,
     floats: Vec<Option<f64>>,
@@ -51,22 +50,21 @@ pub(crate) struct JsonUnion {
     objects: Vec<Option<String>>,
     type_ids: Vec<i8>,
     index: usize,
-    capacity: usize,
+    length: usize,
 }
 
 impl JsonUnion {
-    fn new(capacity: usize) -> Self {
+    fn new(length: usize) -> Self {
         Self {
-            nulls: vec![None; capacity],
-            bools: vec![None; capacity],
-            ints: vec![None; capacity],
-            floats: vec![None; capacity],
-            strings: vec![None; capacity],
-            arrays: vec![None; capacity],
-            objects: vec![None; capacity],
-            type_ids: vec![0; capacity],
+            bools: vec![None; length],
+            ints: vec![None; length],
+            floats: vec![None; length],
+            strings: vec![None; length],
+            arrays: vec![None; length],
+            objects: vec![None; length],
+            type_ids: vec![0; length],
             index: 0,
-            capacity,
+            length,
         }
     }
 
@@ -77,7 +75,7 @@ impl JsonUnion {
     fn push(&mut self, field: JsonUnionField) {
         self.type_ids[self.index] = field.type_id();
         match field {
-            JsonUnionField::JsonNull => self.nulls[self.index] = Some(true),
+            JsonUnionField::JsonNull => (),
             JsonUnionField::Bool(value) => self.bools[self.index] = Some(value),
             JsonUnionField::Int(value) => self.ints[self.index] = Some(value),
             JsonUnionField::Float(value) => self.floats[self.index] = Some(value),
@@ -86,13 +84,12 @@ impl JsonUnion {
             JsonUnionField::Object(value) => self.objects[self.index] = Some(value),
         }
         self.index += 1;
-        debug_assert!(self.index <= self.capacity);
+        debug_assert!(self.index <= self.length);
     }
 
     fn push_none(&mut self) {
-        self.type_ids[self.index] = TYPE_ID_NULL;
         self.index += 1;
-        debug_assert!(self.index <= self.capacity);
+        debug_assert!(self.index <= self.length);
     }
 }
 
@@ -119,7 +116,7 @@ impl TryFrom<JsonUnion> for UnionArray {
 
     fn try_from(value: JsonUnion) -> Result<Self, Self::Error> {
         let children: Vec<Arc<dyn Array>> = vec![
-            Arc::new(BooleanArray::from(value.nulls)),
+            Arc::new(NullArray::new(value.length)),
             Arc::new(BooleanArray::from(value.bools)),
             Arc::new(Int64Array::from(value.ints)),
             Arc::new(Float64Array::from(value.floats)),
@@ -155,7 +152,7 @@ fn union_fields() -> UnionFields {
     FIELDS
         .get_or_init(|| {
             UnionFields::from_iter([
-                (TYPE_ID_NULL, Arc::new(Field::new("null", DataType::Boolean, true))),
+                (TYPE_ID_NULL, Arc::new(Field::new("null", DataType::Null, true))),
                 (TYPE_ID_BOOL, Arc::new(Field::new("bool", DataType::Boolean, false))),
                 (TYPE_ID_INT, Arc::new(Field::new("int", DataType::Int64, false))),
                 (TYPE_ID_FLOAT, Arc::new(Field::new("float", DataType::Float64, false))),
