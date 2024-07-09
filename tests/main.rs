@@ -68,7 +68,7 @@ async fn test_json_get_union() {
         "| object_foo       | {str=abc}                            |",
         "| object_foo_array | {array=[1]}                          |",
         "| object_foo_obj   | {object={}}                          |",
-        "| object_foo_null  | {null=true}                          |",
+        "| object_foo_null  | {null=}                              |",
         "| object_bar       | {null=}                              |",
         "| list_foo         | {null=}                              |",
         "| invalid_json     | {null=}                              |",
@@ -675,7 +675,7 @@ async fn test_json_get_union_array_nested() {
         "+-------------+",
         "| {array=[0]} |",
         "| {null=}     |",
-        "| {null=true} |",
+        "| {null=}     |",
         "+-------------+",
     ];
 
@@ -725,7 +725,7 @@ async fn test_arrow() {
         "| object_foo       | {str=abc}                |",
         "| object_foo_array | {array=[1]}              |",
         "| object_foo_obj   | {object={}}              |",
-        "| object_foo_null  | {null=true}              |",
+        "| object_foo_null  | {null=}                  |",
         "| object_bar       | {null=}                  |",
         "| list_foo         | {null=}                  |",
         "| invalid_json     | {null=}                  |",
@@ -903,7 +903,7 @@ async fn test_arrow_nested_columns() {
         "+-------------+",
         "| {array=[0]} |",
         "| {null=}     |",
-        "| {null=true} |",
+        "| {null=}     |",
         "+-------------+",
     ];
 
@@ -987,6 +987,115 @@ async fn test_question_filter() {
         "| object_foo_obj   |",
         "| object_foo_null  |",
         "+------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_get_union_is_null() {
+    let batches = run_query("select name, json_get(json_data, 'foo') is null from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+----------------------------------------------+",
+        "| name             | json_get(test.json_data,Utf8(\"foo\")) IS NULL |",
+        "+------------------+----------------------------------------------+",
+        "| object_foo       | false                                        |",
+        "| object_foo_array | false                                        |",
+        "| object_foo_obj   | false                                        |",
+        "| object_foo_null  | true                                         |",
+        "| object_bar       | true                                         |",
+        "| list_foo         | true                                         |",
+        "| invalid_json     | true                                         |",
+        "+------------------+----------------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_get_union_is_not_null() {
+    let batches = run_query("select name, json_get(json_data, 'foo') is not null from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+--------------------------------------------------+",
+        "| name             | json_get(test.json_data,Utf8(\"foo\")) IS NOT NULL |",
+        "+------------------+--------------------------------------------------+",
+        "| object_foo       | true                                             |",
+        "| object_foo_array | true                                             |",
+        "| object_foo_obj   | true                                             |",
+        "| object_foo_null  | false                                            |",
+        "| object_bar       | false                                            |",
+        "| list_foo         | false                                            |",
+        "| invalid_json     | false                                            |",
+        "+------------------+--------------------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_arrow_union_is_null() {
+    let batches = run_query("select name, (json_data->'foo') is null from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+----------------------------------+",
+        "| name             | json_data -> Utf8(\"foo\") IS NULL |",
+        "+------------------+----------------------------------+",
+        "| object_foo       | false                            |",
+        "| object_foo_array | false                            |",
+        "| object_foo_obj   | false                            |",
+        "| object_foo_null  | true                             |",
+        "| object_bar       | true                             |",
+        "| list_foo         | true                             |",
+        "| invalid_json     | true                             |",
+        "+------------------+----------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_arrow_union_is_not_null() {
+    let batches = run_query("select name, (json_data->'foo') is not null from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+--------------------------------------+",
+        "| name             | json_data -> Utf8(\"foo\") IS NOT NULL |",
+        "+------------------+--------------------------------------+",
+        "| object_foo       | true                                 |",
+        "| object_foo_array | true                                 |",
+        "| object_foo_obj   | true                                 |",
+        "| object_foo_null  | false                                |",
+        "| object_bar       | false                                |",
+        "| list_foo         | false                                |",
+        "| invalid_json     | false                                |",
+        "+------------------+--------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_arrow_scalar_union_is_null() {
+    let batches = run_query(
+        r#"
+        select ('{"x": 1}'->'foo') is null as not_contains,
+               ('{"foo": 1}'->'foo') is null as contains_num,
+               ('{"foo": null}'->'foo') is null as contains_null"#,
+    )
+    .await
+    .unwrap();
+
+    let expected = [
+        "+--------------+--------------+---------------+",
+        "| not_contains | contains_num | contains_null |",
+        "+--------------+--------------+---------------+",
+        "| true         | false        | true          |",
+        "+--------------+--------------+---------------+",
     ];
     assert_batches_eq!(expected, &batches);
 }
