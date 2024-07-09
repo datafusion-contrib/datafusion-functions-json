@@ -11,28 +11,28 @@ repository = "https://github.com/datafusion-contrib/datafusion-functions-json/"
 rust-version = "1.76.0"
 
 [dependencies]
-arrow = "52"
-arrow-schema = "52"
-datafusion-common = "39"
-datafusion-expr = "39"
+arrow = "52.1.0"
+arrow-schema = "52.1.0"
+datafusion-common = "40"
+datafusion-expr = "40"
+datafusion-execution = "40"
 jiter = "0.5"
 paste = "1"
 log = "0.4"
-datafusion-execution = "39"
 
 [dev-dependencies]
 codspeed-criterion-compat = "2.3"
 criterion = "0.5.1"
-datafusion = "39"
+datafusion = "40"
 clap = "4"
 tokio = { version = "1.37", features = ["full"] }
 
 [patch.crates-io]
-# TODO: remove this once we upgrade to DataFusion 40.0
-datafusion = { git = "https://github.com/apache/datafusion.git", rev = "7df000a" }
-datafusion-execution = { git = "https://github.com/apache/datafusion.git", rev = "7df000a" }
-datafusion-common = { git = "https://github.com/apache/datafusion.git", rev = "7df000a" }
-datafusion-expr = { git = "https://github.com/apache/datafusion.git", rev = "7df000a" }
+# TODO: remove this once datafusion 40.0 is released
+datafusion = { git = "https://github.com/apache/datafusion.git", rev = "4123ad6" }
+datafusion-common = { git = "https://github.com/apache/datafusion.git", rev = "4123ad6" }
+datafusion-expr = { git = "https://github.com/apache/datafusion.git", rev = "4123ad6" }
+datafusion-execution = { git = "https://github.com/apache/datafusion.git", rev = "4123ad6" }
 
 [lints.clippy]
 dbg_macro = "deny"

@@ -5,7 +5,7 @@ use datafusion_common::DFSchema;
 use datafusion_common::Result;
 use datafusion_expr::expr::{Alias, Cast, Expr, ScalarFunction};
 use datafusion_expr::expr_rewriter::FunctionRewrite;
-use datafusion_expr::planner::{PlannerResult, RawBinaryExpr, UserDefinedSQLPlanner};
+use datafusion_expr::planner::{ExprPlanner, PlannerResult, RawBinaryExpr};
 use datafusion_expr::sqlparser::ast::BinaryOperator;
 
 pub(crate) struct JsonFunctionRewriter;
@@ -83,9 +83,9 @@ fn extract_scalar_function(expr: &Expr) -> Option<&ScalarFunction> {
 
 /// Implement a custom SQL planner to replace postgres JSON operators with custom UDFs
 #[derive(Debug, Default)]
-pub struct JsonSQLPlanner;
+pub struct JsonExprPlanner;
 
-impl UserDefinedSQLPlanner for JsonSQLPlanner {
+impl ExprPlanner for JsonExprPlanner {
     fn plan_binary_op(&self, expr: RawBinaryExpr, _schema: &DFSchema) -> Result<PlannerResult<RawBinaryExpr>> {
         let (func, op_display) = match &expr.op {
             BinaryOperator::Arrow => (crate::json_get::json_get_udf(), "->"),

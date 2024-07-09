@@ -971,3 +971,22 @@ async fn test_arrow_filter() {
     ];
     assert_batches_eq!(expected, &batches);
 }
+
+#[tokio::test]
+async fn test_question_filter() {
+    let batches = run_query("select name from test where json_data ? 'foo'")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+",
+        "| name             |",
+        "+------------------+",
+        "| object_foo       |",
+        "| object_foo_array |",
+        "| object_foo_obj   |",
+        "| object_foo_null  |",
+        "+------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
