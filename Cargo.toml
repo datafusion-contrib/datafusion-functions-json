@@ -1,6 +1,6 @@
 [package]
 name = "datafusion-functions-json"
-version = "0.2.0"
+version = "0.40.0"
 edition = "2021"
 description = "JSON functions for DataFusion"
 readme = "README.md"
@@ -26,13 +26,6 @@ criterion = "0.5.1"
 datafusion = "40"
 clap = "4"
 tokio = { version = "1.37", features = ["full"] }
-
-[patch.crates-io]
-# TODO: remove this once datafusion 40.0 is released
-datafusion = { git = "https://github.com/apache/datafusion.git", rev = "4123ad6" }
-datafusion-common = { git = "https://github.com/apache/datafusion.git", rev = "4123ad6" }
-datafusion-expr = { git = "https://github.com/apache/datafusion.git", rev = "4123ad6" }
-datafusion-execution = { git = "https://github.com/apache/datafusion.git", rev = "4123ad6" }
 
 [lints.clippy]
 dbg_macro = "deny"
