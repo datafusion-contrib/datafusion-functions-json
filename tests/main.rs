@@ -278,6 +278,20 @@ async fn test_json_get_cast_float() {
 }
 
 #[tokio::test]
+async fn test_json_get_cast_numeric() {
+    let sql = r#"select json_get('{"foo": 4.2e2}', 'foo')::numeric"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Float64, "420.0".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_get_cast_numeric_equals() {
+    let sql = r#"select json_get('{"foo": 420}', 'foo')::numeric = 420"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Boolean, "true".to_string()));
+}
+
+#[tokio::test]
 async fn test_json_get_bool() {
     let batches = run_query("select json_get_bool('[true]', 0)").await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Boolean, "true".to_string()));
