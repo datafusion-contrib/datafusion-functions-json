@@ -1115,7 +1115,7 @@ async fn test_arrow_scalar_union_is_null() {
 }
 
 #[tokio::test]
-async fn test_arrow_cast() {
+async fn test_long_arrow_cast() {
     let batches = run_query("select (json_data->>'foo')::int from other").await.unwrap();
 
     let expected = [
@@ -1129,4 +1129,10 @@ async fn test_arrow_cast() {
         "+---------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
+}
+
+async fn test_arrow_cast_numeric() {
+    let sql = r#"select ('{"foo": 420}'->'foo')::numeric = 420"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Boolean, "true".to_string()));
 }
