@@ -1099,3 +1099,20 @@ async fn test_arrow_scalar_union_is_null() {
     ];
     assert_batches_eq!(expected, &batches);
 }
+
+#[tokio::test]
+async fn test_arrow_cast() {
+    let batches = run_query("select (json_data->>'foo')::int from other").await.unwrap();
+
+    let expected = [
+        "+---------------------------+",
+        "| json_data ->> Utf8(\"foo\") |",
+        "+---------------------------+",
+        "| 42                        |",
+        "| 42                        |",
+        "|                           |",
+        "|                           |",
+        "+---------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}

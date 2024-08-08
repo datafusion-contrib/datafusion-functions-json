@@ -12,8 +12,8 @@ repos:
 
 - repo: local
   hooks:
-  - id: format-check
-    name: Format Check
+  - id: format
+    name: Format
     entry: cargo fmt
     types: [rust]
     language: system
