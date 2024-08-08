@@ -13,9 +13,9 @@ rust-version = "1.76.0"
 [dependencies]
 arrow = "52.1.0"
 arrow-schema = "52.1.0"
-datafusion-common = "40"
-datafusion-expr = "40"
-datafusion-execution = "40"
+datafusion-common = { git = "https://github.com/adriangb/datafusion.git", rev = "0d8d01577" }
+datafusion-expr = { git = "https://github.com/adriangb/datafusion.git", rev = "0d8d01577" }
+datafusion-execution = { git = "https://github.com/adriangb/datafusion.git", rev = "0d8d01577" }
 jiter = "0.5"
 paste = "1"
 log = "0.4"
@@ -23,7 +23,7 @@ log = "0.4"
 [dev-dependencies]
 codspeed-criterion-compat = "2.3"
 criterion = "0.5.1"
-datafusion = "40"
+datafusion = { git = "https://github.com/adriangb/datafusion.git", rev = "0d8d01577" }
 clap = "4"
 tokio = { version = "1.37", features = ["full"] }
 
