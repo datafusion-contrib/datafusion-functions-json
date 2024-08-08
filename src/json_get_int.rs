@@ -14,7 +14,7 @@ make_udf_function!(
     JsonGetInt,
     json_get_int,
     json_data path,
-    r#"Get an integer value from a JSON object by its "path""#
+    r#"Get an integer value from a JSON string by its "path""#
 );
 
 #[derive(Debug)]

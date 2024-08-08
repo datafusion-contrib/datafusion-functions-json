@@ -16,7 +16,7 @@ make_udf_function!(
     JsonGet,
     json_get,
     json_data path,
-    r#"Get a value from a JSON object by its "path""#
+    r#"Get a value from a JSON string by its "path""#
 );
 
 // build_typed_get!(JsonGet, "json_get", Union, Float64Array, jiter_json_get_float);
