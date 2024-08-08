@@ -14,7 +14,7 @@ make_udf_function!(
     JsonGetBool,
     json_get_bool,
     json_data path,
-    r#"Get an boolean value from a JSON object by its "path""#
+    r#"Get an boolean value from a JSON string by its "path""#
 );
 
 #[derive(Debug)]

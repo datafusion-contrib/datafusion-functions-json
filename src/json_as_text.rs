@@ -1,37 +1,37 @@
 use std::any::Any;
 use std::sync::Arc;
 
+use crate::common::{check_args, get_err, invoke, jiter_json_find, GetError, JsonPath};
+use crate::common_macros::make_udf_function;
 use arrow::array::{ArrayRef, StringArray};
 use arrow_schema::DataType;
 use datafusion_common::{Result as DataFusionResult, ScalarValue};
 use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
-
-use crate::common::{check_args, get_err, invoke, jiter_json_find, GetError, JsonPath};
-use crate::common_macros::make_udf_function;
+use jiter::Peek;
 
 make_udf_function!(
-    JsonGetJson,
-    json_get_json,
+    JsonAsText,
+    json_as_text,
     json_data path,
-    r#"Get a nested raw JSON string from a JSON string by its "path""#
+    r#"Get any value from a JSON string by its "path", represented as a string"#
 );
 
 #[derive(Debug)]
-pub(super) struct JsonGetJson {
+pub(super) struct JsonAsText {
     signature: Signature,
     aliases: [String; 1],
 }
 
-impl Default for JsonGetJson {
+impl Default for JsonAsText {
     fn default() -> Self {
         Self {
             signature: Signature::variadic_any(Volatility::Immutable),
-            aliases: ["json_get_json".to_string()],
+            aliases: ["json_as_text".to_string()],
         }
     }
 }
 
-impl ScalarUDFImpl for JsonGetJson {
+impl ScalarUDFImpl for JsonAsText {
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -51,7 +51,7 @@ impl ScalarUDFImpl for JsonGetJson {
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
         invoke::<StringArray, String>(
             args,
-            jiter_json_get_json,
+            jiter_json_as_text,
             |c| Ok(Arc::new(c) as ArrayRef),
             ScalarValue::Utf8,
         )
@@ -62,13 +62,22 @@ impl ScalarUDFImpl for JsonGetJson {
     }
 }
 
-fn jiter_json_get_json(opt_json: Option<&str>, path: &[JsonPath]) -> Result<String, GetError> {
+fn jiter_json_as_text(opt_json: Option<&str>, path: &[JsonPath]) -> Result<String, GetError> {
     if let Some((mut jiter, peek)) = jiter_json_find(opt_json, path) {
-        let start = jiter.current_index();
-        jiter.known_skip(peek)?;
-        let object_slice = jiter.slice_to_current(start);
-        let object_string = std::str::from_utf8(object_slice)?;
-        Ok(object_string.to_owned())
+        match peek {
+            Peek::Null => {
+                jiter.known_null()?;
+                get_err!()
+            }
+            Peek::String => Ok(jiter.known_str()?.to_owned()),
+            _ => {
+                let start = jiter.current_index();
+                jiter.known_skip(peek)?;
+                let object_slice = jiter.slice_to_current(start);
+                let object_string = std::str::from_utf8(object_slice)?;
+                Ok(object_string.to_owned())
+            }
+        }
     } else {
         get_err!()
     }

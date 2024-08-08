@@ -14,7 +14,7 @@ make_udf_function!(
     JsonGetStr,
     json_get_str,
     json_data path,
-    r#"Get a string value from a JSON object by its "path""#
+    r#"Get a string value from a JSON string by its "path""#
 );
 
 #[derive(Debug)]

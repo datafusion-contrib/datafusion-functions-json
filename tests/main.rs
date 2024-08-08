@@ -755,8 +755,8 @@ async fn test_long_arrow() {
         "| name             | json_data ->> Utf8(\"foo\") |",
         "+------------------+---------------------------+",
         "| object_foo       | abc                       |",
-        "| object_foo_array |                           |",
-        "| object_foo_obj   |                           |",
+        "| object_foo_array | [1]                       |",
+        "| object_foo_obj   | {}                        |",
         "| object_foo_null  |                           |",
         "| object_bar       |                           |",
         "| list_foo         |                           |",
@@ -771,7 +771,7 @@ async fn test_plan_long_arrow() {
     let lines = logical_plan(r#"explain select json_data->>'foo' from test"#).await;
 
     let expected = [
-        "Projection: json_get_str(test.json_data, Utf8(\"foo\")) AS json_data ->> Utf8(\"foo\")",
+        "Projection: json_as_text(test.json_data, Utf8(\"foo\")) AS json_data ->> Utf8(\"foo\")",
         "  TableScan: test projection=[json_data]",
     ];
 
@@ -789,8 +789,8 @@ async fn test_long_arrow_eq_str() {
         "| name             | json_data ->> Utf8(\"foo\") = Utf8(\"abc\") |",
         "+------------------+-----------------------------------------+",
         "| object_foo       | true                                    |",
-        "| object_foo_array |                                         |",
-        "| object_foo_obj   |                                         |",
+        "| object_foo_array | false                                   |",
+        "| object_foo_obj   | false                                   |",
         "| object_foo_null  |                                         |",
         "| object_bar       |                                         |",
         "| list_foo         |                                         |",
@@ -933,7 +933,7 @@ async fn test_arrow_nested_double_columns() {
 async fn test_lexical_precedence_wrong() {
     let sql = r#"select '{"a": "b"}'->>'a'='b' as v"#;
     let err = run_query(sql).await.unwrap_err();
-    assert_eq!(err.to_string(), "Error during planning: Unexpected argument type to 'json_get_str' at position 2, expected string or int, got Boolean.")
+    assert_eq!(err.to_string(), "Error during planning: Unexpected argument type to 'json_as_text' at position 2, expected string or int, got Boolean.")
 }
 
 #[tokio::test]
@@ -1096,6 +1096,23 @@ async fn test_arrow_scalar_union_is_null() {
         "+--------------+--------------+---------------+",
         "| true         | false        | true          |",
         "+--------------+--------------+---------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_arrow_cast() {
+    let batches = run_query("select (json_data->>'foo')::int from other").await.unwrap();
+
+    let expected = [
+        "+---------------------------+",
+        "| json_data ->> Utf8(\"foo\") |",
+        "+---------------------------+",
+        "| 42                        |",
+        "| 42                        |",
+        "|                           |",
+        "|                           |",
+        "+---------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
 }

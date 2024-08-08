@@ -14,7 +14,7 @@ make_udf_function!(
     JsonGetFloat,
     json_get_float,
     json_data path,
-    r#"Get a float value from a JSON object by its "path""#
+    r#"Get a float value from a JSON string by its "path""#
 );
 
 #[derive(Debug)]

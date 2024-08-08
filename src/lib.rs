@@ -7,6 +7,7 @@ use std::sync::Arc;
 mod common;
 mod common_macros;
 mod common_union;
+mod json_as_text;
 mod json_contains;
 mod json_get;
 mod json_get_bool;
@@ -18,6 +19,7 @@ mod json_length;
 mod rewrite;
 
 pub mod functions {
+    pub use crate::json_as_text::json_as_text;
     pub use crate::json_contains::json_contains;
     pub use crate::json_get::json_get;
     pub use crate::json_get_bool::json_get_bool;
@@ -29,6 +31,7 @@ pub mod functions {
 }
 
 pub mod udfs {
+    pub use crate::json_as_text::json_as_text_udf;
     pub use crate::json_contains::json_contains_udf;
     pub use crate::json_get::json_get_udf;
     pub use crate::json_get_bool::json_get_bool_udf;
@@ -55,6 +58,7 @@ pub fn register_all(registry: &mut dyn FunctionRegistry) -> Result<()> {
         json_get_float::json_get_float_udf(),
         json_get_int::json_get_int_udf(),
         json_get_json::json_get_json_udf(),
+        json_as_text::json_as_text_udf(),
         json_get_str::json_get_str_udf(),
         json_contains::json_contains_udf(),
         json_length::json_length_udf(),

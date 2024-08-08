@@ -89,7 +89,7 @@ impl ExprPlanner for JsonExprPlanner {
     fn plan_binary_op(&self, expr: RawBinaryExpr, _schema: &DFSchema) -> Result<PlannerResult<RawBinaryExpr>> {
         let (func, op_display) = match &expr.op {
             BinaryOperator::Arrow => (crate::json_get::json_get_udf(), "->"),
-            BinaryOperator::LongArrow => (crate::json_get_str::json_get_str_udf(), "->>"),
+            BinaryOperator::LongArrow => (crate::json_as_text::json_as_text_udf(), "->>"),
             BinaryOperator::Question => (crate::json_contains::json_contains_udf(), "?"),
             _ => return Ok(PlannerResult::Original(expr)),
         };
