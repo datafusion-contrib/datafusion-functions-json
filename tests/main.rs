@@ -1131,8 +1131,30 @@ async fn test_long_arrow_cast() {
     assert_batches_eq!(expected, &batches);
 }
 
+#[tokio::test]
 async fn test_arrow_cast_numeric() {
     let sql = r#"select ('{"foo": 420}'->'foo')::numeric = 420"#;
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Boolean, "true".to_string()));
 }
+
+#[tokio::test]
+async fn test_json_get_int_string() {
+    let sql = r#"select json_get_int('{"foo": "420"}'->'foo')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Int64, "420".to_string()));
+}
+
+// #[tokio::test]
+// async fn test_json_get_float_string() {
+//     let sql = r#"select json_get_float('{"foo": "420.123"}'->'foo')"#;
+//     let batches = run_query(sql).await.unwrap();
+//     assert_eq!(display_val(batches).await, (DataType::Int64, "420.123".to_string()));
+// }
+//
+// #[tokio::test]
+// async fn test_json_get_float_string_2() {
+//     let sql = r#"select json_get_float('{"foo": "420"}'->'foo')"#;
+//     let batches = run_query(sql).await.unwrap();
+//     assert_eq!(display_val(batches).await, (DataType::Int64, "420".to_string()));
+// }

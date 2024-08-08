@@ -65,7 +65,8 @@ impl ScalarUDFImpl for JsonGetInt {
 
 fn jiter_json_get_int(json_data: Option<&str>, path: &[JsonPath]) -> Result<i64, GetError> {
     if let Some((mut jiter, peek)) = jiter_json_find(json_data, path) {
-        match peek {
+        let n = match peek {
+            Peek::String => NumberInt::try_from(jiter.next_bytes()?)?,
             // numbers are represented by everything else in peek, hence doing it this way
             Peek::Null
             | Peek::True
@@ -73,13 +74,13 @@ fn jiter_json_get_int(json_data: Option<&str>, path: &[JsonPath]) -> Result<i64,
             | Peek::Minus
             | Peek::Infinity
             | Peek::NaN
-            | Peek::String
             | Peek::Array
-            | Peek::Object => get_err!(),
-            _ => match jiter.known_int(peek)? {
-                NumberInt::Int(i) => Ok(i),
-                NumberInt::BigInt(_) => get_err!(),
-            },
+            | Peek::Object => return get_err!(),
+            _ => jiter.known_int(peek)?,
+        };
+        match n {
+            NumberInt::Int(i) => Ok(i),
+            NumberInt::BigInt(_) => get_err!(),
         }
     } else {
         get_err!()

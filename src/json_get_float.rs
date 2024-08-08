@@ -65,7 +65,8 @@ impl ScalarUDFImpl for JsonGetFloat {
 
 fn jiter_json_get_float(json_data: Option<&str>, path: &[JsonPath]) -> Result<f64, GetError> {
     if let Some((mut jiter, peek)) = jiter_json_find(json_data, path) {
-        match peek {
+        let n = match peek {
+            // Peek::String => NumberAny::try_from(jiter.next_bytes()?)?,
             // numbers are represented by everything else in peek, hence doing it this way
             Peek::Null
             | Peek::True
@@ -75,11 +76,12 @@ fn jiter_json_get_float(json_data: Option<&str>, path: &[JsonPath]) -> Result<f6
             | Peek::NaN
             | Peek::String
             | Peek::Array
-            | Peek::Object => get_err!(),
-            _ => match jiter.known_number(peek)? {
-                NumberAny::Float(f) => Ok(f),
-                NumberAny::Int(int) => Ok(int.into()),
-            },
+            | Peek::Object => return get_err!(),
+            _ => jiter.known_number(peek)?,
+        };
+        match n {
+            NumberAny::Float(f) => Ok(f),
+            NumberAny::Int(int) => Ok(int.into()),
         }
     } else {
         get_err!()

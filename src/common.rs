@@ -4,7 +4,7 @@ use arrow::array::{Array, ArrayRef, Int64Array, LargeStringArray, StringArray, U
 use arrow_schema::DataType;
 use datafusion_common::{exec_err, plan_err, Result as DataFusionResult, ScalarValue};
 use datafusion_expr::ColumnarValue;
-use jiter::{Jiter, JiterError, Peek};
+use jiter::{Jiter, JiterError, JsonError, Peek};
 
 use crate::common_union::{is_json_union, json_from_union_scalar, nested_json_array};
 
@@ -226,6 +226,12 @@ pub struct GetError;
 
 impl From<JiterError> for GetError {
     fn from(_: JiterError) -> Self {
+        GetError
+    }
+}
+
+impl From<JsonError> for GetError {
+    fn from(_: JsonError) -> Self {
         GetError
     }
 }
