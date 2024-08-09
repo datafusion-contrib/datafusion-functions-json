@@ -11,8 +11,8 @@ repository = "https://github.com/datafusion-contrib/datafusion-functions-json/"
 rust-version = "1.76.0"
 
 [dependencies]
-arrow = "52.1.0"
-arrow-schema = "52.1.0"
+arrow ={ git = "https://github.com/apache/arrow-rs.git", rev = "3e02689" }
+arrow-schema = { git = "https://github.com/apache/arrow-rs.git", rev = "3e02689" }
 datafusion-common = { git = "https://github.com/adriangb/datafusion.git", rev = "0d8d01577" }
 datafusion-expr = { git = "https://github.com/adriangb/datafusion.git", rev = "0d8d01577" }
 datafusion-execution = { git = "https://github.com/adriangb/datafusion.git", rev = "0d8d01577" }
