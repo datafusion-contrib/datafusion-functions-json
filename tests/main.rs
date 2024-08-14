@@ -477,6 +477,31 @@ async fn test_json_length_vec() {
 }
 
 #[tokio::test]
+async fn test_json_get_arrow_array() {
+    let sql = r#"select name, json_get_array(json_data, 'foo') from test"#;
+    let batches = run_query(sql).await.unwrap();
+
+    let expected = [
+        "+------------------+--------------------------------------------+",
+        "| name             | json_get_array(test.json_data,Utf8(\"foo\")) |",
+        "+------------------+--------------------------------------------+",
+        "| object_foo       |                                            |",
+        "| object_foo_array | [1]                                        |",
+        "| object_foo_obj   |                                            |",
+        "| object_foo_null  |                                            |",
+        "| object_bar       |                                            |",
+        "| list_foo         |                                            |",
+        "| invalid_json     |                                            |",
+        "+------------------+--------------------------------------------+",
+    ];
+
+    assert_batches_eq!(expected, &batches);
+
+    let batches = run_query_large(sql).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
 async fn test_no_args() {
     let err = run_query(r#"select json_len()"#).await.unwrap_err();
     assert!(err
@@ -1131,6 +1156,7 @@ async fn test_long_arrow_cast() {
     assert_batches_eq!(expected, &batches);
 }
 
+#[tokio::test]
 async fn test_arrow_cast_numeric() {
     let sql = r#"select ('{"foo": 420}'->'foo')::numeric = 420"#;
     let batches = run_query(sql).await.unwrap();
