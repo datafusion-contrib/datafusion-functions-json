@@ -1131,6 +1131,7 @@ async fn test_long_arrow_cast() {
     assert_batches_eq!(expected, &batches);
 }
 
+#[tokio::test]
 async fn test_arrow_cast_numeric() {
     let sql = r#"select ('{"foo": 420}'->'foo')::numeric = 420"#;
     let batches = run_query(sql).await.unwrap();
