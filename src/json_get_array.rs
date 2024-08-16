@@ -11,33 +11,6 @@ use jiter::Peek;
 use crate::common::{check_args, get_err, invoke, jiter_json_find, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 
-struct StrArrayColumn {
-    rows: GenericListArray<i32>,
-}
-
-impl FromIterator<Option<Vec<String>>> for StrArrayColumn {
-    fn from_iter<T: IntoIterator<Item = Option<Vec<String>>>>(iter: T) -> Self {
-        let string_builder = StringBuilder::new();
-        let mut list_builder = ListBuilder::new(string_builder);
-
-        for row in iter {
-            if let Some(row) = row {
-                for elem in row {
-                    list_builder.values().append_value(elem);
-                }
-
-                list_builder.append(true);
-            } else {
-                list_builder.append(false);
-            }
-        }
-
-        Self {
-            rows: list_builder.finish(),
-        }
-    }
-}
-
 make_udf_function!(
     JsonGetArray,
     json_get_array,
@@ -78,7 +51,7 @@ impl ScalarUDFImpl for JsonGetArray {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<StrArrayColumn, Vec<String>>(
+        invoke::<JsonArray, JsonArrayField>(
             args,
             jiter_json_get_array,
             |c| Ok(Arc::new(c.rows) as ArrayRef),
@@ -87,7 +60,7 @@ impl ScalarUDFImpl for JsonGetArray {
                 let mut list_builder = ListBuilder::new(string_builder);
 
                 if let Some(row) = i {
-                    for elem in row {
+                    for elem in row.elements {
                         list_builder.values().append_value(elem);
                     }
                 }
@@ -102,12 +75,43 @@ impl ScalarUDFImpl for JsonGetArray {
     }
 }
 
-fn jiter_json_get_array(json_data: Option<&str>, path: &[JsonPath]) -> Result<Vec<String>, GetError> {
+struct JsonArray {
+    rows: GenericListArray<i32>,
+}
+
+struct JsonArrayField {
+    elements: Vec<String>,
+}
+
+impl FromIterator<Option<JsonArrayField>> for JsonArray {
+    fn from_iter<T: IntoIterator<Item = Option<JsonArrayField>>>(iter: T) -> Self {
+        let string_builder = StringBuilder::new();
+        let mut list_builder = ListBuilder::new(string_builder);
+
+        for row in iter {
+            if let Some(row) = row {
+                for elem in row.elements {
+                    list_builder.values().append_value(elem);
+                }
+
+                list_builder.append(true);
+            } else {
+                list_builder.append(false);
+            }
+        }
+
+        Self {
+            rows: list_builder.finish(),
+        }
+    }
+}
+
+fn jiter_json_get_array(json_data: Option<&str>, path: &[JsonPath]) -> Result<JsonArrayField, GetError> {
     if let Some((mut jiter, peek)) = jiter_json_find(json_data, path) {
         match peek {
             Peek::Array => {
                 let mut peek_opt = jiter.known_array()?;
-                let mut array_values = Vec::new();
+                let mut elements = Vec::new();
 
                 while let Some(peek) = peek_opt {
                     let start = jiter.current_index();
@@ -115,12 +119,12 @@ fn jiter_json_get_array(json_data: Option<&str>, path: &[JsonPath]) -> Result<Ve
                     let object_slice = jiter.slice_to_current(start);
                     let object_string = std::str::from_utf8(object_slice)?;
 
-                    array_values.push(object_string.to_owned());
+                    elements.push(object_string.to_owned());
 
                     peek_opt = jiter.array_step()?;
                 }
 
-                Ok(array_values)
+                Ok(JsonArrayField { elements })
             }
             _ => get_err!(),
         }
