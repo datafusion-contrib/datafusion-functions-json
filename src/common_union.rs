@@ -1,6 +1,9 @@
 use std::sync::{Arc, OnceLock};
 
-use arrow::array::{Array, ArrayRef, BooleanArray, Float64Array, Int64Array, NullArray, StringArray, UnionArray};
+use arrow::array::{
+    Array, ArrayRef, BooleanArray, Float64Array, Int64Array, ListArray, ListBuilder, NullArray, StringArray,
+    StringBuilder, UnionArray,
+};
 use arrow::buffer::Buffer;
 use arrow_schema::{DataType, Field, UnionFields, UnionMode};
 use datafusion_common::ScalarValue;
@@ -46,7 +49,7 @@ pub(crate) struct JsonUnion {
     ints: Vec<Option<i64>>,
     floats: Vec<Option<f64>>,
     strings: Vec<Option<String>>,
-    arrays: Vec<Option<String>>,
+    arrays: Vec<Option<Vec<String>>>,
     objects: Vec<Option<String>>,
     type_ids: Vec<i8>,
     index: usize,
@@ -93,24 +96,6 @@ impl JsonUnion {
     }
 }
 
-/// So we can do `collect::<JsonUnion>()`
-impl FromIterator<Option<JsonUnionField>> for JsonUnion {
-    fn from_iter<I: IntoIterator<Item = Option<JsonUnionField>>>(iter: I) -> Self {
-        let inner = iter.into_iter();
-        let (lower, upper) = inner.size_hint();
-        let mut union = Self::new(upper.unwrap_or(lower));
-
-        for opt_field in inner {
-            if let Some(union_field) = opt_field {
-                union.push(union_field);
-            } else {
-                union.push_none();
-            }
-        }
-        union
-    }
-}
-
 impl TryFrom<JsonUnion> for UnionArray {
     type Error = arrow::error::ArrowError;
 
@@ -121,10 +106,39 @@ impl TryFrom<JsonUnion> for UnionArray {
             Arc::new(Int64Array::from(value.ints)),
             Arc::new(Float64Array::from(value.floats)),
             Arc::new(StringArray::from(value.strings)),
-            Arc::new(StringArray::from(value.arrays)),
+            Arc::new(StringArray::from(
+                value
+                    .arrays
+                    .into_iter()
+                    .map(|r| r.map(|e| e.join(",")))
+                    .collect::<Vec<_>>(),
+            )),
             Arc::new(StringArray::from(value.objects)),
         ];
         UnionArray::try_new(union_fields(), Buffer::from_vec(value.type_ids).into(), None, children)
+    }
+}
+
+impl TryFrom<JsonUnion> for ListArray {
+    type Error = arrow::error::ArrowError;
+
+    fn try_from(value: JsonUnion) -> Result<Self, Self::Error> {
+        let string_builder = StringBuilder::new();
+        let mut list_builder = ListBuilder::new(string_builder);
+
+        for row in value.arrays {
+            if let Some(row) = row {
+                for elem in row {
+                    list_builder.values().append_value(elem);
+                }
+
+                list_builder.append(true);
+            } else {
+                list_builder.append(false);
+            }
+        }
+
+        Ok(list_builder.finish())
     }
 }
 
@@ -135,7 +149,7 @@ pub(crate) enum JsonUnionField {
     Int(i64),
     Float(f64),
     Str(String),
-    Array(String),
+    Array(Vec<String>),
     Object(String),
 }
 
@@ -193,7 +207,65 @@ impl From<JsonUnionField> for ScalarValue {
             JsonUnionField::Bool(b) => Self::Boolean(Some(b)),
             JsonUnionField::Int(i) => Self::Int64(Some(i)),
             JsonUnionField::Float(f) => Self::Float64(Some(f)),
-            JsonUnionField::Str(s) | JsonUnionField::Array(s) | JsonUnionField::Object(s) => Self::Utf8(Some(s)),
+            JsonUnionField::Array(a) => Self::List(Self::new_list_nullable(
+                &a.into_iter().map(|e| Self::Utf8(Some(e))).collect::<Vec<_>>(),
+                &DataType::Utf8,
+            )),
+            JsonUnionField::Str(s) | JsonUnionField::Object(s) => Self::Utf8(Some(s)),
         }
+    }
+}
+
+/// So we can do `collect::<JsonUnion>()`
+impl FromIterator<Option<JsonUnionField>> for JsonUnion {
+    fn from_iter<I: IntoIterator<Item = Option<JsonUnionField>>>(iter: I) -> Self {
+        let inner = iter.into_iter();
+        let (lower, upper) = inner.size_hint();
+        let mut union = Self::new(upper.unwrap_or(lower));
+
+        for opt_field in inner {
+            if let Some(union_field) = opt_field {
+                union.push(union_field);
+            } else {
+                union.push_none();
+            }
+        }
+        union
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct JsonArrayField(pub(crate) Vec<String>);
+
+impl From<JsonArrayField> for ScalarValue {
+    fn from(JsonArrayField(elems): JsonArrayField) -> Self {
+        Self::List(Self::new_list_nullable(
+            &elems.into_iter().map(|e| Self::Utf8(Some(e))).collect::<Vec<_>>(),
+            &DataType::Utf8,
+        ))
+    }
+}
+
+impl From<JsonArrayField> for JsonUnionField {
+    fn from(JsonArrayField(elems): JsonArrayField) -> Self {
+        JsonUnionField::Array(elems)
+    }
+}
+
+impl FromIterator<Option<JsonArrayField>> for JsonUnion {
+    fn from_iter<T: IntoIterator<Item = Option<JsonArrayField>>>(iter: T) -> Self {
+        let inner = iter.into_iter();
+        let (lower, upper) = inner.size_hint();
+        let mut union = Self::new(upper.unwrap_or(lower));
+
+        for opt_field in inner {
+            if let Some(array_field) = opt_field {
+                union.push(array_field.into());
+            } else {
+                union.push_none();
+            }
+        }
+
+        union
     }
 }

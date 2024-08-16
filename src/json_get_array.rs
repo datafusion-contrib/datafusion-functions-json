@@ -1,7 +1,7 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use arrow::array::{GenericListArray, ListBuilder, StringBuilder};
+use arrow::array::ListArray;
 use arrow_schema::{DataType, Field};
 use datafusion_common::arrow::array::ArrayRef;
 use datafusion_common::{Result as DataFusionResult, ScalarValue};
@@ -10,6 +10,7 @@ use jiter::Peek;
 
 use crate::common::{check_args, get_err, invoke, jiter_json_find, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
+use crate::common_union::{JsonArrayField, JsonUnion};
 
 make_udf_function!(
     JsonGetArray,
@@ -51,58 +52,18 @@ impl ScalarUDFImpl for JsonGetArray {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<JsonArray, JsonArrayField>(
-            args,
-            jiter_json_get_array,
-            |c| Ok(Arc::new(c.rows) as ArrayRef),
-            |i| {
-                let string_builder = StringBuilder::new();
-                let mut list_builder = ListBuilder::new(string_builder);
+        let to_array = |c: JsonUnion| {
+            let array: ListArray = c.try_into()?;
+            Ok(Arc::new(array) as ArrayRef)
+        };
 
-                if let Some(row) = i {
-                    for elem in row.elements {
-                        list_builder.values().append_value(elem);
-                    }
-                }
-
-                ScalarValue::List(list_builder.finish().into())
-            },
-        )
+        invoke::<JsonUnion, JsonArrayField>(args, jiter_json_get_array, to_array, |i| {
+            i.map_or_else(|| ScalarValue::Null, Into::into)
+        })
     }
 
     fn aliases(&self) -> &[String] {
         &self.aliases
-    }
-}
-
-struct JsonArray {
-    rows: GenericListArray<i32>,
-}
-
-struct JsonArrayField {
-    elements: Vec<String>,
-}
-
-impl FromIterator<Option<JsonArrayField>> for JsonArray {
-    fn from_iter<T: IntoIterator<Item = Option<JsonArrayField>>>(iter: T) -> Self {
-        let string_builder = StringBuilder::new();
-        let mut list_builder = ListBuilder::new(string_builder);
-
-        for row in iter {
-            if let Some(row) = row {
-                for elem in row.elements {
-                    list_builder.values().append_value(elem);
-                }
-
-                list_builder.append(true);
-            } else {
-                list_builder.append(false);
-            }
-        }
-
-        Self {
-            rows: list_builder.finish(),
-        }
     }
 }
 
@@ -124,7 +85,7 @@ fn jiter_json_get_array(json_data: Option<&str>, path: &[JsonPath]) -> Result<Js
                     peek_opt = jiter.array_step()?;
                 }
 
-                Ok(JsonArrayField { elements })
+                Ok(JsonArrayField(elements))
             }
             _ => get_err!(),
         }
