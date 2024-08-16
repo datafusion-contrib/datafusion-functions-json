@@ -12,7 +12,7 @@ use datafusion_common::ParamValues;
 use datafusion_execution::config::SessionConfig;
 use datafusion_functions_json::register_all;
 
-async fn create_test_table(large_utf8: bool) -> Result<SessionContext> {
+fn create_test_table(large_utf8: bool) -> Result<SessionContext> {
     let config = SessionConfig::new().set_str("datafusion.sql_parser.dialect", "postgres");
     let mut ctx = SessionContext::new_with_config(config);
     register_all(&mut ctx)?;
@@ -117,12 +117,12 @@ async fn create_test_table(large_utf8: bool) -> Result<SessionContext> {
 }
 
 pub async fn run_query(sql: &str) -> Result<Vec<RecordBatch>> {
-    let ctx = create_test_table(false).await?;
+    let ctx = create_test_table(false)?;
     ctx.sql(sql).await?.collect().await
 }
 
 pub async fn run_query_large(sql: &str) -> Result<Vec<RecordBatch>> {
-    let ctx = create_test_table(true).await?;
+    let ctx = create_test_table(true)?;
     ctx.sql(sql).await?.collect().await
 }
 
@@ -131,7 +131,7 @@ pub async fn run_query_params(
     large_utf8: bool,
     query_values: impl Into<ParamValues>,
 ) -> Result<Vec<RecordBatch>> {
-    let ctx = create_test_table(large_utf8).await?;
+    let ctx = create_test_table(large_utf8)?;
     ctx.sql(sql).await?.with_param_values(query_values)?.collect().await
 }
 
