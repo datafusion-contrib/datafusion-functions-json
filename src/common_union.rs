@@ -207,10 +207,7 @@ impl From<JsonUnionField> for ScalarValue {
             JsonUnionField::Bool(b) => Self::Boolean(Some(b)),
             JsonUnionField::Int(i) => Self::Int64(Some(i)),
             JsonUnionField::Float(f) => Self::Float64(Some(f)),
-            JsonUnionField::Array(a) => Self::List(Self::new_list_nullable(
-                &a.into_iter().map(|e| Self::Utf8(Some(e))).collect::<Vec<_>>(),
-                &DataType::Utf8,
-            )),
+            JsonUnionField::Array(a) => Self::Utf8(Some(a.join(","))),
             JsonUnionField::Str(s) | JsonUnionField::Object(s) => Self::Utf8(Some(s)),
         }
     }
