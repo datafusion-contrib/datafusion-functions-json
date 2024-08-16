@@ -19,7 +19,10 @@ async fn create_test_table(large_utf8: bool) -> Result<SessionContext> {
 
     let test_data = [
         ("object_foo", r#" {"foo": "abc"} "#),
-        ("object_foo_array", r#" {"foo": [1]} "#),
+        (
+            "object_foo_array",
+            r#" {"foo": [1, true, {"nested_foo": "baz", "nested_bar": null}]} "#,
+        ),
         ("object_foo_obj", r#" {"foo": {}} "#),
         ("object_foo_null", r#" {"foo": null} "#),
         ("object_bar", r#" {"bar": true} "#),
@@ -149,5 +152,5 @@ pub async fn logical_plan(sql: &str) -> Vec<String> {
     let batches = run_query(sql).await.unwrap();
     let plan_col = batches[0].column(1).as_any().downcast_ref::<StringArray>().unwrap();
     let logical_plan = plan_col.value(0);
-    logical_plan.split('\n').map(|s| s.to_string()).collect()
+    logical_plan.split('\n').map(std::string::ToString::to_string).collect()
 }
