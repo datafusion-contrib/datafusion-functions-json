@@ -1,11 +1,11 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use arrow::array::UnionArray;
-use arrow_schema::DataType;
-use datafusion_common::arrow::array::ArrayRef;
-use datafusion_common::Result as DataFusionResult;
-use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
+use datafusion::arrow::array::ArrayRef;
+use datafusion::arrow::array::UnionArray;
+use datafusion::arrow::datatypes::DataType;
+use datafusion::common::Result as DataFusionResult;
+use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::{Jiter, NumberAny, NumberInt, Peek};
 
 use crate::common::{check_args, get_err, invoke, jiter_json_find, GetError, JsonPath};

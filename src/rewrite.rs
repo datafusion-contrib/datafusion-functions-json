@@ -1,12 +1,12 @@
-use arrow::datatypes::DataType;
-use datafusion_common::config::ConfigOptions;
-use datafusion_common::tree_node::Transformed;
-use datafusion_common::DFSchema;
-use datafusion_common::Result;
-use datafusion_expr::expr::{Alias, Cast, Expr, ScalarFunction};
-use datafusion_expr::expr_rewriter::FunctionRewrite;
-use datafusion_expr::planner::{ExprPlanner, PlannerResult, RawBinaryExpr};
-use datafusion_expr::sqlparser::ast::BinaryOperator;
+use datafusion::arrow::datatypes::DataType;
+use datafusion::common::config::ConfigOptions;
+use datafusion::common::tree_node::Transformed;
+use datafusion::common::DFSchema;
+use datafusion::common::Result;
+use datafusion::logical_expr::expr::{Alias, Cast, Expr, ScalarFunction};
+use datafusion::logical_expr::expr_rewriter::FunctionRewrite;
+use datafusion::logical_expr::planner::{ExprPlanner, PlannerResult, RawBinaryExpr};
+use datafusion::logical_expr::sqlparser::ast::BinaryOperator;
 
 pub(crate) struct JsonFunctionRewriter;
 

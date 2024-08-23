@@ -11,11 +11,7 @@ repository = "https://github.com/datafusion-contrib/datafusion-functions-json/"
 rust-version = "1.76.0"
 
 [dependencies]
-arrow = "52.2"
-arrow-schema = "52.2"
-datafusion-common = "41"
-datafusion-expr = "41"
-datafusion-execution = "41"
+datafusion = "41"
 jiter = "0.5"
 paste = "1"
 log = "0.4"
@@ -23,7 +19,6 @@ log = "0.4"
 [dev-dependencies]
 codspeed-criterion-compat = "2.3"
 criterion = "0.5.1"
-datafusion = "41"
 clap = "4"
 tokio = { version = "1.37", features = ["full"] }
 

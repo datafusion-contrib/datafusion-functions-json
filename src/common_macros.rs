@@ -18,8 +18,8 @@ macro_rules! make_udf_function {
     ($udf_impl:ty, $expr_fn_name:ident, $($arg:ident)*, $doc:expr) => {
         paste::paste! {
             #[doc = $doc]
-            #[must_use] pub fn $expr_fn_name($($arg: datafusion_expr::Expr),*) -> datafusion_expr::Expr {
-                datafusion_expr::Expr::ScalarFunction(datafusion_expr::expr::ScalarFunction::new_udf(
+            #[must_use] pub fn $expr_fn_name($($arg: datafusion::logical_expr::Expr),*) -> datafusion::logical_expr::Expr {
+                datafusion::logical_expr::Expr::ScalarFunction(datafusion::logical_expr::expr::ScalarFunction::new_udf(
                     [< $expr_fn_name _udf >](),
                     vec![$($arg),*],
                 ))
@@ -27,16 +27,16 @@ macro_rules! make_udf_function {
 
             /// Singleton instance of [`$udf_impl`], ensures the UDF is only created once
             /// named for example `STATIC_JSON_OBJ_CONTAINS`
-            static [< STATIC_ $expr_fn_name:upper >]: std::sync::OnceLock<std::sync::Arc<datafusion_expr::ScalarUDF>> =
+            static [< STATIC_ $expr_fn_name:upper >]: std::sync::OnceLock<std::sync::Arc<datafusion::logical_expr::ScalarUDF>> =
                 std::sync::OnceLock::new();
 
             /// ScalarFunction that returns a [`ScalarUDF`] for [`$udf_impl`]
             ///
-            /// [`ScalarUDF`]: datafusion_expr::ScalarUDF
-            pub fn [< $expr_fn_name _udf >]() -> std::sync::Arc<datafusion_expr::ScalarUDF> {
+            /// [`ScalarUDF`]: datafusion::logical_expr::ScalarUDF
+            pub fn [< $expr_fn_name _udf >]() -> std::sync::Arc<datafusion::logical_expr::ScalarUDF> {
                 [< STATIC_ $expr_fn_name:upper >]
                     .get_or_init(|| {
-                        std::sync::Arc::new(datafusion_expr::ScalarUDF::new_from_impl(
+                        std::sync::Arc::new(datafusion::logical_expr::ScalarUDF::new_from_impl(
                             <$udf_impl>::default(),
                         ))
                     })
