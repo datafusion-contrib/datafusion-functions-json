@@ -1,9 +1,10 @@
+use std::str::Utf8Error;
+
 use datafusion::arrow::array::{Array, ArrayRef, Int64Array, LargeStringArray, StringArray, UInt64Array};
 use datafusion::arrow::datatypes::DataType;
 use datafusion::common::{exec_err, plan_err, Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::ColumnarValue;
 use jiter::{Jiter, JiterError, Peek};
-use std::str::Utf8Error;
 
 use crate::common_union::{is_json_union, json_from_union_scalar, nested_json_array};
 

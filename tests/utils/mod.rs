@@ -5,7 +5,6 @@ use datafusion::arrow::array::{ArrayRef, Int64Array};
 use datafusion::arrow::datatypes::{DataType, Field, Schema};
 use datafusion::arrow::util::display::{ArrayFormatter, FormatOptions};
 use datafusion::arrow::{array::LargeStringArray, array::StringArray, record_batch::RecordBatch};
-
 use datafusion::common::ParamValues;
 use datafusion::error::Result;
 use datafusion::execution::context::SessionContext;
