@@ -48,7 +48,7 @@ impl ScalarUDFImpl for JsonContains {
         if arg_types.len() < 2 {
             plan_err!("The 'json_contains' function requires two or more arguments.")
         } else {
-            check_args(arg_types, self.name()).map(|()| DataType::Boolean)
+            check_args(arg_types, self.name(), DataType::Boolean)
         }
     }
 
