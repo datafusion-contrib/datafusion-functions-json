@@ -115,6 +115,7 @@ async fn create_test_table(large_utf8: bool) -> Result<SessionContext> {
         (r#" {"foo": {"bar": [0]}} "#, "foo", "bar", 0),
         (r#" {"bar": "snap"} "#, "foo", "spam", 0),
         (r#" {"spam": 1, "snap": 2} "#, "foo", "spam", 0),
+        (r#" {"spam": 1, "snap": 2} "#, "foo", "snap", 0),
     ];
     let dict_batch = RecordBatch::try_new(
         Arc::new(Schema::new(vec![

@@ -1149,6 +1149,7 @@ async fn test_dict_haystack() {
         "| {object={\"bar\": [0]}} |",
         "| {null=}               |",
         "| {null=}               |",
+        "| {null=}               |",
         "+-----------------------+",
     ];
 
@@ -1166,6 +1167,7 @@ async fn test_dict_haystack_needle() {
         "| {array=[0]} |",
         "| {null=}     |",
         "| {null=}     |",
+        "| {null=}     |",
         "+-------------+",
     ];
 
@@ -1176,7 +1178,7 @@ async fn test_dict_haystack_needle() {
 #[tokio::test]
 async fn test_dict_length() {
     let sql = "select json_length(json_data) v from dicts";
-    let expected = ["+---+", "| v |", "+---+", "| 1 |", "| 1 |", "| 2 |", "+---+"];
+    let expected = ["+---+", "| v |", "+---+", "| 1 |", "| 1 |", "| 2 |", "| 2 |", "+---+"];
 
     let batches = run_query(sql).await.unwrap();
     assert_batches_eq!(expected, &batches);
@@ -1192,7 +1194,24 @@ async fn test_dict_contains() {
         "| false |",
         "| false |",
         "| true  |",
+        "| true  |",
         "+-------+",
+    ];
+
+    let batches = run_query(sql).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_dict_contains_where() {
+    let sql = "select str_key2 from dicts where json_contains(json_data, str_key2)";
+    let expected = [
+        "+----------+",
+        "| str_key2 |",
+        "+----------+",
+        "| spam     |",
+        "| snap     |",
+        "+----------+",
     ];
 
     let batches = run_query(sql).await.unwrap();
@@ -1202,7 +1221,7 @@ async fn test_dict_contains() {
 #[tokio::test]
 async fn test_dict_get_int() {
     let sql = "select json_get_int(json_data, str_key2) v from dicts";
-    let expected = ["+---+", "| v |", "+---+", "|   |", "|   |", "| 1 |", "+---+"];
+    let expected = ["+---+", "| v |", "+---+", "|   |", "|   |", "| 1 |", "| 2 |", "+---+"];
 
     let batches = run_query(sql).await.unwrap();
     assert_batches_eq!(expected, &batches);
