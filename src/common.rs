@@ -10,8 +10,15 @@ use jiter::{Jiter, JiterError, Peek};
 
 use crate::common_union::{is_json_union, json_from_union_scalar, nested_json_array};
 
-/// check the args of a function return an error, return the return type
-pub fn check_args(args: &[DataType], fn_name: &str, value_type: DataType) -> DataFusionResult<DataType> {
+/// General implementation of `ScalarUDFImpl::return_type`.
+///
+/// # Arguments
+///
+/// * `args` - The arguments to the function
+/// * `fn_name` - The name of the function
+/// * `value_type` - The general return type of the function, might be wrapped in a dictionary depending
+///   on the first argument
+pub fn scalar_udf_return_type(args: &[DataType], fn_name: &str, value_type: DataType) -> DataFusionResult<DataType> {
     let Some(first) = args.first() else {
         return plan_err!("The '{fn_name}' function requires one or more arguments.");
     };
@@ -20,7 +27,7 @@ pub fn check_args(args: &[DataType], fn_name: &str, value_type: DataType) -> Dat
         // if !matches!(first, DataType::Utf8 | DataType::LargeUtf8) {
         return plan_err!("Unexpected argument type to '{fn_name}' at position 1, expected a string, got {first:?}.");
     }
-    args[1..].iter().enumerate().try_for_each(|(index, arg)| {
+    args.iter().skip(1).enumerate().try_for_each(|(index, arg)| {
         if is_str(arg) || is_int(arg) || dict_key_type(arg).is_some() {
             Ok(())
         } else {
@@ -41,10 +48,8 @@ fn is_str(d: &DataType) -> bool {
 }
 
 fn is_int(d: &DataType) -> bool {
-    matches!(
-        d,
-        DataType::UInt64 | DataType::Int64 | DataType::UInt32 | DataType::Int32
-    )
+    // TODO we should support more types of int, but that's a longer task
+    matches!(d, DataType::UInt64 | DataType::Int64)
 }
 
 fn dict_key_type(d: &DataType) -> Option<DataType> {
