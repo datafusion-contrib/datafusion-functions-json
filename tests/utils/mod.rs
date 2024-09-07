@@ -1,8 +1,10 @@
 #![allow(dead_code)]
 use std::sync::Arc;
 
-use datafusion::arrow::array::{ArrayRef, Int64Array};
-use datafusion::arrow::datatypes::{DataType, Field, Schema};
+use datafusion::arrow::array::{
+    ArrayRef, DictionaryArray, Int64Array, StringViewArray, UInt32Array, UInt64Array, UInt8Array,
+};
+use datafusion::arrow::datatypes::{DataType, Field, Int64Type, Schema, UInt32Type, UInt8Type};
 use datafusion::arrow::util::display::{ArrayFormatter, FormatOptions};
 use datafusion::arrow::{array::LargeStringArray, array::StringArray, record_batch::RecordBatch};
 use datafusion::common::ParamValues;
@@ -108,6 +110,69 @@ async fn create_test_table(large_utf8: bool) -> Result<SessionContext> {
         ],
     )?;
     ctx.register_batch("more_nested", more_nested_batch)?;
+
+    let dict_data = [
+        (r#" {"foo": {"bar": [0]}} "#, "foo", "bar", 0),
+        (r#" {"bar": "snap"} "#, "foo", "spam", 0),
+        (r#" {"spam": 1, "snap": 2} "#, "foo", "spam", 0),
+    ];
+    let dict_batch = RecordBatch::try_new(
+        Arc::new(Schema::new(vec![
+            Field::new(
+                "json_data",
+                DataType::Dictionary(DataType::UInt32.into(), DataType::Utf8.into()),
+                false,
+            ),
+            Field::new(
+                "str_key1",
+                DataType::Dictionary(DataType::UInt8.into(), DataType::LargeUtf8.into()),
+                false,
+            ),
+            Field::new(
+                "str_key2",
+                DataType::Dictionary(DataType::UInt8.into(), DataType::Utf8View.into()),
+                false,
+            ),
+            Field::new(
+                "int_key",
+                DataType::Dictionary(DataType::Int64.into(), DataType::UInt64.into()),
+                false,
+            ),
+        ])),
+        vec![
+            Arc::new(DictionaryArray::<UInt32Type>::new(
+                UInt32Array::from_iter_values(dict_data.iter().enumerate().map(|(id, _)| id as u32)),
+                Arc::new(StringArray::from(
+                    dict_data.iter().map(|(json, _, _, _)| *json).collect::<Vec<_>>(),
+                )),
+            )),
+            Arc::new(DictionaryArray::<UInt8Type>::new(
+                UInt8Array::from_iter_values(dict_data.iter().enumerate().map(|(id, _)| id as u8)),
+                Arc::new(LargeStringArray::from(
+                    dict_data
+                        .iter()
+                        .map(|(_, str_key1, _, _)| *str_key1)
+                        .collect::<Vec<_>>(),
+                )),
+            )),
+            Arc::new(DictionaryArray::<UInt8Type>::new(
+                UInt8Array::from_iter_values(dict_data.iter().enumerate().map(|(id, _)| id as u8)),
+                Arc::new(StringViewArray::from(
+                    dict_data
+                        .iter()
+                        .map(|(_, _, str_key2, _)| *str_key2)
+                        .collect::<Vec<_>>(),
+                )),
+            )),
+            Arc::new(DictionaryArray::<Int64Type>::new(
+                Int64Array::from_iter_values(dict_data.iter().enumerate().map(|(id, _)| id as i64)),
+                Arc::new(UInt64Array::from_iter_values(
+                    dict_data.iter().map(|(_, _, _, int_key)| *int_key as u64),
+                )),
+            )),
+        ],
+    )?;
+    ctx.register_batch("dicts", dict_batch)?;
 
     Ok(ctx)
 }

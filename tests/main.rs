@@ -1138,3 +1138,72 @@ async fn test_arrow_cast_numeric() {
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Boolean, "true".to_string()));
 }
+
+#[tokio::test]
+async fn test_dict_haystack() {
+    let sql = "select json_get(json_data, 'foo') v from dicts";
+    let expected = [
+        "+-----------------------+",
+        "| v                     |",
+        "+-----------------------+",
+        "| {object={\"bar\": [0]}} |",
+        "| {null=}               |",
+        "| {null=}               |",
+        "+-----------------------+",
+    ];
+
+    let batches = run_query(sql).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_dict_haystack_needle() {
+    let sql = "select json_get(json_get(json_data, str_key1), str_key2) v from dicts";
+    let expected = [
+        "+-------------+",
+        "| v           |",
+        "+-------------+",
+        "| {array=[0]} |",
+        "| {null=}     |",
+        "| {null=}     |",
+        "+-------------+",
+    ];
+
+    let batches = run_query(sql).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_dict_length() {
+    let sql = "select json_length(json_data) v from dicts";
+    let expected = ["+---+", "| v |", "+---+", "| 1 |", "| 1 |", "| 2 |", "+---+"];
+
+    let batches = run_query(sql).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_dict_contains() {
+    let sql = "select json_contains(json_data, str_key2) v from dicts";
+    let expected = [
+        "+-------+",
+        "| v     |",
+        "+-------+",
+        "| false |",
+        "| false |",
+        "| true  |",
+        "+-------+",
+    ];
+
+    let batches = run_query(sql).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_dict_get_int() {
+    let sql = "select json_get_int(json_data, str_key2) v from dicts";
+    let expected = ["+---+", "| v |", "+---+", "|   |", "|   |", "| 1 |", "+---+"];
+
+    let batches = run_query(sql).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+}
