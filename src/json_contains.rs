@@ -6,7 +6,7 @@ use datafusion::common::arrow::array::{ArrayRef, BooleanArray};
 use datafusion::common::{plan_err, Result, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 
-use crate::common::{invoke, jiter_json_find, scalar_udf_return_type, GetError, JsonPath};
+use crate::common::{invoke, jiter_json_find, return_type_check, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
@@ -48,28 +48,17 @@ impl ScalarUDFImpl for JsonContains {
         if arg_types.len() < 2 {
             plan_err!("The 'json_contains' function requires two or more arguments.")
         } else {
-            scalar_udf_return_type(arg_types, self.name(), DataType::Boolean)?;
-            // we always return a bool to work around https://github.com/apache/datafusion/issues/12380
-            Ok(DataType::Boolean)
+            return_type_check(arg_types, self.name()).map(|()| DataType::Boolean)
         }
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> Result<ColumnarValue> {
-        let r = invoke::<BooleanArray, bool>(
+        invoke::<BooleanArray, bool>(
             args,
             jiter_json_contains,
             |c| Ok(Arc::new(c) as ArrayRef),
             ScalarValue::Boolean,
-        );
-        // work around for https://github.com/apache/datafusion/issues/12380
-        // if this becomes permanent, adjust invoke to not dictionary encode the result in the first place
-        if let Ok(ColumnarValue::Array(a)) = &r {
-            use datafusion::arrow::array::AsArray;
-            if let Some(a) = a.as_any_dictionary_opt() {
-                return Ok(ColumnarValue::Array(a.values().clone()));
-            }
-        }
-        r
+        )
     }
 
     fn aliases(&self) -> &[String] {

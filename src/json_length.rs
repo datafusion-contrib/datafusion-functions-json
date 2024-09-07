@@ -7,7 +7,7 @@ use datafusion::common::{Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::Peek;
 
-use crate::common::{get_err, invoke, jiter_json_find, scalar_udf_return_type, GetError, JsonPath};
+use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
@@ -46,7 +46,7 @@ impl ScalarUDFImpl for JsonLength {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        scalar_udf_return_type(arg_types, self.name(), DataType::UInt64)
+        return_type_check(arg_types, self.name()).map(|()| DataType::UInt64)
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {

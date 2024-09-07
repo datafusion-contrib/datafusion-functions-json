@@ -1158,6 +1158,21 @@ async fn test_dict_haystack() {
 }
 
 #[tokio::test]
+async fn test_dict_haystack_filter() {
+    let sql = "select json_data v from dicts where json_get(json_data, 'foo') is not null";
+    let expected = [
+        "+-------------------------+",
+        "| v                       |",
+        "+-------------------------+",
+        "|  {\"foo\": {\"bar\": [0]}}  |",
+        "+-------------------------+",
+    ];
+
+    let batches = run_query(sql).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
 async fn test_dict_haystack_needle() {
     let sql = "select json_get(json_get(json_data, str_key1), str_key2) v from dicts";
     let expected = [
@@ -1178,7 +1193,17 @@ async fn test_dict_haystack_needle() {
 #[tokio::test]
 async fn test_dict_length() {
     let sql = "select json_length(json_data) v from dicts";
-    let expected = ["+---+", "| v |", "+---+", "| 1 |", "| 1 |", "| 2 |", "| 2 |", "+---+"];
+    #[rustfmt::skip]
+    let expected = [
+        "+---+",
+        "| v |",
+        "+---+",
+        "| 1 |",
+        "| 1 |",
+        "| 2 |",
+        "| 2 |",
+        "+---+",
+    ];
 
     let batches = run_query(sql).await.unwrap();
     assert_batches_eq!(expected, &batches);
@@ -1221,7 +1246,17 @@ async fn test_dict_contains_where() {
 #[tokio::test]
 async fn test_dict_get_int() {
     let sql = "select json_get_int(json_data, str_key2) v from dicts";
-    let expected = ["+---+", "| v |", "+---+", "|   |", "|   |", "| 1 |", "| 2 |", "+---+"];
+    #[rustfmt::skip]
+    let expected = [
+        "+---+",
+        "| v |",
+        "+---+",
+        "|   |",
+        "|   |",
+        "| 1 |",
+        "| 2 |",
+        "+---+",
+    ];
 
     let batches = run_query(sql).await.unwrap();
     assert_batches_eq!(expected, &batches);

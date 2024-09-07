@@ -10,25 +10,23 @@ use jiter::{Jiter, JiterError, Peek};
 
 use crate::common_union::{is_json_union, json_from_union_scalar, nested_json_array};
 
-/// General implementation of `ScalarUDFImpl::return_type`.
+/// General implementation of `ScalarUDFImpl::return_type` to check if the arguments are valid.
 ///
 /// # Arguments
 ///
 /// * `args` - The arguments to the function
 /// * `fn_name` - The name of the function
-/// * `value_type` - The general return type of the function, might be wrapped in a dictionary depending
-///   on the first argument
-pub fn scalar_udf_return_type(args: &[DataType], fn_name: &str, value_type: DataType) -> DataFusionResult<DataType> {
+pub fn return_type_check(args: &[DataType], fn_name: &str) -> DataFusionResult<()> {
     let Some(first) = args.first() else {
         return plan_err!("The '{fn_name}' function requires one or more arguments.");
     };
-    let first_dict_key_type = dict_key_type(first);
-    if !(is_str(first) || is_json_union(first) || first_dict_key_type.is_some()) {
+    if !(is_str(undict(first)) || is_json_union(first)) {
         // if !matches!(first, DataType::Utf8 | DataType::LargeUtf8) {
         return plan_err!("Unexpected argument type to '{fn_name}' at position 1, expected a string, got {first:?}.");
     }
     args.iter().skip(1).enumerate().try_for_each(|(index, arg)| {
-        if is_str(arg) || is_int(arg) || dict_key_type(arg).is_some() {
+        let t = undict(arg);
+        if is_str(t) || is_int(t) {
             Ok(())
         } else {
             plan_err!(
@@ -36,11 +34,7 @@ pub fn scalar_udf_return_type(args: &[DataType], fn_name: &str, value_type: Data
                 index + 2
             )
         }
-    })?;
-    match first_dict_key_type {
-        Some(t) => Ok(DataType::Dictionary(Box::new(t), Box::new(value_type))),
-        None => Ok(value_type),
-    }
+    })
 }
 
 fn is_str(d: &DataType) -> bool {
@@ -52,13 +46,12 @@ fn is_int(d: &DataType) -> bool {
     matches!(d, DataType::UInt64 | DataType::Int64)
 }
 
-fn dict_key_type(d: &DataType) -> Option<DataType> {
-    if let DataType::Dictionary(key, value) = d {
-        if is_str(value) || is_json_union(value) {
-            return Some(*key.clone());
-        }
+fn undict(d: &DataType) -> &DataType {
+    if let DataType::Dictionary(_, value) = d {
+        value.as_ref()
+    } else {
+        d
     }
-    None
 }
 
 #[derive(Debug)]
@@ -165,9 +158,11 @@ fn zip_apply<'a, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Optio
     object_lookup: bool,
 ) -> DataFusionResult<ArrayRef> {
     if let Some(d) = json_array.as_any_dictionary_opt() {
-        let a = zip_apply(d.values(), path_array, to_array, jiter_find, object_lookup)?;
-        return Ok(d.with_values(a).into());
+        // NOTE we do NOT map back to an dictionary as that doesn't work for `is null` or filtering
+        // see https://github.com/apache/datafusion/issues/12380
+        return zip_apply(d.values(), path_array, to_array, jiter_find, object_lookup);
     }
+
     let c = if let Some(string_array) = json_array.as_any().downcast_ref::<StringArray>() {
         zip_apply_iter(string_array.iter(), path_array, jiter_find)
     } else if let Some(large_string_array) = json_array.as_any().downcast_ref::<LargeStringArray>() {
@@ -230,8 +225,8 @@ fn scalar_apply<C: FromIterator<Option<I>>, I>(
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
 ) -> DataFusionResult<ArrayRef> {
     if let Some(d) = json_array.as_any_dictionary_opt() {
-        let a = scalar_apply(d.values(), path, to_array, jiter_find)?;
-        return Ok(d.with_values(a).into());
+        // as above, don't return a dict
+        return scalar_apply(d.values(), path, to_array, jiter_find);
     }
 
     let c = if let Some(string_array) = json_array.as_any().downcast_ref::<StringArray>() {
