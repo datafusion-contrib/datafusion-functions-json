@@ -1,9 +1,11 @@
 use std::sync::{Arc, OnceLock};
 
-use arrow::array::{Array, ArrayRef, BooleanArray, Float64Array, Int64Array, NullArray, StringArray, UnionArray};
-use arrow::buffer::Buffer;
-use arrow_schema::{DataType, Field, UnionFields, UnionMode};
-use datafusion_common::ScalarValue;
+use datafusion::arrow::array::{
+    Array, ArrayRef, BooleanArray, Float64Array, Int64Array, NullArray, StringArray, UnionArray,
+};
+use datafusion::arrow::buffer::Buffer;
+use datafusion::arrow::datatypes::{DataType, Field, UnionFields, UnionMode};
+use datafusion::common::ScalarValue;
 
 pub(crate) fn is_json_union(data_type: &DataType) -> bool {
     match data_type {
@@ -112,7 +114,7 @@ impl FromIterator<Option<JsonUnionField>> for JsonUnion {
 }
 
 impl TryFrom<JsonUnion> for UnionArray {
-    type Error = arrow::error::ArrowError;
+    type Error = datafusion::arrow::error::ArrowError;
 
     fn try_from(value: JsonUnion) -> Result<Self, Self::Error> {
         let children: Vec<Arc<dyn Array>> = vec![

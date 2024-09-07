@@ -1,10 +1,10 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use arrow_schema::DataType;
-use datafusion_common::arrow::array::{ArrayRef, BooleanArray};
-use datafusion_common::{plan_err, Result, ScalarValue};
-use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
+use datafusion::arrow::datatypes::DataType;
+use datafusion::common::arrow::array::{ArrayRef, BooleanArray};
+use datafusion::common::{plan_err, Result, ScalarValue};
+use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 
 use crate::common::{check_args, invoke, jiter_json_find, GetError, JsonPath};
 use crate::common_macros::make_udf_function;

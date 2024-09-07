@@ -1,11 +1,12 @@
-use arrow_schema::DataType;
+use datafusion::arrow::datatypes::DataType;
 use datafusion::assert_batches_eq;
-use datafusion_common::ScalarValue;
+use datafusion::common::ScalarValue;
+use datafusion::logical_expr::ColumnarValue;
 
-mod utils;
-use datafusion_expr::ColumnarValue;
 use datafusion_functions_json::udfs::json_get_str_udf;
 use utils::{display_val, logical_plan, run_query, run_query_large, run_query_params};
+
+mod utils;
 
 #[tokio::test]
 async fn test_json_contains() {
@@ -1131,6 +1132,7 @@ async fn test_long_arrow_cast() {
     assert_batches_eq!(expected, &batches);
 }
 
+#[tokio::test]
 async fn test_arrow_cast_numeric() {
     let sql = r#"select ('{"foo": 420}'->'foo')::numeric = 420"#;
     let batches = run_query(sql).await.unwrap();
