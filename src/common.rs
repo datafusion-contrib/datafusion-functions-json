@@ -142,7 +142,7 @@ fn invoke_array<C: FromIterator<Option<I>> + 'static, I>(
 ) -> DataFusionResult<ArrayRef> {
     if let Some(d) = needle_array.as_any_dictionary_opt() {
         let values = invoke_array(json_array, d.values(), to_array, jiter_find)?;
-        return unpack_dict_array(d.with_values(values)).map_err(Into::into);
+        unpack_dict_array(d.with_values(values)).map_err(Into::into)
     } else if let Some(str_path_array) = needle_array.as_any().downcast_ref::<StringArray>() {
         let paths = str_path_array.iter().map(|opt_key| opt_key.map(JsonPath::Key));
         zip_apply(json_array, paths, to_array, jiter_find, true)
