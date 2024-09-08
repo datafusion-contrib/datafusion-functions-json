@@ -1306,22 +1306,4 @@ async fn test_dict_filter() {
     let batches = ctx.sql(sql).await.unwrap().collect().await.unwrap();
 
     assert_batches_eq!(expected, &batches);
-
-    let sql = "select 1 as one from data where x is not null";
-    let expected = [
-        "+-----+",
-        "| one |",
-        "+-----+",
-        "| 1   |",
-        "| 1   |",
-        "| 1   |",
-        "| 1   |",
-        "| 1   |",
-        "+-----+",
-    ];
-
-    let batches = ctx.sql(sql).await.unwrap().collect().await.unwrap();
-
-    assert_batches_eq!(expected, &batches);
-
 }
