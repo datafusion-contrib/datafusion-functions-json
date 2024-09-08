@@ -1281,7 +1281,7 @@ async fn test_dict_filter() {
     let dict = builder.finish();
     let array = Arc::new(dict) as ArrayRef;
 
-    let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Dictionary(Box::new(DataType::Int8), Box::new(DataType::Utf8)), true)])); 
+    let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Dictionary(Box::new(DataType::Int8), Box::new(DataType::Utf8)), true)]));
 
     let data = RecordBatch::try_new(schema.clone(), vec![array]).unwrap();
 
