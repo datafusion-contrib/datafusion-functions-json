@@ -13,10 +13,16 @@ use datafusion::execution::context::SessionContext;
 use datafusion::prelude::SessionConfig;
 use datafusion_functions_json::register_all;
 
-async fn create_test_table(large_utf8: bool) -> Result<SessionContext> {
+
+pub async fn create_context() -> Result<SessionContext> {
     let config = SessionConfig::new().set_str("datafusion.sql_parser.dialect", "postgres");
     let mut ctx = SessionContext::new_with_config(config);
     register_all(&mut ctx)?;
+    Ok(ctx)
+}
+
+async fn create_test_table(large_utf8: bool) -> Result<SessionContext> {
+    let ctx = create_context().await?;
 
     let test_data = [
         ("object_foo", r#" {"foo": "abc"} "#),

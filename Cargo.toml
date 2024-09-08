@@ -15,6 +15,7 @@ datafusion = "41"
 jiter = "0.5"
 paste = "1"
 log = "0.4"
+arrow-cast = "52.0.0"
 
 [dev-dependencies]
 codspeed-criterion-compat = "2.3"

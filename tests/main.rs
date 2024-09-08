@@ -1,10 +1,14 @@
-use datafusion::arrow::datatypes::DataType;
+use std::sync::Arc;
+
+use datafusion::arrow::array::{ArrayRef, RecordBatch};
+use datafusion::arrow::datatypes::{Field, Int8Type, Schema};
+use datafusion::arrow::{array::StringDictionaryBuilder, datatypes::DataType};
 use datafusion::assert_batches_eq;
 use datafusion::common::ScalarValue;
 use datafusion::logical_expr::ColumnarValue;
 
 use datafusion_functions_json::udfs::json_get_str_udf;
-use utils::{display_val, logical_plan, run_query, run_query_large, run_query_params};
+use utils::{create_context, display_val, logical_plan, run_query, run_query_large, run_query_params};
 
 mod utils;
 
@@ -1260,4 +1264,41 @@ async fn test_dict_get_int() {
 
     let batches = run_query(sql).await.unwrap();
     assert_batches_eq!(expected, &batches);
+}
+
+
+#[tokio::test]
+async fn test_dict_filter() {
+    let mut builder = StringDictionaryBuilder::<Int8Type>::new();
+    builder.append(r#"{"foo": "bar"}"#).unwrap();
+    builder.append(r#"{"baz": "fizz"}"#).unwrap();
+    builder.append("nah").unwrap();
+    builder.append_null();
+
+    let dict = builder.finish();
+    let array = Arc::new(dict) as ArrayRef;
+
+    let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Dictionary(Box::new(DataType::Int8), Box::new(DataType::Utf8)), true)])); 
+
+    let data = RecordBatch::try_new(schema.clone(), vec![array]).unwrap();
+
+    let ctx = create_context().await.unwrap();
+    ctx.register_batch("data", data).unwrap();
+
+    let sql = "select json_get(x, 'baz') v from data";
+    let expected = [
+        "+------------+",
+        "| v          |",
+        "+------------+",
+        "| {null=}    |",
+        "| {str=fizz} |",
+        "| {null=}    |",
+        "| {null=}    |",
+        "+------------+",
+    ];
+
+    let batches = ctx.sql(sql).await.unwrap().collect().await.unwrap();
+
+    assert_batches_eq!(expected, &batches);
+
 }
