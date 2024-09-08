@@ -1274,6 +1274,9 @@ async fn build_dict_schema() -> SessionContext {
     builder.append(r#"{"baz": "abcd"}"#).unwrap();
     builder.append_null();
     builder.append(r#"{"baz": "fizz"}"#).unwrap();
+    builder.append(r#"{"baz": "fizz"}"#).unwrap();
+    builder.append(r#"{"baz": "fizz"}"#).unwrap();
+    builder.append(r#"{"baz": "fizz"}"#).unwrap();
     builder.append_null();
 
     let dict = builder.finish();
@@ -1307,6 +1310,9 @@ async fn test_dict_filter() {
         "| {str=abcd} |",
         "| {null=}    |",
         "| {str=fizz} |",
+        "| {str=fizz} |",
+        "| {str=fizz} |",
+        "| {str=fizz} |",
         "| {null=}    |",
         "+------------+",
     ];
@@ -1326,6 +1332,9 @@ async fn test_dict_filter_is_not_null() {
         "+-----------------+",
         "| {\"baz\": \"fizz\"} |",
         "| {\"baz\": \"abcd\"} |",
+        "| {\"baz\": \"fizz\"} |",
+        "| {\"baz\": \"fizz\"} |",
+        "| {\"baz\": \"fizz\"} |",
         "| {\"baz\": \"fizz\"} |",
         "+-----------------+",
     ];
