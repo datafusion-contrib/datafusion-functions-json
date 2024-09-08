@@ -1,9 +1,9 @@
 use std::str::Utf8Error;
 
-use arrow_cast::cast;
 use datafusion::arrow::array::{
     Array, ArrayRef, AsArray, Int64Array, LargeStringArray, StringArray, StringViewArray, UInt64Array,
 };
+use datafusion::arrow::compute::cast;
 use datafusion::arrow::datatypes::DataType;
 use datafusion::arrow::error::ArrowError;
 use datafusion::common::{exec_err, plan_err, Result as DataFusionResult, ScalarValue};
