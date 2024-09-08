@@ -1273,6 +1273,9 @@ async fn test_dict_filter() {
     builder.append(r#"{"foo": "bar"}"#).unwrap();
     builder.append(r#"{"baz": "fizz"}"#).unwrap();
     builder.append("nah").unwrap();
+    builder.append(r#"{"baz": "abcd"}"#).unwrap();
+    builder.append_null();
+    builder.append(r#"{"baz": "fizz"}"#).unwrap();
     builder.append_null();
 
     let dict = builder.finish();
@@ -1293,6 +1296,9 @@ async fn test_dict_filter() {
         "| {null=}    |",
         "| {str=fizz} |",
         "| {null=}    |",
+        "| {str=abcd} |",
+        "| {null=}    |",
+        "| {str=fizz} |",
         "| {null=}    |",
         "+------------+",
     ];
