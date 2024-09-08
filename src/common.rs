@@ -22,12 +22,12 @@ pub fn return_type_check(args: &[DataType], fn_name: &str) -> DataFusionResult<(
     let Some(first) = args.first() else {
         return plan_err!("The '{fn_name}' function requires one or more arguments.");
     };
-    if !(is_str(undict(first)) || is_json_union(first)) {
+    if !(is_str(unpack_dict_type(first)) || is_json_union(first)) {
         // if !matches!(first, DataType::Utf8 | DataType::LargeUtf8) {
         return plan_err!("Unexpected argument type to '{fn_name}' at position 1, expected a string, got {first:?}.");
     }
     args.iter().skip(1).enumerate().try_for_each(|(index, arg)| {
-        let t = undict(arg);
+        let t = unpack_dict_type(arg);
         if is_str(t) || is_int(t) {
             Ok(())
         } else {
@@ -56,7 +56,8 @@ fn unpack_dict_array(array: ArrayRef) -> Result<ArrayRef, ArrowError> {
     }
 }
 
-fn undict(d: &DataType) -> &DataType {
+// if the type is a dict, return the value type, otherwise return the type
+fn unpack_dict_type(d: &DataType) -> &DataType {
     if let DataType::Dictionary(_, value) = d {
         value.as_ref()
     } else {
