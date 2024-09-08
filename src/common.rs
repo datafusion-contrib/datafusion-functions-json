@@ -1,11 +1,11 @@
 use std::str::Utf8Error;
 
+use arrow_cast::cast;
 use datafusion::arrow::array::{
     Array, ArrayRef, AsArray, Int64Array, LargeStringArray, StringArray, StringViewArray, UInt64Array,
 };
-use datafusion::arrow::error::ArrowError;
-use arrow_cast::cast;
 use datafusion::arrow::datatypes::DataType;
+use datafusion::arrow::error::ArrowError;
 use datafusion::common::{exec_err, plan_err, Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::ColumnarValue;
 use jiter::{Jiter, JiterError, Peek};
@@ -51,10 +51,8 @@ fn is_int(d: &DataType) -> bool {
 /// Convert a dict array to a non-dict array.
 fn unpack_dict_array(array: ArrayRef) -> Result<ArrayRef, ArrowError> {
     match array.data_type() {
-        DataType::Dictionary(_, value_type) => {
-            cast(array.as_ref(), value_type)
-        }
-        _ => Ok(array)
+        DataType::Dictionary(_, value_type) => cast(array.as_ref(), value_type),
+        _ => Ok(array),
     }
 }
 

@@ -6,7 +6,7 @@ use datafusion::arrow::{array::StringDictionaryBuilder, datatypes::DataType};
 use datafusion::assert_batches_eq;
 use datafusion::common::ScalarValue;
 use datafusion::logical_expr::ColumnarValue;
-
+use datafusion::prelude::SessionContext;
 use datafusion_functions_json::udfs::json_get_str_udf;
 use utils::{create_context, display_val, logical_plan, run_query, run_query_large, run_query_params};
 
@@ -1266,9 +1266,7 @@ async fn test_dict_get_int() {
     assert_batches_eq!(expected, &batches);
 }
 
-
-#[tokio::test]
-async fn test_dict_filter() {
+async fn build_dict_schema() -> SessionContext {
     let mut builder = StringDictionaryBuilder::<Int8Type>::new();
     builder.append(r#"{"foo": "bar"}"#).unwrap();
     builder.append(r#"{"baz": "fizz"}"#).unwrap();
@@ -1281,12 +1279,22 @@ async fn test_dict_filter() {
     let dict = builder.finish();
     let array = Arc::new(dict) as ArrayRef;
 
-    let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Dictionary(Box::new(DataType::Int8), Box::new(DataType::Utf8)), true)]));
+    let schema = Arc::new(Schema::new(vec![Field::new(
+        "x",
+        DataType::Dictionary(Box::new(DataType::Int8), Box::new(DataType::Utf8)),
+        true,
+    )]));
 
     let data = RecordBatch::try_new(schema.clone(), vec![array]).unwrap();
 
     let ctx = create_context().await.unwrap();
     ctx.register_batch("data", data).unwrap();
+    ctx
+}
+
+#[tokio::test]
+async fn test_dict_filter() {
+    let ctx = build_dict_schema().await;
 
     let sql = "select json_get(x, 'baz') v from data";
     let expected = [
@@ -1301,6 +1309,25 @@ async fn test_dict_filter() {
         "| {str=fizz} |",
         "| {null=}    |",
         "+------------+",
+    ];
+
+    let batches = ctx.sql(sql).await.unwrap().collect().await.unwrap();
+
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_dict_filter_is_not_null() {
+    let ctx = build_dict_schema().await;
+    let sql = "select x from data where json_get(x, 'baz') is not null";
+    let expected = [
+        "+-----------------+",
+        "| x               |",
+        "+-----------------+",
+        "| {\"baz\": \"fizz\"} |",
+        "| {\"baz\": \"abcd\"} |",
+        "| {\"baz\": \"fizz\"} |",
+        "+-----------------+",
     ];
 
     let batches = ctx.sql(sql).await.unwrap().collect().await.unwrap();

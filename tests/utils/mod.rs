@@ -13,7 +13,6 @@ use datafusion::execution::context::SessionContext;
 use datafusion::prelude::SessionConfig;
 use datafusion_functions_json::register_all;
 
-
 pub async fn create_context() -> Result<SessionContext> {
     let config = SessionConfig::new().set_str("datafusion.sql_parser.dialect", "postgres");
     let mut ctx = SessionContext::new_with_config(config);
