@@ -1,10 +1,14 @@
-use datafusion::arrow::datatypes::DataType;
+use std::sync::Arc;
+
+use datafusion::arrow::array::{ArrayRef, RecordBatch};
+use datafusion::arrow::datatypes::{Field, Int8Type, Schema};
+use datafusion::arrow::{array::StringDictionaryBuilder, datatypes::DataType};
 use datafusion::assert_batches_eq;
 use datafusion::common::ScalarValue;
 use datafusion::logical_expr::ColumnarValue;
-
+use datafusion::prelude::SessionContext;
 use datafusion_functions_json::udfs::json_get_str_udf;
-use utils::{display_val, logical_plan, run_query, run_query_large, run_query_params};
+use utils::{create_context, display_val, logical_plan, run_query, run_query_large, run_query_params};
 
 mod utils;
 
@@ -197,11 +201,11 @@ async fn test_json_get_no_path() {
     let batches = run_query(r#"select json_get('"foo"')::string"#).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Utf8, "foo".to_string()));
 
-    let batches = run_query(r#"select json_get('123')::int"#).await.unwrap();
+    let batches = run_query(r"select json_get('123')::int").await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Int64, "123".to_string()));
 
-    let batches = run_query(r#"select json_get('true')::int"#).await.unwrap();
-    assert_eq!(display_val(batches).await, (DataType::Int64, "".to_string()));
+    let batches = run_query(r"select json_get('true')::int").await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Int64, String::new()));
 }
 
 #[tokio::test]
@@ -350,7 +354,7 @@ async fn test_json_length_object() {
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::UInt64, "3".to_string()));
 
-    let sql = r#"select json_length('{}')"#;
+    let sql = r"select json_length('{}')";
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::UInt64, "0".to_string()));
 }
@@ -359,7 +363,7 @@ async fn test_json_length_object() {
 async fn test_json_length_string() {
     let sql = r#"select json_length('"foobar"')"#;
     let batches = run_query(sql).await.unwrap();
-    assert_eq!(display_val(batches).await, (DataType::UInt64, "".to_string()));
+    assert_eq!(display_val(batches).await, (DataType::UInt64, String::new()));
 }
 
 #[tokio::test]
@@ -370,7 +374,7 @@ async fn test_json_length_object_nested() {
 
     let sql = r#"select json_length('{"a": 1, "b": 2, "c": []}', 'b')"#;
     let batches = run_query(sql).await.unwrap();
-    assert_eq!(display_val(batches).await, (DataType::UInt64, "".to_string()));
+    assert_eq!(display_val(batches).await, (DataType::UInt64, String::new()));
 }
 
 #[tokio::test]
@@ -455,7 +459,7 @@ async fn test_json_contains_large_both_params() {
 
 #[tokio::test]
 async fn test_json_length_vec() {
-    let sql = r#"select name, json_len(json_data) as len from test"#;
+    let sql = r"select name, json_len(json_data) as len from test";
     let batches = run_query(sql).await.unwrap();
 
     let expected = [
@@ -479,7 +483,7 @@ async fn test_json_length_vec() {
 
 #[tokio::test]
 async fn test_no_args() {
-    let err = run_query(r#"select json_len()"#).await.unwrap_err();
+    let err = run_query(r"select json_len()").await.unwrap_err();
     assert!(err
         .to_string()
         .contains("No function matches the given name and argument types 'json_length()'."));
@@ -562,10 +566,10 @@ async fn test_json_get_nested_collapsed() {
 #[tokio::test]
 async fn test_json_get_cte() {
     // avoid auto-un-nesting with a CTE
-    let sql = r#"
+    let sql = r"
         with t as (select name, json_get(json_data, 'foo') j from test)
         select name, json_get(j, 0) v from t
-    "#;
+    ";
     let expected = [
         "+------------------+---------+",
         "| name             | v       |",
@@ -587,11 +591,11 @@ async fn test_json_get_cte() {
 #[tokio::test]
 async fn test_plan_json_get_cte() {
     // avoid auto-unnesting with a CTE
-    let sql = r#"
+    let sql = r"
         explain
         with t as (select name, json_get(json_data, 'foo') j from test)
         select name, json_get(j, 0) v from t
-    "#;
+    ";
     let expected = [
         "Projection: t.name, json_get(t.j, Int64(0)) AS v",
         "  SubqueryAlias: t",
@@ -751,7 +755,7 @@ async fn test_arrow() {
 
 #[tokio::test]
 async fn test_plan_arrow() {
-    let lines = logical_plan(r#"explain select json_data->'foo' from test"#).await;
+    let lines = logical_plan(r"explain select json_data->'foo' from test").await;
 
     let expected = [
         "Projection: json_get(test.json_data, Utf8(\"foo\")) AS test.json_data -> Utf8(\"foo\")",
@@ -783,7 +787,7 @@ async fn test_long_arrow() {
 
 #[tokio::test]
 async fn test_plan_long_arrow() {
-    let lines = logical_plan(r#"explain select json_data->>'foo' from test"#).await;
+    let lines = logical_plan(r"explain select json_data->>'foo' from test").await;
 
     let expected = [
         "Projection: json_as_text(test.json_data, Utf8(\"foo\")) AS test.json_data ->> Utf8(\"foo\")",
@@ -834,7 +838,7 @@ async fn test_arrow_cast_int() {
 
 #[tokio::test]
 async fn test_plan_arrow_cast_int() {
-    let lines = logical_plan(r#"explain select (json_data->'foo')::int from test"#).await;
+    let lines = logical_plan(r"explain select (json_data->'foo')::int from test").await;
 
     let expected = [
         "Projection: json_get_int(test.json_data, Utf8(\"foo\")) AS test.json_data -> Utf8(\"foo\")",
@@ -866,7 +870,7 @@ async fn test_arrow_double_nested() {
 
 #[tokio::test]
 async fn test_plan_arrow_double_nested() {
-    let lines = logical_plan(r#"explain select json_data->'foo'->0 from test"#).await;
+    let lines = logical_plan(r"explain select json_data->'foo'->0 from test").await;
 
     let expected = [
         "Projection: json_get(test.json_data, Utf8(\"foo\"), Int64(0)) AS test.json_data -> Utf8(\"foo\") -> Int64(0)",
@@ -900,7 +904,7 @@ async fn test_arrow_double_nested_cast() {
 
 #[tokio::test]
 async fn test_plan_arrow_double_nested_cast() {
-    let lines = logical_plan(r#"explain select (json_data->'foo'->0)::int from test"#).await;
+    let lines = logical_plan(r"explain select (json_data->'foo'->0)::int from test").await;
 
     let expected = [
         "Projection: json_get_int(test.json_data, Utf8(\"foo\"), Int64(0)) AS test.json_data -> Utf8(\"foo\") -> Int64(0)",
@@ -948,7 +952,7 @@ async fn test_arrow_nested_double_columns() {
 async fn test_lexical_precedence_wrong() {
     let sql = r#"select '{"a": "b"}'->>'a'='b' as v"#;
     let err = run_query(sql).await.unwrap_err();
-    assert_eq!(err.to_string(), "Error during planning: Unexpected argument type to 'json_as_text' at position 2, expected string or int, got Boolean.")
+    assert_eq!(err.to_string(), "Error during planning: Unexpected argument type to 'json_as_text' at position 2, expected string or int, got Boolean.");
 }
 
 #[tokio::test]
@@ -1259,5 +1263,83 @@ async fn test_dict_get_int() {
     ];
 
     let batches = run_query(sql).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+}
+
+async fn build_dict_schema() -> SessionContext {
+    let mut builder = StringDictionaryBuilder::<Int8Type>::new();
+    builder.append(r#"{"foo": "bar"}"#).unwrap();
+    builder.append(r#"{"baz": "fizz"}"#).unwrap();
+    builder.append("nah").unwrap();
+    builder.append(r#"{"baz": "abcd"}"#).unwrap();
+    builder.append_null();
+    builder.append(r#"{"baz": "fizz"}"#).unwrap();
+    builder.append(r#"{"baz": "fizz"}"#).unwrap();
+    builder.append(r#"{"baz": "fizz"}"#).unwrap();
+    builder.append(r#"{"baz": "fizz"}"#).unwrap();
+    builder.append_null();
+
+    let dict = builder.finish();
+    let array = Arc::new(dict) as ArrayRef;
+
+    let schema = Arc::new(Schema::new(vec![Field::new(
+        "x",
+        DataType::Dictionary(Box::new(DataType::Int8), Box::new(DataType::Utf8)),
+        true,
+    )]));
+
+    let data = RecordBatch::try_new(schema.clone(), vec![array]).unwrap();
+
+    let ctx = create_context().await.unwrap();
+    ctx.register_batch("data", data).unwrap();
+    ctx
+}
+
+#[tokio::test]
+async fn test_dict_filter() {
+    let ctx = build_dict_schema().await;
+
+    let sql = "select json_get(x, 'baz') v from data";
+    let expected = [
+        "+------------+",
+        "| v          |",
+        "+------------+",
+        "| {null=}    |",
+        "| {str=fizz} |",
+        "| {null=}    |",
+        "| {str=abcd} |",
+        "| {null=}    |",
+        "| {str=fizz} |",
+        "| {str=fizz} |",
+        "| {str=fizz} |",
+        "| {str=fizz} |",
+        "| {null=}    |",
+        "+------------+",
+    ];
+
+    let batches = ctx.sql(sql).await.unwrap().collect().await.unwrap();
+
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_dict_filter_is_not_null() {
+    let ctx = build_dict_schema().await;
+    let sql = "select x from data where json_get(x, 'baz') is not null";
+    let expected = [
+        "+-----------------+",
+        "| x               |",
+        "+-----------------+",
+        "| {\"baz\": \"fizz\"} |",
+        "| {\"baz\": \"abcd\"} |",
+        "| {\"baz\": \"fizz\"} |",
+        "| {\"baz\": \"fizz\"} |",
+        "| {\"baz\": \"fizz\"} |",
+        "| {\"baz\": \"fizz\"} |",
+        "+-----------------+",
+    ];
+
+    let batches = ctx.sql(sql).await.unwrap().collect().await.unwrap();
+
     assert_batches_eq!(expected, &batches);
 }

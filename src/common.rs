@@ -3,7 +3,9 @@ use std::str::Utf8Error;
 use datafusion::arrow::array::{
     Array, ArrayRef, AsArray, Int64Array, LargeStringArray, StringArray, StringViewArray, UInt64Array,
 };
+use datafusion::arrow::compute::cast;
 use datafusion::arrow::datatypes::DataType;
+use datafusion::arrow::error::ArrowError;
 use datafusion::common::{exec_err, plan_err, Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::ColumnarValue;
 use jiter::{Jiter, JiterError, Peek};
@@ -20,12 +22,12 @@ pub fn return_type_check(args: &[DataType], fn_name: &str) -> DataFusionResult<(
     let Some(first) = args.first() else {
         return plan_err!("The '{fn_name}' function requires one or more arguments.");
     };
-    if !(is_str(undict(first)) || is_json_union(first)) {
+    if !(is_str(unpack_dict_type(first)) || is_json_union(first)) {
         // if !matches!(first, DataType::Utf8 | DataType::LargeUtf8) {
         return plan_err!("Unexpected argument type to '{fn_name}' at position 1, expected a string, got {first:?}.");
     }
     args.iter().skip(1).enumerate().try_for_each(|(index, arg)| {
-        let t = undict(arg);
+        let t = unpack_dict_type(arg);
         if is_str(t) || is_int(t) {
             Ok(())
         } else {
@@ -46,7 +48,16 @@ fn is_int(d: &DataType) -> bool {
     matches!(d, DataType::UInt64 | DataType::Int64)
 }
 
-fn undict(d: &DataType) -> &DataType {
+/// Convert a dict array to a non-dict array.
+fn unpack_dict_array(array: ArrayRef) -> Result<ArrayRef, ArrowError> {
+    match array.data_type() {
+        DataType::Dictionary(_, value_type) => cast(array.as_ref(), value_type),
+        _ => Ok(array),
+    }
+}
+
+// if the type is a dict, return the value type, otherwise return the type
+fn unpack_dict_type(d: &DataType) -> &DataType {
     if let DataType::Dictionary(_, value) = d {
         value.as_ref()
     } else {
@@ -129,7 +140,8 @@ fn invoke_array<C: FromIterator<Option<I>> + 'static, I>(
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
 ) -> DataFusionResult<ArrayRef> {
     if let Some(d) = needle_array.as_any_dictionary_opt() {
-        invoke_array(json_array, d.values(), to_array, jiter_find)
+        let values = invoke_array(json_array, d.values(), to_array, jiter_find)?;
+        unpack_dict_array(d.with_values(values)).map_err(Into::into)
     } else if let Some(str_path_array) = needle_array.as_any().downcast_ref::<StringArray>() {
         let paths = str_path_array.iter().map(|opt_key| opt_key.map(JsonPath::Key));
         zip_apply(json_array, paths, to_array, jiter_find, true)
@@ -160,7 +172,8 @@ fn zip_apply<'a, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Optio
     if let Some(d) = json_array.as_any_dictionary_opt() {
         // NOTE we do NOT map back to an dictionary as that doesn't work for `is null` or filtering
         // see https://github.com/apache/datafusion/issues/12380
-        return zip_apply(d.values(), path_array, to_array, jiter_find, object_lookup);
+        let values = zip_apply(d.values(), path_array, to_array, jiter_find, object_lookup)?;
+        return unpack_dict_array(d.with_values(values)).map_err(Into::into);
     }
 
     let c = if let Some(string_array) = json_array.as_any().downcast_ref::<StringArray>() {
@@ -226,7 +239,8 @@ fn scalar_apply<C: FromIterator<Option<I>>, I>(
 ) -> DataFusionResult<ArrayRef> {
     if let Some(d) = json_array.as_any_dictionary_opt() {
         // as above, don't return a dict
-        return scalar_apply(d.values(), path, to_array, jiter_find);
+        let values = scalar_apply(d.values(), path, to_array, jiter_find)?;
+        return unpack_dict_array(d.with_values(values)).map_err(Into::into);
     }
 
     let c = if let Some(string_array) = json_array.as_any().downcast_ref::<StringArray>() {
