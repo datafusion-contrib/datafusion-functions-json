@@ -2,10 +2,10 @@ use std::str::Utf8Error;
 use std::sync::Arc;
 
 use datafusion::arrow::array::{
-    Array, ArrayRef, AsArray, BooleanBufferBuilder, DictionaryArray, Int64Array, LargeStringArray, PrimitiveArray,
-    StringArray, StringViewArray, UInt64Array, UnionArray,
+    Array, ArrayRef, AsArray, BooleanArray, BooleanBufferBuilder, DictionaryArray, Int64Array, LargeStringArray,
+    PrimitiveArray, StringArray, StringViewArray, UInt64Array, UnionArray,
 };
-use datafusion::arrow::buffer::NullBuffer;
+use datafusion::arrow::buffer::{BooleanBuffer, NullBuffer};
 use datafusion::arrow::datatypes::{ArrowNativeType, ArrowPrimitiveType, DataType};
 use datafusion::arrow::downcast_dictionary_array;
 use datafusion::common::{exec_err, plan_err, Result as DataFusionResult, ScalarValue};
@@ -179,8 +179,6 @@ fn zip_apply<'a, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Optio
             }
             // JSON union: post-process the array to set keys to null where the union member is null
             let type_ids = values.as_any().downcast_ref::<UnionArray>().unwrap().type_ids();
-
-            // FIXME downcast_dictionary_array! not hygenic with datafusion import
             return Ok(Arc::new(DictionaryArray::new(
                 mask_dictionary_keys(json_array.keys(), type_ids),
                 values,
@@ -257,8 +255,6 @@ fn scalar_apply<C: FromIterator<Option<I>>, I>(
             }
             // JSON union: post-process the array to set keys to null where the union member is null
             let type_ids = values.as_any().downcast_ref::<UnionArray>().unwrap().type_ids();
-
-            // FIXME downcast_dictionary_array! not hygenic with datafusion import
             return Ok(Arc::new(DictionaryArray::new(
                 mask_dictionary_keys(json_array.keys(), type_ids),
                 values,
@@ -353,14 +349,15 @@ impl From<Utf8Error> for GetError {
 /// This is a workaround to https://github.com/apache/arrow-rs/issues/6017#issuecomment-2352756753
 /// - i.e. that dictionary null is most reliably done if the keys are null.
 fn mask_dictionary_keys<K: ArrowPrimitiveType>(keys: &PrimitiveArray<K>, type_ids: &[i8]) -> PrimitiveArray<K> {
-    let mut null_builder = BooleanBufferBuilder::new(keys.len());
-    for key in keys {
-        if key.is_none() || key.is_some_and(|key| type_ids[key.as_usize()] == TYPE_ID_NULL) {
-            null_builder.append(false);
-        } else {
-            null_builder.append(true);
-        }
-    }
-    let null_buffer = NullBuffer::new(null_builder.finish());
-    PrimitiveArray::new(keys.values().clone(), Some(null_buffer))
+    PrimitiveArray::new(
+        keys.values().clone(),
+        Some(
+            keys.iter()
+                .map(|k| match k {
+                    Some(k) => type_ids[k.as_usize()] != TYPE_ID_NULL,
+                    None => false,
+                })
+                .collect(),
+        ),
+    )
 }
