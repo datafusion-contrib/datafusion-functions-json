@@ -4,7 +4,7 @@ use datafusion::common::ScalarValue;
 use datafusion::logical_expr::ColumnarValue;
 
 use datafusion_functions_json::udfs::json_get_str_udf;
-use utils::{display_val, logical_plan, run_query, run_query_large, run_query_params};
+use utils::{display_val, logical_plan, run_query, run_query_dict, run_query_large, run_query_params};
 
 mod utils;
 
@@ -1073,8 +1073,52 @@ async fn test_arrow_union_is_null() {
 }
 
 #[tokio::test]
+async fn test_arrow_union_is_null_dict_encoded() {
+    let batches = run_query_dict("select name, (json_data->'foo') is null from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+---------------------------------------+",
+        "| name             | test.json_data -> Utf8(\"foo\") IS NULL |",
+        "+------------------+---------------------------------------+",
+        "| object_foo       | false                                 |",
+        "| object_foo_array | false                                 |",
+        "| object_foo_obj   | false                                 |",
+        "| object_foo_null  | true                                  |",
+        "| object_bar       | true                                  |",
+        "| list_foo         | true                                  |",
+        "| invalid_json     | true                                  |",
+        "+------------------+---------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
 async fn test_arrow_union_is_not_null() {
     let batches = run_query("select name, (json_data->'foo') is not null from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+-------------------------------------------+",
+        "| name             | test.json_data -> Utf8(\"foo\") IS NOT NULL |",
+        "+------------------+-------------------------------------------+",
+        "| object_foo       | true                                      |",
+        "| object_foo_array | true                                      |",
+        "| object_foo_obj   | true                                      |",
+        "| object_foo_null  | false                                     |",
+        "| object_bar       | false                                     |",
+        "| list_foo         | false                                     |",
+        "| invalid_json     | false                                     |",
+        "+------------------+-------------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_arrow_union_is_not_null_dict_encoded() {
+    let batches = run_query_dict("select name, (json_data->'foo') is not null from test")
         .await
         .unwrap();
 
@@ -1147,8 +1191,8 @@ async fn test_dict_haystack() {
         "| v                     |",
         "+-----------------------+",
         "| {object={\"bar\": [0]}} |",
-        "| {null=}               |",
-        "| {null=}               |",
+        "|                       |",
+        "|                       |",
         "+-----------------------+",
     ];
 
@@ -1164,8 +1208,8 @@ async fn test_dict_haystack_needle() {
         "| v           |",
         "+-------------+",
         "| {array=[0]} |",
-        "| {null=}     |",
-        "| {null=}     |",
+        "|             |",
+        "|             |",
         "+-------------+",
     ];
 

@@ -2,9 +2,9 @@
 use std::sync::Arc;
 
 use datafusion::arrow::array::{
-    ArrayRef, DictionaryArray, Int64Array, StringViewArray, UInt32Array, UInt64Array, UInt8Array,
+    ArrayRef, DictionaryArray, Int32Array, Int64Array, StringViewArray, UInt32Array, UInt64Array, UInt8Array,
 };
-use datafusion::arrow::datatypes::{DataType, Field, Int64Type, Schema, UInt32Type, UInt8Type};
+use datafusion::arrow::datatypes::{DataType, Field, Int32Type, Int64Type, Schema, UInt32Type, UInt8Type};
 use datafusion::arrow::util::display::{ArrayFormatter, FormatOptions};
 use datafusion::arrow::{array::LargeStringArray, array::StringArray, record_batch::RecordBatch};
 use datafusion::common::ParamValues;
@@ -13,7 +13,7 @@ use datafusion::execution::context::SessionContext;
 use datafusion::prelude::SessionConfig;
 use datafusion_functions_json::register_all;
 
-async fn create_test_table(large_utf8: bool) -> Result<SessionContext> {
+async fn create_test_table(large_utf8: bool, dict_encoded: bool) -> Result<SessionContext> {
     let config = SessionConfig::new().set_str("datafusion.sql_parser.dialect", "postgres");
     let mut ctx = SessionContext::new_with_config(config);
     register_all(&mut ctx)?;
@@ -28,11 +28,20 @@ async fn create_test_table(large_utf8: bool) -> Result<SessionContext> {
         ("invalid_json", "is not json"),
     ];
     let json_values = test_data.iter().map(|(_, json)| *json).collect::<Vec<_>>();
-    let (json_data_type, json_array): (DataType, ArrayRef) = if large_utf8 {
+    let (mut json_data_type, mut json_array): (DataType, ArrayRef) = if large_utf8 {
         (DataType::LargeUtf8, Arc::new(LargeStringArray::from(json_values)))
     } else {
         (DataType::Utf8, Arc::new(StringArray::from(json_values)))
     };
+
+    if dict_encoded {
+        json_data_type = DataType::Dictionary(DataType::Int32.into(), json_data_type.into());
+        json_array = Arc::new(DictionaryArray::<Int32Type>::new(
+            Int32Array::from_iter_values(0..(json_array.len() as i32)),
+            json_array,
+        ));
+    }
+
     let test_batch = RecordBatch::try_new(
         Arc::new(Schema::new(vec![
             Field::new("name", DataType::Utf8, false),
@@ -178,12 +187,17 @@ async fn create_test_table(large_utf8: bool) -> Result<SessionContext> {
 }
 
 pub async fn run_query(sql: &str) -> Result<Vec<RecordBatch>> {
-    let ctx = create_test_table(false).await?;
+    let ctx = create_test_table(false, false).await?;
     ctx.sql(sql).await?.collect().await
 }
 
 pub async fn run_query_large(sql: &str) -> Result<Vec<RecordBatch>> {
-    let ctx = create_test_table(true).await?;
+    let ctx = create_test_table(true, false).await?;
+    ctx.sql(sql).await?.collect().await
+}
+
+pub async fn run_query_dict(sql: &str) -> Result<Vec<RecordBatch>> {
+    let ctx = create_test_table(false, true).await?;
     ctx.sql(sql).await?.collect().await
 }
 
@@ -192,7 +206,7 @@ pub async fn run_query_params(
     large_utf8: bool,
     query_values: impl Into<ParamValues>,
 ) -> Result<Vec<RecordBatch>> {
-    let ctx = create_test_table(large_utf8).await?;
+    let ctx = create_test_table(large_utf8, false).await?;
     ctx.sql(sql).await?.with_param_values(query_values)?.collect().await
 }
 

@@ -1,14 +1,20 @@
 use std::str::Utf8Error;
+use std::sync::Arc;
 
 use datafusion::arrow::array::{
-    Array, ArrayRef, AsArray, Int64Array, LargeStringArray, StringArray, StringViewArray, UInt64Array,
+    Array, ArrayRef, AsArray, BooleanBufferBuilder, DictionaryArray, Int64Array, LargeStringArray, PrimitiveArray,
+    StringArray, StringViewArray, UInt64Array, UnionArray,
 };
-use datafusion::arrow::datatypes::DataType;
+use datafusion::arrow::buffer::NullBuffer;
+use datafusion::arrow::datatypes::{
+    ArrowNativeType, ArrowPrimitiveType, DataType, Int16Type, Int32Type, Int64Type, Int8Type, UInt16Type, UInt32Type,
+    UInt64Type,
+};
 use datafusion::common::{exec_err, plan_err, Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::ColumnarValue;
 use jiter::{Jiter, JiterError, Peek};
 
-use crate::common_union::{is_json_union, json_from_union_scalar, nested_json_array};
+use crate::common_union::{is_json_union, json_from_union_scalar, nested_json_array, TYPE_ID_NULL};
 
 /// General implementation of `ScalarUDFImpl::return_type`.
 ///
@@ -165,8 +171,52 @@ fn zip_apply<'a, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Optio
     object_lookup: bool,
 ) -> DataFusionResult<ArrayRef> {
     if let Some(d) = json_array.as_any_dictionary_opt() {
-        let a = zip_apply(d.values(), path_array, to_array, jiter_find, object_lookup)?;
-        return Ok(d.with_values(a).into());
+        let values = zip_apply(d.values(), path_array, to_array, jiter_find, object_lookup)?;
+        if !is_json_union(values.data_type()) {
+            return Ok(d.with_values(values));
+        }
+        // JSON union: post-process the array to set keys to null where the union member is null
+        let type_ids = values.as_any().downcast_ref::<UnionArray>().unwrap().type_ids();
+
+        // FIXME downcast_dictionary_array! not hygenic with datafusion import
+        let masked = match d.keys().data_type() {
+            // FIXME downcast_integer! not hygenic with datafusion import
+            datafusion::arrow::datatypes::DataType::Int8 => Arc::new(DictionaryArray::new(
+                mask_dictionary_keys(d.keys().as_primitive::<Int8Type>(), type_ids),
+                values,
+            )) as ArrayRef,
+            datafusion::arrow::datatypes::DataType::Int16 => Arc::new(DictionaryArray::new(
+                mask_dictionary_keys(d.keys().as_primitive::<Int16Type>(), type_ids),
+                values,
+            )) as ArrayRef,
+            datafusion::arrow::datatypes::DataType::Int32 => Arc::new(DictionaryArray::new(
+                mask_dictionary_keys(d.keys().as_primitive::<Int32Type>(), type_ids),
+                values,
+            )) as ArrayRef,
+            datafusion::arrow::datatypes::DataType::Int64 => Arc::new(DictionaryArray::new(
+                mask_dictionary_keys(d.keys().as_primitive::<Int64Type>(), type_ids),
+                values,
+            )) as ArrayRef,
+            datafusion::arrow::datatypes::DataType::UInt8 => Arc::new(DictionaryArray::new(
+                mask_dictionary_keys(d.keys().as_primitive::<Int64Type>(), type_ids),
+                values,
+            )) as ArrayRef,
+            datafusion::arrow::datatypes::DataType::UInt16 => Arc::new(DictionaryArray::new(
+                mask_dictionary_keys(d.keys().as_primitive::<UInt16Type>(), type_ids),
+                values,
+            )) as ArrayRef,
+            datafusion::arrow::datatypes::DataType::UInt32 => Arc::new(DictionaryArray::new(
+                mask_dictionary_keys(d.keys().as_primitive::<UInt32Type>(), type_ids),
+                values,
+            )) as ArrayRef,
+            datafusion::arrow::datatypes::DataType::UInt64 => Arc::new(DictionaryArray::new(
+                mask_dictionary_keys(d.keys().as_primitive::<UInt64Type>(), type_ids),
+                values,
+            )) as ArrayRef,
+            k => return exec_err!("unsupported dictionary key type: {k}"),
+        };
+
+        return Ok(masked);
     }
     let c = if let Some(string_array) = json_array.as_any().downcast_ref::<StringArray>() {
         zip_apply_iter(string_array.iter(), path_array, jiter_find)
@@ -230,8 +280,52 @@ fn scalar_apply<C: FromIterator<Option<I>>, I>(
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
 ) -> DataFusionResult<ArrayRef> {
     if let Some(d) = json_array.as_any_dictionary_opt() {
-        let a = scalar_apply(d.values(), path, to_array, jiter_find)?;
-        return Ok(d.with_values(a).into());
+        let values = scalar_apply(d.values(), path, to_array, jiter_find)?;
+        if !is_json_union(values.data_type()) {
+            return Ok(d.with_values(values));
+        }
+        // JSON union: post-process the array to set keys to null where the union member is null
+        let type_ids = values.as_any().downcast_ref::<UnionArray>().unwrap().type_ids();
+
+        // FIXME downcast_dictionary_array! not hygenic with datafusion import
+        let masked = match d.keys().data_type() {
+            // FIXME downcast_integer! not hygenic with datafusion import
+            datafusion::arrow::datatypes::DataType::Int8 => Arc::new(DictionaryArray::new(
+                mask_dictionary_keys(d.keys().as_primitive::<Int8Type>(), type_ids),
+                values,
+            )) as ArrayRef,
+            datafusion::arrow::datatypes::DataType::Int16 => Arc::new(DictionaryArray::new(
+                mask_dictionary_keys(d.keys().as_primitive::<Int16Type>(), type_ids),
+                values,
+            )) as ArrayRef,
+            datafusion::arrow::datatypes::DataType::Int32 => Arc::new(DictionaryArray::new(
+                mask_dictionary_keys(d.keys().as_primitive::<Int32Type>(), type_ids),
+                values,
+            )) as ArrayRef,
+            datafusion::arrow::datatypes::DataType::Int64 => Arc::new(DictionaryArray::new(
+                mask_dictionary_keys(d.keys().as_primitive::<Int64Type>(), type_ids),
+                values,
+            )) as ArrayRef,
+            datafusion::arrow::datatypes::DataType::UInt8 => Arc::new(DictionaryArray::new(
+                mask_dictionary_keys(d.keys().as_primitive::<Int64Type>(), type_ids),
+                values,
+            )) as ArrayRef,
+            datafusion::arrow::datatypes::DataType::UInt16 => Arc::new(DictionaryArray::new(
+                mask_dictionary_keys(d.keys().as_primitive::<UInt16Type>(), type_ids),
+                values,
+            )) as ArrayRef,
+            datafusion::arrow::datatypes::DataType::UInt32 => Arc::new(DictionaryArray::new(
+                mask_dictionary_keys(d.keys().as_primitive::<UInt32Type>(), type_ids),
+                values,
+            )) as ArrayRef,
+            datafusion::arrow::datatypes::DataType::UInt64 => Arc::new(DictionaryArray::new(
+                mask_dictionary_keys(d.keys().as_primitive::<UInt64Type>(), type_ids),
+                values,
+            )) as ArrayRef,
+            k => return exec_err!("unsupported dictionary key type: {k}"),
+        };
+
+        return Ok(masked);
     }
 
     let c = if let Some(string_array) = json_array.as_any().downcast_ref::<StringArray>() {
@@ -318,4 +412,21 @@ impl From<Utf8Error> for GetError {
     fn from(_: Utf8Error) -> Self {
         GetError
     }
+}
+
+/// Set keys to null where the union member is null.
+///
+/// This is a workaround to https://github.com/apache/arrow-rs/issues/6017#issuecomment-2352756753
+/// - i.e. that dictionary null is most reliably done if the keys are null.
+fn mask_dictionary_keys<K: ArrowPrimitiveType>(keys: &PrimitiveArray<K>, type_ids: &[i8]) -> PrimitiveArray<K> {
+    let mut null_builder = BooleanBufferBuilder::new(keys.len());
+    for key in keys {
+        if key.is_none() || key.is_some_and(|key| type_ids[key.as_usize()] == TYPE_ID_NULL) {
+            null_builder.append(false);
+        } else {
+            null_builder.append(true);
+        }
+    }
+    let null_buffer = NullBuffer::new(null_builder.finish());
+    PrimitiveArray::new(keys.values().clone(), Some(null_buffer))
 }
