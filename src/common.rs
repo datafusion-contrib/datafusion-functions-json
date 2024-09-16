@@ -2,10 +2,9 @@ use std::str::Utf8Error;
 use std::sync::Arc;
 
 use datafusion::arrow::array::{
-    Array, ArrayRef, AsArray, BooleanArray, BooleanBufferBuilder, DictionaryArray, Int64Array, LargeStringArray,
-    PrimitiveArray, StringArray, StringViewArray, UInt64Array, UnionArray,
+    Array, ArrayRef, AsArray, DictionaryArray, Int64Array, LargeStringArray, PrimitiveArray, StringArray,
+    StringViewArray, UInt64Array, UnionArray,
 };
-use datafusion::arrow::buffer::{BooleanBuffer, NullBuffer};
 use datafusion::arrow::datatypes::{ArrowNativeType, ArrowPrimitiveType, DataType};
 use datafusion::arrow::downcast_dictionary_array;
 use datafusion::common::{exec_err, plan_err, Result as DataFusionResult, ScalarValue};
@@ -349,15 +348,14 @@ impl From<Utf8Error> for GetError {
 /// This is a workaround to https://github.com/apache/arrow-rs/issues/6017#issuecomment-2352756753
 /// - i.e. that dictionary null is most reliably done if the keys are null.
 fn mask_dictionary_keys<K: ArrowPrimitiveType>(keys: &PrimitiveArray<K>, type_ids: &[i8]) -> PrimitiveArray<K> {
-    PrimitiveArray::new(
-        keys.values().clone(),
-        Some(
-            keys.iter()
-                .map(|k| match k {
-                    Some(k) => type_ids[k.as_usize()] != TYPE_ID_NULL,
-                    None => false,
-                })
-                .collect(),
-        ),
-    )
+    let mut null_mask = vec![true; keys.len()];
+    for (i, k) in keys.iter().enumerate() {
+        match k {
+            // if the key is non-null and value is non-null, don't mask it out
+            Some(k) if type_ids[k.as_usize()] != TYPE_ID_NULL => {}
+            // i.e. key is null or value is null here
+            _ => null_mask[i] = false,
+        }
+    }
+    PrimitiveArray::new(keys.values().clone(), Some(null_mask.into()))
 }
