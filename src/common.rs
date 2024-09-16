@@ -6,10 +6,8 @@ use datafusion::arrow::array::{
     StringArray, StringViewArray, UInt64Array, UnionArray,
 };
 use datafusion::arrow::buffer::NullBuffer;
-use datafusion::arrow::datatypes::{
-    ArrowNativeType, ArrowPrimitiveType, DataType, Int16Type, Int32Type, Int64Type, Int8Type, UInt16Type, UInt32Type,
-    UInt64Type,
-};
+use datafusion::arrow::datatypes::{ArrowNativeType, ArrowPrimitiveType, DataType};
+use datafusion::arrow::downcast_dictionary_array;
 use datafusion::common::{exec_err, plan_err, Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::ColumnarValue;
 use jiter::{Jiter, JiterError, Peek};
@@ -170,65 +168,34 @@ fn zip_apply<'a, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Optio
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
     object_lookup: bool,
 ) -> DataFusionResult<ArrayRef> {
-    if let Some(d) = json_array.as_any_dictionary_opt() {
-        let values = zip_apply(d.values(), path_array, to_array, jiter_find, object_lookup)?;
-        if !is_json_union(values.data_type()) {
-            return Ok(d.with_values(values));
+    // arrow_schema "use" is workaround for https://github.com/apache/arrow-rs/issues/6400#issue-2528388332
+    use datafusion::arrow::datatypes as arrow_schema;
+
+    let c = downcast_dictionary_array!(
+        json_array => {
+            let values = zip_apply(json_array.values(), path_array, to_array, jiter_find, object_lookup)?;
+            if !is_json_union(values.data_type()) {
+                return Ok(Arc::new(json_array.with_values(values)));
+            }
+            // JSON union: post-process the array to set keys to null where the union member is null
+            let type_ids = values.as_any().downcast_ref::<UnionArray>().unwrap().type_ids();
+
+            // FIXME downcast_dictionary_array! not hygenic with datafusion import
+            return Ok(Arc::new(DictionaryArray::new(
+                mask_dictionary_keys(json_array.keys(), type_ids),
+                values,
+            )));
         }
-        // JSON union: post-process the array to set keys to null where the union member is null
-        let type_ids = values.as_any().downcast_ref::<UnionArray>().unwrap().type_ids();
+        DataType::Utf8 => zip_apply_iter(json_array.as_string::<i32>().iter(), path_array, jiter_find),
+        DataType::LargeUtf8 => zip_apply_iter(json_array.as_string::<i64>().iter(), path_array, jiter_find),
+        DataType::Utf8View => zip_apply_iter(json_array.as_string_view().iter(), path_array, jiter_find),
+        other => if let Some(string_array) = nested_json_array(json_array, object_lookup) {
+            zip_apply_iter(string_array.iter(), path_array, jiter_find)
+        } else {
+            return exec_err!("unexpected json array type {:?}", other);
+        }
+    );
 
-        // FIXME downcast_dictionary_array! not hygenic with datafusion import
-        let masked = match d.keys().data_type() {
-            // FIXME downcast_integer! not hygenic with datafusion import
-            datafusion::arrow::datatypes::DataType::Int8 => Arc::new(DictionaryArray::new(
-                mask_dictionary_keys(d.keys().as_primitive::<Int8Type>(), type_ids),
-                values,
-            )) as ArrayRef,
-            datafusion::arrow::datatypes::DataType::Int16 => Arc::new(DictionaryArray::new(
-                mask_dictionary_keys(d.keys().as_primitive::<Int16Type>(), type_ids),
-                values,
-            )) as ArrayRef,
-            datafusion::arrow::datatypes::DataType::Int32 => Arc::new(DictionaryArray::new(
-                mask_dictionary_keys(d.keys().as_primitive::<Int32Type>(), type_ids),
-                values,
-            )) as ArrayRef,
-            datafusion::arrow::datatypes::DataType::Int64 => Arc::new(DictionaryArray::new(
-                mask_dictionary_keys(d.keys().as_primitive::<Int64Type>(), type_ids),
-                values,
-            )) as ArrayRef,
-            datafusion::arrow::datatypes::DataType::UInt8 => Arc::new(DictionaryArray::new(
-                mask_dictionary_keys(d.keys().as_primitive::<Int64Type>(), type_ids),
-                values,
-            )) as ArrayRef,
-            datafusion::arrow::datatypes::DataType::UInt16 => Arc::new(DictionaryArray::new(
-                mask_dictionary_keys(d.keys().as_primitive::<UInt16Type>(), type_ids),
-                values,
-            )) as ArrayRef,
-            datafusion::arrow::datatypes::DataType::UInt32 => Arc::new(DictionaryArray::new(
-                mask_dictionary_keys(d.keys().as_primitive::<UInt32Type>(), type_ids),
-                values,
-            )) as ArrayRef,
-            datafusion::arrow::datatypes::DataType::UInt64 => Arc::new(DictionaryArray::new(
-                mask_dictionary_keys(d.keys().as_primitive::<UInt64Type>(), type_ids),
-                values,
-            )) as ArrayRef,
-            k => return exec_err!("unsupported dictionary key type: {k}"),
-        };
-
-        return Ok(masked);
-    }
-    let c = if let Some(string_array) = json_array.as_any().downcast_ref::<StringArray>() {
-        zip_apply_iter(string_array.iter(), path_array, jiter_find)
-    } else if let Some(large_string_array) = json_array.as_any().downcast_ref::<LargeStringArray>() {
-        zip_apply_iter(large_string_array.iter(), path_array, jiter_find)
-    } else if let Some(string_view) = json_array.as_any().downcast_ref::<StringViewArray>() {
-        zip_apply_iter(string_view.iter(), path_array, jiter_find)
-    } else if let Some(string_array) = nested_json_array(json_array, object_lookup) {
-        zip_apply_iter(string_array.iter(), path_array, jiter_find)
-    } else {
-        return exec_err!("unexpected json array type {:?}", json_array.data_type());
-    };
     to_array(c)
 }
 
@@ -279,66 +246,33 @@ fn scalar_apply<C: FromIterator<Option<I>>, I>(
     to_array: impl Fn(C) -> DataFusionResult<ArrayRef>,
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
 ) -> DataFusionResult<ArrayRef> {
-    if let Some(d) = json_array.as_any_dictionary_opt() {
-        let values = scalar_apply(d.values(), path, to_array, jiter_find)?;
-        if !is_json_union(values.data_type()) {
-            return Ok(d.with_values(values));
+    // arrow_schema "use" is workaround for https://github.com/apache/arrow-rs/issues/6400#issue-2528388332
+    use datafusion::arrow::datatypes as arrow_schema;
+
+    let c = downcast_dictionary_array!(
+        json_array => {
+            let values = scalar_apply(json_array.values(), path, to_array, jiter_find)?;
+            if !is_json_union(values.data_type()) {
+                return Ok(Arc::new(json_array.with_values(values)));
+            }
+            // JSON union: post-process the array to set keys to null where the union member is null
+            let type_ids = values.as_any().downcast_ref::<UnionArray>().unwrap().type_ids();
+
+            // FIXME downcast_dictionary_array! not hygenic with datafusion import
+            return Ok(Arc::new(DictionaryArray::new(
+                mask_dictionary_keys(json_array.keys(), type_ids),
+                values,
+            )));
         }
-        // JSON union: post-process the array to set keys to null where the union member is null
-        let type_ids = values.as_any().downcast_ref::<UnionArray>().unwrap().type_ids();
-
-        // FIXME downcast_dictionary_array! not hygenic with datafusion import
-        let masked = match d.keys().data_type() {
-            // FIXME downcast_integer! not hygenic with datafusion import
-            datafusion::arrow::datatypes::DataType::Int8 => Arc::new(DictionaryArray::new(
-                mask_dictionary_keys(d.keys().as_primitive::<Int8Type>(), type_ids),
-                values,
-            )) as ArrayRef,
-            datafusion::arrow::datatypes::DataType::Int16 => Arc::new(DictionaryArray::new(
-                mask_dictionary_keys(d.keys().as_primitive::<Int16Type>(), type_ids),
-                values,
-            )) as ArrayRef,
-            datafusion::arrow::datatypes::DataType::Int32 => Arc::new(DictionaryArray::new(
-                mask_dictionary_keys(d.keys().as_primitive::<Int32Type>(), type_ids),
-                values,
-            )) as ArrayRef,
-            datafusion::arrow::datatypes::DataType::Int64 => Arc::new(DictionaryArray::new(
-                mask_dictionary_keys(d.keys().as_primitive::<Int64Type>(), type_ids),
-                values,
-            )) as ArrayRef,
-            datafusion::arrow::datatypes::DataType::UInt8 => Arc::new(DictionaryArray::new(
-                mask_dictionary_keys(d.keys().as_primitive::<Int64Type>(), type_ids),
-                values,
-            )) as ArrayRef,
-            datafusion::arrow::datatypes::DataType::UInt16 => Arc::new(DictionaryArray::new(
-                mask_dictionary_keys(d.keys().as_primitive::<UInt16Type>(), type_ids),
-                values,
-            )) as ArrayRef,
-            datafusion::arrow::datatypes::DataType::UInt32 => Arc::new(DictionaryArray::new(
-                mask_dictionary_keys(d.keys().as_primitive::<UInt32Type>(), type_ids),
-                values,
-            )) as ArrayRef,
-            datafusion::arrow::datatypes::DataType::UInt64 => Arc::new(DictionaryArray::new(
-                mask_dictionary_keys(d.keys().as_primitive::<UInt64Type>(), type_ids),
-                values,
-            )) as ArrayRef,
-            k => return exec_err!("unsupported dictionary key type: {k}"),
-        };
-
-        return Ok(masked);
-    }
-
-    let c = if let Some(string_array) = json_array.as_any().downcast_ref::<StringArray>() {
-        scalar_apply_iter(string_array.iter(), path, jiter_find)
-    } else if let Some(large_string_array) = json_array.as_any().downcast_ref::<LargeStringArray>() {
-        scalar_apply_iter(large_string_array.iter(), path, jiter_find)
-    } else if let Some(string_view_array) = json_array.as_any().downcast_ref::<StringViewArray>() {
-        scalar_apply_iter(string_view_array.iter(), path, jiter_find)
-    } else if let Some(string_array) = nested_json_array(json_array, is_object_lookup(path)) {
-        scalar_apply_iter(string_array.iter(), path, jiter_find)
-    } else {
-        return exec_err!("unexpected json array type {:?}", json_array.data_type());
-    };
+        DataType::Utf8 => scalar_apply_iter(json_array.as_string::<i32>().iter(), path, jiter_find),
+        DataType::LargeUtf8 => scalar_apply_iter(json_array.as_string::<i64>().iter(), path, jiter_find),
+        DataType::Utf8View => scalar_apply_iter(json_array.as_string_view().iter(), path, jiter_find),
+        other => if let Some(string_array) = nested_json_array(json_array, is_object_lookup(path)) {
+            scalar_apply_iter(string_array.iter(), path, jiter_find)
+        } else {
+            return exec_err!("unexpected json array type {:?}", other);
+        }
+    );
 
     to_array(c)
 }
