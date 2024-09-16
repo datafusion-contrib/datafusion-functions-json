@@ -345,8 +345,11 @@ impl From<Utf8Error> for GetError {
 
 /// Set keys to null where the union member is null.
 ///
-/// This is a workaround to https://github.com/apache/arrow-rs/issues/6017#issuecomment-2352756753
+/// This is a workaround to <https://github.com/apache/arrow-rs/issues/6017#issuecomment-2352756753>
 /// - i.e. that dictionary null is most reliably done if the keys are null.
+///
+/// That said, doing this might also be an optimization for cases like null-checking without needing
+/// to check the value union array.
 fn mask_dictionary_keys<K: ArrowPrimitiveType>(keys: &PrimitiveArray<K>, type_ids: &[i8]) -> PrimitiveArray<K> {
     let mut null_mask = vec![true; keys.len()];
     for (i, k) in keys.iter().enumerate() {

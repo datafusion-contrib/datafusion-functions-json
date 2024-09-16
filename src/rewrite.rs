@@ -78,7 +78,7 @@ fn unnest_json_calls(func: &ScalarFunction) -> Option<Transformed<Expr>> {
 fn extract_scalar_function(expr: &Expr) -> Option<&ScalarFunction> {
     match expr {
         Expr::ScalarFunction(func) => Some(func),
-        Expr::Alias(alias) => extract_scalar_function(&*alias.expr),
+        Expr::Alias(alias) => extract_scalar_function(&alias.expr),
         _ => None,
     }
 }
