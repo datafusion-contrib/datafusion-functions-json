@@ -46,7 +46,7 @@ impl ScalarUDFImpl for JsonLength {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        return_type_check(arg_types, self.name()).map(|()| DataType::UInt64)
+        return_type_check(arg_types, self.name(), DataType::UInt64)
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
@@ -55,6 +55,7 @@ impl ScalarUDFImpl for JsonLength {
             jiter_json_length,
             |c| Ok(Arc::new(c) as ArrayRef),
             ScalarValue::UInt64,
+            true,
         )
     }
 

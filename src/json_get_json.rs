@@ -45,7 +45,7 @@ impl ScalarUDFImpl for JsonGetJson {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        return_type_check(arg_types, self.name()).map(|()| DataType::Utf8)
+        return_type_check(arg_types, self.name(), DataType::Utf8)
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
@@ -54,6 +54,7 @@ impl ScalarUDFImpl for JsonGetJson {
             jiter_json_get_json,
             |c| Ok(Arc::new(c) as ArrayRef),
             ScalarValue::Utf8,
+            true,
         )
     }
 

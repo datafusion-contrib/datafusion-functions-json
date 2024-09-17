@@ -46,7 +46,7 @@ impl ScalarUDFImpl for JsonGetBool {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        return_type_check(arg_types, self.name()).map(|()| DataType::Boolean)
+        return_type_check(arg_types, self.name(), DataType::Boolean)
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
@@ -55,6 +55,7 @@ impl ScalarUDFImpl for JsonGetBool {
             jiter_json_get_bool,
             |c| Ok(Arc::new(c) as ArrayRef),
             ScalarValue::Boolean,
+            true,
         )
     }
 

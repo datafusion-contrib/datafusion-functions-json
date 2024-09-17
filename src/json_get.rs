@@ -50,7 +50,7 @@ impl ScalarUDFImpl for JsonGet {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        return_type_check(arg_types, self.name()).map(|()| JsonUnion::data_type())
+        return_type_check(arg_types, self.name(), JsonUnion::data_type())
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
@@ -58,7 +58,7 @@ impl ScalarUDFImpl for JsonGet {
             let array: UnionArray = c.try_into()?;
             Ok(Arc::new(array) as ArrayRef)
         };
-        invoke::<JsonUnion, JsonUnionField>(args, jiter_json_get_union, to_array, JsonUnionField::scalar_value)
+        invoke::<JsonUnion, JsonUnionField>(args, jiter_json_get_union, to_array, JsonUnionField::scalar_value, true)
     }
 
     fn aliases(&self) -> &[String] {

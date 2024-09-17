@@ -46,7 +46,7 @@ impl ScalarUDFImpl for JsonGetInt {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        return_type_check(arg_types, self.name()).map(|()| DataType::Int64)
+        return_type_check(arg_types, self.name(), DataType::Int64)
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
@@ -55,6 +55,7 @@ impl ScalarUDFImpl for JsonGetInt {
             jiter_json_get_int,
             |c| Ok(Arc::new(c) as ArrayRef),
             ScalarValue::Int64,
+            true,
         )
     }
 

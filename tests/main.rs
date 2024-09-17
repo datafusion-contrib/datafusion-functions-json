@@ -1197,6 +1197,7 @@ async fn test_dict_haystack() {
         "| {object={\"bar\": [0]}} |",
         "|                       |",
         "|                       |",
+        "|                       |",
         "+-----------------------+",
     ];
 
@@ -1227,6 +1228,7 @@ async fn test_dict_haystack_needle() {
         "| v           |",
         "+-------------+",
         "| {array=[0]} |",
+        "|             |",
         "|             |",
         "|             |",
         "+-------------+",
@@ -1346,16 +1348,16 @@ async fn test_dict_filter() {
         "+------------+",
         "| v          |",
         "+------------+",
-        "| {null=}    |",
+        "|            |",
         "| {str=fizz} |",
-        "| {null=}    |",
+        "|            |",
         "| {str=abcd} |",
-        "| {null=}    |",
+        "|            |",
         "| {str=fizz} |",
         "| {str=fizz} |",
         "| {str=fizz} |",
         "| {str=fizz} |",
-        "| {null=}    |",
+        "|            |",
         "+------------+",
     ];
 
@@ -1382,6 +1384,39 @@ async fn test_dict_filter_is_not_null() {
     ];
 
     let batches = ctx.sql(sql).await.unwrap().collect().await.unwrap();
+
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_dict_filter_contains() {
+    let ctx = build_dict_schema().await;
+    let sql = "select x from data where json_contains(x, 'baz')";
+    let expected = [
+        "+-----------------+",
+        "| x               |",
+        "+-----------------+",
+        "| {\"baz\": \"fizz\"} |",
+        "| {\"baz\": \"abcd\"} |",
+        "| {\"baz\": \"fizz\"} |",
+        "| {\"baz\": \"fizz\"} |",
+        "| {\"baz\": \"fizz\"} |",
+        "| {\"baz\": \"fizz\"} |",
+        "+-----------------+",
+    ];
+
+    let batches = ctx.sql(sql).await.unwrap().collect().await.unwrap();
+
+    assert_batches_eq!(expected, &batches);
+
+    // try with a boolean or as well
+    let batches = ctx
+        .sql(&format!("{sql} or false"))
+        .await
+        .unwrap()
+        .collect()
+        .await
+        .unwrap();
 
     assert_batches_eq!(expected, &batches);
 }
