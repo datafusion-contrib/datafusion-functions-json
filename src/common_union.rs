@@ -141,7 +141,7 @@ pub(crate) enum JsonUnionField {
     Object(String),
 }
 
-const TYPE_ID_NULL: i8 = 0;
+pub(crate) const TYPE_ID_NULL: i8 = 0;
 const TYPE_ID_BOOL: i8 = 1;
 const TYPE_ID_INT: i8 = 2;
 const TYPE_ID_FLOAT: i8 = 3;

@@ -1,16 +1,19 @@
 use std::str::Utf8Error;
+use std::sync::Arc;
 
 use datafusion::arrow::array::{
-    Array, ArrayRef, AsArray, Int64Array, LargeStringArray, StringArray, StringViewArray, UInt64Array,
+    Array, ArrayRef, AsArray, DictionaryArray, Int64Array, LargeStringArray, PrimitiveArray, StringArray,
+    StringViewArray, UInt64Array, UnionArray,
 };
 use datafusion::arrow::compute::cast;
-use datafusion::arrow::datatypes::DataType;
 use datafusion::arrow::error::ArrowError;
+use datafusion::arrow::datatypes::{ArrowNativeType, ArrowPrimitiveType, DataType};
+use datafusion::arrow::downcast_dictionary_array;
 use datafusion::common::{exec_err, plan_err, Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::ColumnarValue;
 use jiter::{Jiter, JiterError, Peek};
 
-use crate::common_union::{is_json_union, json_from_union_scalar, nested_json_array};
+use crate::common_union::{is_json_union, json_from_union_scalar, nested_json_array, TYPE_ID_NULL};
 
 /// General implementation of `ScalarUDFImpl::return_type` to check if the arguments are valid.
 ///
@@ -169,24 +172,39 @@ fn zip_apply<'a, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Optio
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
     object_lookup: bool,
 ) -> DataFusionResult<ArrayRef> {
-    if let Some(d) = json_array.as_any_dictionary_opt() {
-        // NOTE we do NOT map back to an dictionary as that doesn't work for `is null` or filtering
-        // see https://github.com/apache/datafusion/issues/12380
-        let values = zip_apply(d.values(), path_array, to_array, jiter_find, object_lookup)?;
-        return unpack_dict_array(d.with_values(values)).map_err(Into::into);
-    }
+    // arrow_schema "use" is workaround for https://github.com/apache/arrow-rs/issues/6400#issue-2528388332
+    use datafusion::arrow::datatypes as arrow_schema;
 
-    let c = if let Some(string_array) = json_array.as_any().downcast_ref::<StringArray>() {
-        zip_apply_iter(string_array.iter(), path_array, jiter_find)
-    } else if let Some(large_string_array) = json_array.as_any().downcast_ref::<LargeStringArray>() {
-        zip_apply_iter(large_string_array.iter(), path_array, jiter_find)
-    } else if let Some(string_view) = json_array.as_any().downcast_ref::<StringViewArray>() {
-        zip_apply_iter(string_view.iter(), path_array, jiter_find)
-    } else if let Some(string_array) = nested_json_array(json_array, object_lookup) {
-        zip_apply_iter(string_array.iter(), path_array, jiter_find)
-    } else {
-        return exec_err!("unexpected json array type {:?}", json_array.data_type());
-    };
+    let c = downcast_dictionary_array!(
+        json_array => {
+            let values = zip_apply(json_array.values(), path_array, to_array, jiter_find, object_lookup)?;
+            if !is_json_union(values.data_type()) {
+                return Ok(Arc::new(json_array.with_values(values)));
+            }
+            // JSON union: post-process the array to set keys to null where the union member is null
+            let type_ids = values.as_any().downcast_ref::<UnionArray>().unwrap().type_ids();
+            return Ok(Arc::new(DictionaryArray::new(
+                mask_dictionary_keys(json_array.keys(), type_ids),
+                values,
+            )));
+        }
+        DataType::Utf8 => zip_apply_iter(json_array.as_string::<i32>().iter(), path_array, jiter_find),
+        DataType::LargeUtf8 => zip_apply_iter(json_array.as_string::<i64>().iter(), path_array, jiter_find),
+        DataType::Utf8View => zip_apply_iter(json_array.as_string_view().iter(), path_array, jiter_find),
+        other => if let Some(string_array) = nested_json_array(json_array, object_lookup) {
+            zip_apply_iter(string_array.iter(), path_array, jiter_find)
+        } else {
+            return exec_err!("unexpected json array type {:?}", other);
+        }
+    );
+
+    // if let Some(d) = json_array.as_any_dictionary_opt() {
+    //     // NOTE we do NOT map back to an dictionary as that doesn't work for `is null` or filtering
+    //     // see https://github.com/apache/datafusion/issues/12380
+    //     let values = zip_apply(d.values(), path_array, to_array, jiter_find, object_lookup)?;
+    //     return unpack_dict_array(d.with_values(values)).map_err(Into::into);
+    // }
+
     to_array(c)
 }
 
@@ -237,24 +255,37 @@ fn scalar_apply<C: FromIterator<Option<I>>, I>(
     to_array: impl Fn(C) -> DataFusionResult<ArrayRef>,
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
 ) -> DataFusionResult<ArrayRef> {
-    if let Some(d) = json_array.as_any_dictionary_opt() {
-        // as above, don't return a dict
-        let values = scalar_apply(d.values(), path, to_array, jiter_find)?;
-        return unpack_dict_array(d.with_values(values)).map_err(Into::into);
-    }
+    // arrow_schema "use" is workaround for https://github.com/apache/arrow-rs/issues/6400#issue-2528388332
+    use datafusion::arrow::datatypes as arrow_schema;
 
-    let c = if let Some(string_array) = json_array.as_any().downcast_ref::<StringArray>() {
-        scalar_apply_iter(string_array.iter(), path, jiter_find)
-    } else if let Some(large_string_array) = json_array.as_any().downcast_ref::<LargeStringArray>() {
-        scalar_apply_iter(large_string_array.iter(), path, jiter_find)
-    } else if let Some(string_view_array) = json_array.as_any().downcast_ref::<StringViewArray>() {
-        scalar_apply_iter(string_view_array.iter(), path, jiter_find)
-    } else if let Some(string_array) = nested_json_array(json_array, is_object_lookup(path)) {
-        scalar_apply_iter(string_array.iter(), path, jiter_find)
-    } else {
-        return exec_err!("unexpected json array type {:?}", json_array.data_type());
-    };
+    let c = downcast_dictionary_array!(
+        json_array => {
+            let values = scalar_apply(json_array.values(), path, to_array, jiter_find)?;
+            if !is_json_union(values.data_type()) {
+                return Ok(Arc::new(json_array.with_values(values)));
+            }
+            // JSON union: post-process the array to set keys to null where the union member is null
+            let type_ids = values.as_any().downcast_ref::<UnionArray>().unwrap().type_ids();
+            return Ok(Arc::new(DictionaryArray::new(
+                mask_dictionary_keys(json_array.keys(), type_ids),
+                values,
+            )));
+        }
+        DataType::Utf8 => scalar_apply_iter(json_array.as_string::<i32>().iter(), path, jiter_find),
+        DataType::LargeUtf8 => scalar_apply_iter(json_array.as_string::<i64>().iter(), path, jiter_find),
+        DataType::Utf8View => scalar_apply_iter(json_array.as_string_view().iter(), path, jiter_find),
+        other => if let Some(string_array) = nested_json_array(json_array, is_object_lookup(path)) {
+            scalar_apply_iter(string_array.iter(), path, jiter_find)
+        } else {
+            return exec_err!("unexpected json array type {:?}", other);
+        }
+    );
 
+    // if let Some(d) = json_array.as_any_dictionary_opt() {
+    //     // as above, don't return a dict
+    //     let values = scalar_apply(d.values(), path, to_array, jiter_find)?;
+    //     return unpack_dict_array(d.with_values(values)).map_err(Into::into);
+    // }
     to_array(c)
 }
 
@@ -327,4 +358,24 @@ impl From<Utf8Error> for GetError {
     fn from(_: Utf8Error) -> Self {
         GetError
     }
+}
+
+/// Set keys to null where the union member is null.
+///
+/// This is a workaround to <https://github.com/apache/arrow-rs/issues/6017#issuecomment-2352756753>
+/// - i.e. that dictionary null is most reliably done if the keys are null.
+///
+/// That said, doing this might also be an optimization for cases like null-checking without needing
+/// to check the value union array.
+fn mask_dictionary_keys<K: ArrowPrimitiveType>(keys: &PrimitiveArray<K>, type_ids: &[i8]) -> PrimitiveArray<K> {
+    let mut null_mask = vec![true; keys.len()];
+    for (i, k) in keys.iter().enumerate() {
+        match k {
+            // if the key is non-null and value is non-null, don't mask it out
+            Some(k) if type_ids[k.as_usize()] != TYPE_ID_NULL => {}
+            // i.e. key is null or value is null here
+            _ => null_mask[i] = false,
+        }
+    }
+    PrimitiveArray::new(keys.values().clone(), Some(null_mask.into()))
 }
