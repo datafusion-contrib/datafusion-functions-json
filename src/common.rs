@@ -5,7 +5,8 @@ use datafusion::arrow::array::{
     Array, ArrayRef, AsArray, DictionaryArray, Int64Array, LargeStringArray, PrimitiveArray, StringArray,
     StringViewArray, UInt64Array, UnionArray,
 };
-use datafusion::arrow::datatypes::{ArrowNativeType, ArrowPrimitiveType, DataType};
+use datafusion::arrow::compute::take;
+use datafusion::arrow::datatypes::{ArrowDictionaryKeyType, ArrowNativeType, ArrowPrimitiveType, DataType};
 use datafusion::arrow::downcast_dictionary_array;
 use datafusion::common::{exec_err, plan_err, Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::ColumnarValue;
@@ -21,7 +22,7 @@ use crate::common_union::{is_json_union, json_from_union_scalar, nested_json_arr
 /// * `fn_name` - The name of the function
 /// * `value_type` - The general return type of the function, might be wrapped in a dictionary depending
 ///   on the first argument
-pub fn scalar_udf_return_type(args: &[DataType], fn_name: &str, value_type: DataType) -> DataFusionResult<DataType> {
+pub fn return_type_check(args: &[DataType], fn_name: &str, value_type: DataType) -> DataFusionResult<DataType> {
     let Some(first) = args.first() else {
         return plan_err!("The '{fn_name}' function requires one or more arguments.");
     };
@@ -105,6 +106,7 @@ pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
     to_array: impl Fn(C) -> DataFusionResult<ArrayRef>,
     to_scalar: impl Fn(Option<I>) -> ScalarValue,
+    return_dict: bool,
 ) -> DataFusionResult<ColumnarValue> {
     let Some(first_arg) = args.first() else {
         // I think this can't happen, but I assumed the same about args[1] and I was wrong, so better to be safe
@@ -118,13 +120,17 @@ pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
                         // TODO perhaps we could support this by zipping the arrays, but it's not trivial, #23
                         exec_err!("More than 1 path element is not supported when querying JSON using an array.")
                     } else {
-                        invoke_array(json_array, a, to_array, jiter_find)
+                        invoke_array(json_array, a, to_array, jiter_find, return_dict)
                     }
                 }
-                Some(ColumnarValue::Scalar(_)) => {
-                    scalar_apply(json_array, &JsonPath::extract_path(args), to_array, jiter_find)
-                }
-                None => scalar_apply(json_array, &[], to_array, jiter_find),
+                Some(ColumnarValue::Scalar(_)) => scalar_apply(
+                    json_array,
+                    &JsonPath::extract_path(args),
+                    to_array,
+                    jiter_find,
+                    return_dict,
+                ),
+                None => scalar_apply(json_array, &[], to_array, jiter_find, return_dict),
             };
             array.map(ColumnarValue::from)
         }
@@ -137,24 +143,26 @@ fn invoke_array<C: FromIterator<Option<I>> + 'static, I>(
     needle_array: &ArrayRef,
     to_array: impl Fn(C) -> DataFusionResult<ArrayRef>,
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
+    return_dict: bool,
 ) -> DataFusionResult<ArrayRef> {
     if let Some(d) = needle_array.as_any_dictionary_opt() {
-        invoke_array(json_array, d.values(), to_array, jiter_find)
+        // this is the (very rare) case where the needle is a dictionary, it shouldn't affect what we return
+        invoke_array(json_array, d.values(), to_array, jiter_find, return_dict)
     } else if let Some(str_path_array) = needle_array.as_any().downcast_ref::<StringArray>() {
         let paths = str_path_array.iter().map(|opt_key| opt_key.map(JsonPath::Key));
-        zip_apply(json_array, paths, to_array, jiter_find, true)
+        zip_apply(json_array, paths, to_array, jiter_find, true, return_dict)
     } else if let Some(str_path_array) = needle_array.as_any().downcast_ref::<LargeStringArray>() {
         let paths = str_path_array.iter().map(|opt_key| opt_key.map(JsonPath::Key));
-        zip_apply(json_array, paths, to_array, jiter_find, true)
+        zip_apply(json_array, paths, to_array, jiter_find, true, return_dict)
     } else if let Some(str_path_array) = needle_array.as_any().downcast_ref::<StringViewArray>() {
         let paths = str_path_array.iter().map(|opt_key| opt_key.map(JsonPath::Key));
-        zip_apply(json_array, paths, to_array, jiter_find, true)
+        zip_apply(json_array, paths, to_array, jiter_find, true, return_dict)
     } else if let Some(int_path_array) = needle_array.as_any().downcast_ref::<Int64Array>() {
         let paths = int_path_array.iter().map(|opt_index| opt_index.map(Into::into));
-        zip_apply(json_array, paths, to_array, jiter_find, false)
+        zip_apply(json_array, paths, to_array, jiter_find, false, return_dict)
     } else if let Some(int_path_array) = needle_array.as_any().downcast_ref::<UInt64Array>() {
         let paths = int_path_array.iter().map(|opt_index| opt_index.map(Into::into));
-        zip_apply(json_array, paths, to_array, jiter_find, false)
+        zip_apply(json_array, paths, to_array, jiter_find, false, return_dict)
     } else {
         exec_err!("unexpected second argument type, expected string or int array")
     }
@@ -166,22 +174,15 @@ fn zip_apply<'a, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Optio
     to_array: impl Fn(C) -> DataFusionResult<ArrayRef>,
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
     object_lookup: bool,
+    return_dict: bool,
 ) -> DataFusionResult<ArrayRef> {
     // arrow_schema "use" is workaround for https://github.com/apache/arrow-rs/issues/6400#issue-2528388332
     use datafusion::arrow::datatypes as arrow_schema;
 
     let c = downcast_dictionary_array!(
         json_array => {
-            let values = zip_apply(json_array.values(), path_array, to_array, jiter_find, object_lookup)?;
-            if !is_json_union(values.data_type()) {
-                return Ok(Arc::new(json_array.with_values(values)));
-            }
-            // JSON union: post-process the array to set keys to null where the union member is null
-            let type_ids = values.as_any().downcast_ref::<UnionArray>().unwrap().type_ids();
-            return Ok(Arc::new(DictionaryArray::new(
-                mask_dictionary_keys(json_array.keys(), type_ids),
-                values,
-            )));
+            let values = zip_apply(json_array.values(), path_array, to_array, jiter_find, object_lookup, false)?;
+            return post_process_dict(json_array, values, return_dict);
         }
         DataType::Utf8 => zip_apply_iter(json_array.as_string::<i32>().iter(), path_array, jiter_find),
         DataType::LargeUtf8 => zip_apply_iter(json_array.as_string::<i64>().iter(), path_array, jiter_find),
@@ -242,22 +243,15 @@ fn scalar_apply<C: FromIterator<Option<I>>, I>(
     path: &[JsonPath],
     to_array: impl Fn(C) -> DataFusionResult<ArrayRef>,
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
+    return_dict: bool,
 ) -> DataFusionResult<ArrayRef> {
     // arrow_schema "use" is workaround for https://github.com/apache/arrow-rs/issues/6400#issue-2528388332
     use datafusion::arrow::datatypes as arrow_schema;
 
     let c = downcast_dictionary_array!(
         json_array => {
-            let values = scalar_apply(json_array.values(), path, to_array, jiter_find)?;
-            if !is_json_union(values.data_type()) {
-                return Ok(Arc::new(json_array.with_values(values)));
-            }
-            // JSON union: post-process the array to set keys to null where the union member is null
-            let type_ids = values.as_any().downcast_ref::<UnionArray>().unwrap().type_ids();
-            return Ok(Arc::new(DictionaryArray::new(
-                mask_dictionary_keys(json_array.keys(), type_ids),
-                values,
-            )));
+            let values = scalar_apply(json_array.values(), path, to_array, jiter_find, false)?;
+            return post_process_dict(json_array, values, return_dict);
         }
         DataType::Utf8 => scalar_apply_iter(json_array.as_string::<i32>().iter(), path, jiter_find),
         DataType::LargeUtf8 => scalar_apply_iter(json_array.as_string::<i64>().iter(), path, jiter_find),
@@ -268,8 +262,30 @@ fn scalar_apply<C: FromIterator<Option<I>>, I>(
             return exec_err!("unexpected json array type {:?}", other);
         }
     );
-
     to_array(c)
+}
+
+/// Take a dictionary array of JSON data and an array of result values and combine them.
+fn post_process_dict<T: ArrowDictionaryKeyType>(
+    dict_array: &DictionaryArray<T>,
+    result_values: ArrayRef,
+    return_dict: bool,
+) -> DataFusionResult<ArrayRef> {
+    if return_dict {
+        if is_json_union(result_values.data_type()) {
+            // JSON union: post-process the array to set keys to null where the union member is null
+            let type_ids = result_values.as_any().downcast_ref::<UnionArray>().unwrap().type_ids();
+            Ok(Arc::new(DictionaryArray::new(
+                mask_dictionary_keys(dict_array.keys(), type_ids),
+                result_values,
+            )))
+        } else {
+            Ok(Arc::new(dict_array.with_values(result_values)))
+        }
+    } else {
+        // this is what cast would do under the hood to unpack a dictionary into an array of its values
+        Ok(take(&result_values, dict_array.keys(), None)?)
+    }
 }
 
 fn is_object_lookup(path: &[JsonPath]) -> bool {

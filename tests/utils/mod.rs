@@ -13,10 +13,15 @@ use datafusion::execution::context::SessionContext;
 use datafusion::prelude::SessionConfig;
 use datafusion_functions_json::register_all;
 
-async fn create_test_table(large_utf8: bool, dict_encoded: bool) -> Result<SessionContext> {
+pub async fn create_context() -> Result<SessionContext> {
     let config = SessionConfig::new().set_str("datafusion.sql_parser.dialect", "postgres");
     let mut ctx = SessionContext::new_with_config(config);
     register_all(&mut ctx)?;
+    Ok(ctx)
+}
+
+async fn create_test_table(large_utf8: bool, dict_encoded: bool) -> Result<SessionContext> {
+    let ctx = create_context().await?;
 
     let test_data = [
         ("object_foo", r#" {"foo": "abc"} "#),
@@ -124,6 +129,7 @@ async fn create_test_table(large_utf8: bool, dict_encoded: bool) -> Result<Sessi
         (r#" {"foo": {"bar": [0]}} "#, "foo", "bar", 0),
         (r#" {"bar": "snap"} "#, "foo", "spam", 0),
         (r#" {"spam": 1, "snap": 2} "#, "foo", "spam", 0),
+        (r#" {"spam": 1, "snap": 2} "#, "foo", "snap", 0),
     ];
     let dict_batch = RecordBatch::try_new(
         Arc::new(Schema::new(vec![
@@ -227,5 +233,5 @@ pub async fn logical_plan(sql: &str) -> Vec<String> {
     let batches = run_query(sql).await.unwrap();
     let plan_col = batches[0].column(1).as_any().downcast_ref::<StringArray>().unwrap();
     let logical_plan = plan_col.value(0);
-    logical_plan.split('\n').map(|s| s.to_string()).collect()
+    logical_plan.split('\n').map(ToString::to_string).collect()
 }

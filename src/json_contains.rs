@@ -6,7 +6,7 @@ use datafusion::common::arrow::array::{ArrayRef, BooleanArray};
 use datafusion::common::{plan_err, Result, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 
-use crate::common::{invoke, jiter_json_find, scalar_udf_return_type, GetError, JsonPath};
+use crate::common::{invoke, jiter_json_find, return_type_check, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
@@ -48,7 +48,7 @@ impl ScalarUDFImpl for JsonContains {
         if arg_types.len() < 2 {
             plan_err!("The 'json_contains' function requires two or more arguments.")
         } else {
-            scalar_udf_return_type(arg_types, self.name(), DataType::Boolean)
+            return_type_check(arg_types, self.name(), DataType::Boolean).map(|_| DataType::Boolean)
         }
     }
 
@@ -58,6 +58,7 @@ impl ScalarUDFImpl for JsonContains {
             jiter_json_contains,
             |c| Ok(Arc::new(c) as ArrayRef),
             ScalarValue::Boolean,
+            false,
         )
     }
 
