@@ -1324,6 +1324,10 @@ async fn build_dict_schema() -> SessionContext {
     builder.append_null();
 
     let dict = builder.finish();
+
+    assert_eq!(dict.len(), 10);
+    assert_eq!(dict.values().len(), 4);
+
     let array = Arc::new(dict) as ArrayRef;
 
     let schema = Arc::new(Schema::new(vec![Field::new(
@@ -1409,7 +1413,7 @@ async fn test_dict_filter_contains() {
 
     assert_batches_eq!(expected, &batches);
 
-    // try with a boolean or as well
+    // test with a boolean OR as well
     let batches = ctx
         .sql(&format!("{sql} or false"))
         .await

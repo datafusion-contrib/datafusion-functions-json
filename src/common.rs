@@ -5,10 +5,9 @@ use datafusion::arrow::array::{
     Array, ArrayRef, AsArray, DictionaryArray, Int64Array, LargeStringArray, PrimitiveArray, StringArray,
     StringViewArray, UInt64Array, UnionArray,
 };
-use datafusion::arrow::compute::cast;
+use datafusion::arrow::compute::take;
 use datafusion::arrow::datatypes::{ArrowDictionaryKeyType, ArrowNativeType, ArrowPrimitiveType, DataType};
 use datafusion::arrow::downcast_dictionary_array;
-use datafusion::arrow::error::ArrowError;
 use datafusion::common::{exec_err, plan_err, Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::ColumnarValue;
 use jiter::{Jiter, JiterError, Peek};
@@ -64,14 +63,6 @@ fn dict_key_type(d: &DataType) -> Option<DataType> {
         }
     }
     None
-}
-
-/// Convert a dict array to a non-dict array.
-fn unpack_dict_array(array: ArrayRef) -> Result<ArrayRef, ArrowError> {
-    match array.data_type() {
-        DataType::Dictionary(_, value_type) => cast(array.as_ref(), value_type),
-        _ => Ok(array),
-    }
 }
 
 #[derive(Debug)]
@@ -191,7 +182,7 @@ fn zip_apply<'a, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Optio
     let c = downcast_dictionary_array!(
         json_array => {
             let values = zip_apply(json_array.values(), path_array, to_array, jiter_find, object_lookup, false)?;
-            return prepare_dict(json_array, values, return_dict);
+            return post_process_dict(json_array, values, return_dict);
         }
         DataType::Utf8 => zip_apply_iter(json_array.as_string::<i32>().iter(), path_array, jiter_find),
         DataType::LargeUtf8 => zip_apply_iter(json_array.as_string::<i64>().iter(), path_array, jiter_find),
@@ -260,7 +251,7 @@ fn scalar_apply<C: FromIterator<Option<I>>, I>(
     let c = downcast_dictionary_array!(
         json_array => {
             let values = scalar_apply(json_array.values(), path, to_array, jiter_find, false)?;
-            return prepare_dict(json_array, values, return_dict);
+            return post_process_dict(json_array, values, return_dict);
         }
         DataType::Utf8 => scalar_apply_iter(json_array.as_string::<i32>().iter(), path, jiter_find),
         DataType::LargeUtf8 => scalar_apply_iter(json_array.as_string::<i64>().iter(), path, jiter_find),
@@ -274,24 +265,26 @@ fn scalar_apply<C: FromIterator<Option<I>>, I>(
     to_array(c)
 }
 
-fn prepare_dict<T: ArrowDictionaryKeyType>(
-    json_array: &DictionaryArray<T>,
-    values: ArrayRef,
+/// Take a dictionary array of JSON data and an array of result values and combine them.
+fn post_process_dict<T: ArrowDictionaryKeyType>(
+    dict_array: &DictionaryArray<T>,
+    result_values: ArrayRef,
     return_dict: bool,
 ) -> DataFusionResult<ArrayRef> {
     if return_dict {
-        if is_json_union(values.data_type()) {
+        if is_json_union(result_values.data_type()) {
             // JSON union: post-process the array to set keys to null where the union member is null
-            let type_ids = values.as_any().downcast_ref::<UnionArray>().unwrap().type_ids();
+            let type_ids = result_values.as_any().downcast_ref::<UnionArray>().unwrap().type_ids();
             Ok(Arc::new(DictionaryArray::new(
-                mask_dictionary_keys(json_array.keys(), type_ids),
-                values,
+                mask_dictionary_keys(dict_array.keys(), type_ids),
+                result_values,
             )))
         } else {
-            Ok(Arc::new(json_array.with_values(values)))
+            Ok(Arc::new(dict_array.with_values(result_values)))
         }
     } else {
-        unpack_dict_array(Arc::new(json_array.with_values(values))).map_err(Into::into)
+        // this is what cast would do under the hood to unpack a dictionary into an array of its values
+        Ok(take(&result_values, dict_array.keys(), None)?)
     }
 }
 
