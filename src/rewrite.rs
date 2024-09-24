@@ -8,6 +8,7 @@ use datafusion::logical_expr::expr_rewriter::FunctionRewrite;
 use datafusion::logical_expr::planner::{ExprPlanner, PlannerResult, RawBinaryExpr};
 use datafusion::logical_expr::sqlparser::ast::BinaryOperator;
 
+#[derive(Debug)]
 pub(crate) struct JsonFunctionRewriter;
 
 impl FunctionRewrite for JsonFunctionRewriter {
