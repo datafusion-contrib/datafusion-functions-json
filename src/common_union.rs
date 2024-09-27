@@ -211,17 +211,6 @@ pub struct JsonUnionEncoder {
     type_ids: ScalarBuffer<i8>,
 }
 
-#[derive(Debug, PartialEq)]
-pub enum JsonUnionValue<'a> {
-    JsonNull,
-    Bool(bool),
-    Int(i64),
-    Float(f64),
-    Str(&'a str),
-    Array(&'a str),
-    Object(&'a str),
-}
-
 impl JsonUnionEncoder {
     #[must_use]
     pub fn from_union(union: UnionArray) -> Option<Self> {
@@ -239,6 +228,12 @@ impl JsonUnionEncoder {
         } else {
             None
         }
+    }
+
+    #[must_use]
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> usize {
+        self.type_ids.len()
     }
 
     /// Get the encodable value for a given index
@@ -262,13 +257,24 @@ impl JsonUnionEncoder {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub enum JsonUnionValue<'a> {
+    JsonNull,
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    Str(&'a str),
+    Array(&'a str),
+    Object(&'a str),
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
 
     #[test]
     fn test_json_union() {
-        let v = vec![
+        let json_union = JsonUnion::from_iter(vec![
             Some(JsonUnionField::JsonNull),
             Some(JsonUnionField::Bool(true)),
             Some(JsonUnionField::Bool(false)),
@@ -278,14 +284,12 @@ mod test {
             Some(JsonUnionField::Array("[42]".to_string())),
             Some(JsonUnionField::Object(r#"{"foo": 42}"#.to_string())),
             None,
-        ];
-        let length = v.len();
-        let json_union = JsonUnion::from_iter(v);
+        ]);
 
         let union_array = UnionArray::try_from(json_union).unwrap();
         let encoder = JsonUnionEncoder::from_union(union_array).unwrap();
 
-        let values_after: Vec<_> = (0..length).map(|idx| encoder.get_value(idx)).collect();
+        let values_after: Vec<_> = (0..encoder.len()).map(|idx| encoder.get_value(idx)).collect();
         assert_eq!(
             values_after,
             vec![
