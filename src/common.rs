@@ -105,7 +105,7 @@ impl<'s> JsonPath<'s> {
 
 /// Same as `FromIterator` but we defined within the crate so we can custom as we wish,
 /// e.g. for `ListArray` with `Vec<String>`.
-pub trait JiterFromIterator<I>: Sized {
+pub(crate) trait JiterFromIterator<I>: Sized {
     fn jiter_from_iter<T: IntoIterator<Item = I>>(iter: T) -> Self;
 }
 
@@ -125,7 +125,7 @@ impl_jiter_from_iterator!(StringArray, Option<String>);
 impl_jiter_from_iterator!(BooleanArray, Option<bool>);
 impl_jiter_from_iterator!(JsonUnion, Option<JsonUnionField>);
 
-pub fn invoke<C: JiterFromIterator<Option<I>> + 'static, I>(
+pub(crate) fn invoke<C: JiterFromIterator<Option<I>> + 'static, I>(
     args: &[ColumnarValue],
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
     to_array: impl Fn(C) -> DataFusionResult<ArrayRef>,
