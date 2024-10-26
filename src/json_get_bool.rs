@@ -50,7 +50,7 @@ impl ScalarUDFImpl for JsonGetBool {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<BooleanArray, _>(
+        invoke::<BooleanArray, bool>(
             args,
             jiter_json_get_bool,
             |c| Ok(Arc::new(c) as ArrayRef),

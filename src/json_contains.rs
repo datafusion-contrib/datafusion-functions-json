@@ -53,7 +53,7 @@ impl ScalarUDFImpl for JsonContains {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> Result<ColumnarValue> {
-        invoke::<BooleanArray, _>(
+        invoke::<BooleanArray, bool>(
             args,
             jiter_json_contains,
             |c| Ok(Arc::new(c) as ArrayRef),
