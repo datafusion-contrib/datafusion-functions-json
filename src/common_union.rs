@@ -1,7 +1,7 @@
 use std::sync::{Arc, OnceLock};
 
 use datafusion::arrow::array::{
-    Array, ArrayRef, BooleanArray, Float64Array, Int64Array, NullArray, StringArray, UnionArray,
+    Array, ArrayRef, AsArray, BooleanArray, Float64Array, Int64Array, NullArray, StringArray, UnionArray,
 };
 use datafusion::arrow::buffer::{Buffer, ScalarBuffer};
 use datafusion::arrow::datatypes::{DataType, Field, UnionFields, UnionMode};
@@ -217,12 +217,12 @@ impl JsonUnionEncoder {
         if is_json_union(union.data_type()) {
             let (_, type_ids, _, c) = union.into_parts();
             Some(Self {
-                boolean: c[1].as_any().downcast_ref::<BooleanArray>().cloned()?,
-                int: c[2].as_any().downcast_ref::<Int64Array>().cloned()?,
-                float: c[3].as_any().downcast_ref::<Float64Array>().cloned()?,
-                string: c[4].as_any().downcast_ref::<StringArray>().cloned()?,
-                array: c[5].as_any().downcast_ref::<StringArray>().cloned()?,
-                object: c[6].as_any().downcast_ref::<StringArray>().cloned()?,
+                boolean: c[1].as_boolean().clone(),
+                int: c[2].as_primitive().clone(),
+                float: c[3].as_primitive().clone(),
+                string: c[4].as_string().clone(),
+                array: c[5].as_string().clone(),
+                object: c[6].as_string().clone(),
                 type_ids,
             })
         } else {
