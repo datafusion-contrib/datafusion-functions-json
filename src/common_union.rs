@@ -1,5 +1,6 @@
 use std::sync::{Arc, OnceLock};
 
+use crate::common::FromOptionIter;
 use datafusion::arrow::array::{
     Array, ArrayRef, AsArray, BooleanArray, Float64Array, Int64Array, NullArray, StringArray, UnionArray,
 };
@@ -96,9 +97,8 @@ impl JsonUnion {
     }
 }
 
-/// So we can do `collect::<JsonUnion>()`
-impl FromIterator<Option<JsonUnionField>> for JsonUnion {
-    fn from_iter<I: IntoIterator<Item = Option<JsonUnionField>>>(iter: I) -> Self {
+impl FromOptionIter<JsonUnionField> for JsonUnion {
+    fn from_option_iter<I: IntoIterator<Item = Option<JsonUnionField>>>(iter: I) -> Self {
         let inner = iter.into_iter();
         let (lower, upper) = inner.size_hint();
         let mut union = Self::new(upper.unwrap_or(lower));
@@ -274,7 +274,7 @@ mod test {
 
     #[test]
     fn test_json_union() {
-        let json_union = JsonUnion::from_iter(vec![
+        let json_union = JsonUnion::from_option_iter(vec![
             Some(JsonUnionField::JsonNull),
             Some(JsonUnionField::Bool(true)),
             Some(JsonUnionField::Bool(false)),
