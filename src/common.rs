@@ -2,8 +2,8 @@ use std::str::Utf8Error;
 use std::sync::Arc;
 
 use datafusion::arrow::array::{
-    Array, ArrayRef, AsArray, DictionaryArray, Int64Array, LargeStringArray, PrimitiveArray, StringArray,
-    StringViewArray, UInt64Array, UnionArray,
+    Array, ArrayRef, AsArray, BooleanArray, DictionaryArray, Float64Array, Int64Array, LargeStringArray,
+    PrimitiveArray, StringArray, StringViewArray, UInt64Array, UnionArray,
 };
 use datafusion::arrow::compute::take;
 use datafusion::arrow::datatypes::{ArrowDictionaryKeyType, ArrowNativeType, ArrowPrimitiveType, DataType};
@@ -101,7 +101,31 @@ impl<'s> JsonPath<'s> {
     }
 }
 
-pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
+/// Very similar to `FromIterator` but we define it here so we can implement it as we wish,
+/// e.g. for `ListArray` with `Vec<String>`.
+///
+/// Make the usage slightly more concise by taking `IntoIterator<Item = Option<I>>`
+/// instead of just `IntoIterator<Item = I>`.
+pub trait FromOptionIter<I>: Sized {
+    fn from_option_iter<T: IntoIterator<Item = Option<I>>>(iter: T) -> Self;
+}
+
+macro_rules! impl_from_option_iter {
+    ($collect:ty, $item:ty) => {
+        impl FromOptionIter<$item> for $collect {
+            fn from_option_iter<T: IntoIterator<Item = Option<$item>>>(iter: T) -> Self {
+                <$collect>::from_iter(iter)
+            }
+        }
+    };
+}
+impl_from_option_iter!(Int64Array, i64);
+impl_from_option_iter!(UInt64Array, u64);
+impl_from_option_iter!(Float64Array, f64);
+impl_from_option_iter!(StringArray, String);
+impl_from_option_iter!(BooleanArray, bool);
+
+pub fn invoke<C: FromOptionIter<I> + 'static, I>(
     args: &[ColumnarValue],
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
     to_array: impl Fn(C) -> DataFusionResult<ArrayRef>,
@@ -138,7 +162,7 @@ pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
     }
 }
 
-fn invoke_array<C: FromIterator<Option<I>> + 'static, I>(
+fn invoke_array<C: FromOptionIter<I> + 'static, I>(
     json_array: &ArrayRef,
     needle_array: &ArrayRef,
     to_array: impl Fn(C) -> DataFusionResult<ArrayRef>,
@@ -168,7 +192,7 @@ fn invoke_array<C: FromIterator<Option<I>> + 'static, I>(
     }
 }
 
-fn zip_apply<'a, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Option<I>> + 'static, I>(
+fn zip_apply<'a, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromOptionIter<I> + 'static, I>(
     json_array: &ArrayRef,
     path_array: P,
     to_array: impl Fn(C) -> DataFusionResult<ArrayRef>,
@@ -197,21 +221,18 @@ fn zip_apply<'a, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Optio
     to_array(c)
 }
 
-fn zip_apply_iter<'a, 'j, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Option<I>> + 'static, I>(
+fn zip_apply_iter<'a, 'j, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromOptionIter<I> + 'static, I>(
     json_iter: impl Iterator<Item = Option<&'j str>>,
     path_array: P,
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
 ) -> C {
-    json_iter
-        .zip(path_array)
-        .map(|(opt_json, opt_path)| {
-            if let Some(path) = opt_path {
-                jiter_find(opt_json, &[path]).ok()
-            } else {
-                None
-            }
-        })
-        .collect::<C>()
+    C::from_option_iter(json_iter.zip(path_array).map(|(opt_json, opt_path)| {
+        if let Some(path) = opt_path {
+            jiter_find(opt_json, &[path]).ok()
+        } else {
+            None
+        }
+    }))
 }
 
 fn invoke_scalar<I>(
@@ -238,7 +259,7 @@ fn invoke_scalar<I>(
     }
 }
 
-fn scalar_apply<C: FromIterator<Option<I>>, I>(
+fn scalar_apply<C: FromOptionIter<I>, I>(
     json_array: &ArrayRef,
     path: &[JsonPath],
     to_array: impl Fn(C) -> DataFusionResult<ArrayRef>,
@@ -296,12 +317,12 @@ fn is_object_lookup(path: &[JsonPath]) -> bool {
     }
 }
 
-fn scalar_apply_iter<'j, C: FromIterator<Option<I>>, I>(
+fn scalar_apply_iter<'j, C: FromOptionIter<I>, I>(
     json_iter: impl Iterator<Item = Option<&'j str>>,
     path: &[JsonPath],
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
 ) -> C {
-    json_iter.map(|opt_json| jiter_find(opt_json, path).ok()).collect::<C>()
+    C::from_option_iter(json_iter.map(|opt_json| jiter_find(opt_json, path).ok()))
 }
 
 pub fn jiter_json_find<'j>(opt_json: Option<&'j str>, path: &[JsonPath]) -> Option<(Jiter<'j>, Peek)> {

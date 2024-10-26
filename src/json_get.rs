@@ -58,7 +58,7 @@ impl ScalarUDFImpl for JsonGet {
             let array: UnionArray = c.try_into()?;
             Ok(Arc::new(array) as ArrayRef)
         };
-        invoke::<JsonUnion, JsonUnionField>(args, jiter_json_get_union, to_array, JsonUnionField::scalar_value, true)
+        invoke::<JsonUnion, _>(args, jiter_json_get_union, to_array, JsonUnionField::scalar_value, true)
     }
 
     fn aliases(&self) -> &[String] {
