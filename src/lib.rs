@@ -19,6 +19,8 @@ mod json_get_str;
 mod json_length;
 mod rewrite;
 
+pub use common_union::{JsonUnionEncoder, JsonUnionValue};
+
 pub mod functions {
     pub use crate::json_as_text::json_as_text;
     pub use crate::json_contains::json_contains;
