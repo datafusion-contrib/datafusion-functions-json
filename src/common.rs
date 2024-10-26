@@ -12,7 +12,9 @@ use datafusion::common::{exec_err, plan_err, Result as DataFusionResult, ScalarV
 use datafusion::logical_expr::ColumnarValue;
 use jiter::{Jiter, JiterError, Peek};
 
-use crate::common_union::{is_json_union, json_from_union_scalar, nested_json_array, TYPE_ID_NULL};
+use crate::common_union::{
+    is_json_union, json_from_union_scalar, nested_json_array, JsonUnion, JsonUnionField, TYPE_ID_NULL,
+};
 
 /// General implementation of `ScalarUDFImpl::return_type`.
 ///
@@ -124,6 +126,7 @@ impl_from_option_iter!(UInt64Array, u64);
 impl_from_option_iter!(Float64Array, f64);
 impl_from_option_iter!(StringArray, String);
 impl_from_option_iter!(BooleanArray, bool);
+impl_from_option_iter!(JsonUnion, JsonUnionField);
 
 pub fn invoke<C: FromOptionIter<I> + 'static, I>(
     args: &[ColumnarValue],

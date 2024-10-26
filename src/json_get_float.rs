@@ -50,7 +50,7 @@ impl ScalarUDFImpl for JsonGetFloat {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<Float64Array, _>(
+        invoke::<Float64Array, f64>(
             args,
             jiter_json_get_float,
             |c| Ok(Arc::new(c) as ArrayRef),

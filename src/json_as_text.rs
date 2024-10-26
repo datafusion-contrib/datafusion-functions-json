@@ -50,7 +50,7 @@ impl ScalarUDFImpl for JsonAsText {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<StringArray, _>(
+        invoke::<StringArray, String>(
             args,
             jiter_json_as_text,
             |c| Ok(Arc::new(c) as ArrayRef),

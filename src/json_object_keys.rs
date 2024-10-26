@@ -54,7 +54,7 @@ impl ScalarUDFImpl for JsonObjectKeys {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<ListArray, _>(
+        invoke::<ListArray, Vec<String>>(
             args,
             jiter_json_object_keys,
             |c| Ok(Arc::new(c) as ArrayRef),
