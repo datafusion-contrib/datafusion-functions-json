@@ -1,6 +1,5 @@
 use std::sync::{Arc, OnceLock};
 
-use crate::common::FromOptionIter;
 use datafusion::arrow::array::{
     Array, ArrayRef, AsArray, BooleanArray, Float64Array, Int64Array, NullArray, StringArray, UnionArray,
 };
@@ -8,6 +7,8 @@ use datafusion::arrow::buffer::{Buffer, ScalarBuffer};
 use datafusion::arrow::datatypes::{DataType, Field, UnionFields, UnionMode};
 use datafusion::arrow::error::ArrowError;
 use datafusion::common::ScalarValue;
+
+use crate::common::FromOptionIter;
 
 pub fn is_json_union(data_type: &DataType) -> bool {
     match data_type {
