@@ -17,6 +17,7 @@ mod json_get_int;
 mod json_get_json;
 mod json_get_str;
 mod json_length;
+mod json_object_keys;
 mod rewrite;
 
 pub use common_union::{JsonUnionEncoder, JsonUnionValue};
@@ -31,6 +32,7 @@ pub mod functions {
     pub use crate::json_get_json::json_get_json;
     pub use crate::json_get_str::json_get_str;
     pub use crate::json_length::json_length;
+    pub use crate::json_object_keys::json_object_keys;
 }
 
 pub mod udfs {
@@ -43,6 +45,7 @@ pub mod udfs {
     pub use crate::json_get_json::json_get_json_udf;
     pub use crate::json_get_str::json_get_str_udf;
     pub use crate::json_length::json_length_udf;
+    pub use crate::json_object_keys::json_object_keys_udf;
 }
 
 /// Register all JSON UDFs, and [`rewrite::JsonFunctionRewriter`] with the provided [`FunctionRegistry`].
@@ -65,6 +68,7 @@ pub fn register_all(registry: &mut dyn FunctionRegistry) -> Result<()> {
         json_get_str::json_get_str_udf(),
         json_contains::json_contains_udf(),
         json_length::json_length_udf(),
+        json_object_keys::json_object_keys_udf(),
     ];
     functions.into_iter().try_for_each(|udf| {
         let existing_udf = registry.register_udf(udf)?;
