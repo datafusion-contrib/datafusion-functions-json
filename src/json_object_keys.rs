@@ -7,7 +7,7 @@ use datafusion::common::{Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::Peek;
 
-use crate::common::{get_err, invoke, jiter_json_find, return_type_check, FromOptionIter, GetError, JsonPath};
+use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, JiterFromIterator, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
@@ -68,8 +68,8 @@ impl ScalarUDFImpl for JsonObjectKeys {
     }
 }
 
-impl FromOptionIter<Vec<String>> for ListArray {
-    fn from_option_iter<I: IntoIterator<Item = Option<Vec<String>>>>(iter: I) -> Self {
+impl JiterFromIterator<Option<Vec<String>>> for ListArray {
+    fn jiter_from_iter<I: IntoIterator<Item = Option<Vec<String>>>>(iter: I) -> Self {
         let values_builder = StringBuilder::new();
         let mut builder = ListBuilder::new(values_builder);
         for opt_keys in iter {
