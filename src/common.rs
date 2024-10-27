@@ -2,8 +2,8 @@ use std::str::Utf8Error;
 use std::sync::Arc;
 
 use datafusion::arrow::array::{
-    Array, ArrayRef, AsArray, BooleanArray, DictionaryArray, Float64Array, Int64Array, LargeStringArray,
-    PrimitiveArray, StringArray, StringViewArray, UInt64Array, UnionArray,
+    Array, ArrayRef, AsArray, DictionaryArray, Int64Array, LargeStringArray, PrimitiveArray, StringArray,
+    StringViewArray, UInt64Array, UnionArray,
 };
 use datafusion::arrow::compute::take;
 use datafusion::arrow::datatypes::{ArrowDictionaryKeyType, ArrowNativeType, ArrowPrimitiveType, DataType};
@@ -12,9 +12,7 @@ use datafusion::common::{exec_err, plan_err, Result as DataFusionResult, ScalarV
 use datafusion::logical_expr::ColumnarValue;
 use jiter::{Jiter, JiterError, Peek};
 
-use crate::common_union::{
-    is_json_union, json_from_union_scalar, nested_json_array, JsonUnion, JsonUnionField, TYPE_ID_NULL,
-};
+use crate::common_union::{is_json_union, json_from_union_scalar, nested_json_array, TYPE_ID_NULL};
 
 /// General implementation of `ScalarUDFImpl::return_type`.
 ///
@@ -103,29 +101,7 @@ impl<'s> JsonPath<'s> {
     }
 }
 
-/// Same as `FromIterator` but we defined within the crate so we can custom as we wish,
-/// e.g. for `ListArray` with `Vec<String>`.
-pub(crate) trait JiterFromIterator<I>: Sized {
-    fn jiter_from_iter<T: IntoIterator<Item = I>>(iter: T) -> Self;
-}
-
-macro_rules! impl_jiter_from_iterator {
-    ($collect:ty, $item:ty) => {
-        impl JiterFromIterator<$item> for $collect {
-            fn jiter_from_iter<T: IntoIterator<Item = $item>>(iter: T) -> Self {
-                <$collect>::from_iter(iter)
-            }
-        }
-    };
-}
-impl_jiter_from_iterator!(Int64Array, Option<i64>);
-impl_jiter_from_iterator!(UInt64Array, Option<u64>);
-impl_jiter_from_iterator!(Float64Array, Option<f64>);
-impl_jiter_from_iterator!(StringArray, Option<String>);
-impl_jiter_from_iterator!(BooleanArray, Option<bool>);
-impl_jiter_from_iterator!(JsonUnion, Option<JsonUnionField>);
-
-pub(crate) fn invoke<C: JiterFromIterator<Option<I>> + 'static, I>(
+pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
     args: &[ColumnarValue],
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
     to_array: impl Fn(C) -> DataFusionResult<ArrayRef>,
@@ -162,7 +138,7 @@ pub(crate) fn invoke<C: JiterFromIterator<Option<I>> + 'static, I>(
     }
 }
 
-fn invoke_array<C: JiterFromIterator<Option<I>> + 'static, I>(
+fn invoke_array<C: FromIterator<Option<I>> + 'static, I>(
     json_array: &ArrayRef,
     needle_array: &ArrayRef,
     to_array: impl Fn(C) -> DataFusionResult<ArrayRef>,
@@ -192,7 +168,7 @@ fn invoke_array<C: JiterFromIterator<Option<I>> + 'static, I>(
     }
 }
 
-fn zip_apply<'a, P: Iterator<Item = Option<JsonPath<'a>>>, C: JiterFromIterator<Option<I>> + 'static, I>(
+fn zip_apply<'a, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Option<I>> + 'static, I>(
     json_array: &ArrayRef,
     path_array: P,
     to_array: impl Fn(C) -> DataFusionResult<ArrayRef>,
@@ -221,18 +197,21 @@ fn zip_apply<'a, P: Iterator<Item = Option<JsonPath<'a>>>, C: JiterFromIterator<
     to_array(c)
 }
 
-fn zip_apply_iter<'a, 'j, P: Iterator<Item = Option<JsonPath<'a>>>, C: JiterFromIterator<Option<I>> + 'static, I>(
+fn zip_apply_iter<'a, 'j, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Option<I>> + 'static, I>(
     json_iter: impl Iterator<Item = Option<&'j str>>,
     path_array: P,
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
 ) -> C {
-    C::jiter_from_iter(json_iter.zip(path_array).map(|(opt_json, opt_path)| {
-        if let Some(path) = opt_path {
-            jiter_find(opt_json, &[path]).ok()
-        } else {
-            None
-        }
-    }))
+    json_iter
+        .zip(path_array)
+        .map(|(opt_json, opt_path)| {
+            if let Some(path) = opt_path {
+                jiter_find(opt_json, &[path]).ok()
+            } else {
+                None
+            }
+        })
+        .collect::<C>()
 }
 
 fn invoke_scalar<I>(
@@ -259,7 +238,7 @@ fn invoke_scalar<I>(
     }
 }
 
-fn scalar_apply<C: JiterFromIterator<Option<I>>, I>(
+fn scalar_apply<C: FromIterator<Option<I>>, I>(
     json_array: &ArrayRef,
     path: &[JsonPath],
     to_array: impl Fn(C) -> DataFusionResult<ArrayRef>,
@@ -317,12 +296,12 @@ fn is_object_lookup(path: &[JsonPath]) -> bool {
     }
 }
 
-fn scalar_apply_iter<'j, C: JiterFromIterator<Option<I>>, I>(
+fn scalar_apply_iter<'j, C: FromIterator<Option<I>>, I>(
     json_iter: impl Iterator<Item = Option<&'j str>>,
     path: &[JsonPath],
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
 ) -> C {
-    C::jiter_from_iter(json_iter.map(|opt_json| jiter_find(opt_json, path).ok()))
+    json_iter.map(|opt_json| jiter_find(opt_json, path).ok()).collect::<C>()
 }
 
 pub fn jiter_json_find<'j>(opt_json: Option<&'j str>, path: &[JsonPath]) -> Option<(Jiter<'j>, Peek)> {

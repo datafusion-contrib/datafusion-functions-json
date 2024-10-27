@@ -7,7 +7,7 @@ use datafusion::common::{Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::Peek;
 
-use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, JiterFromIterator, JsonPath};
+use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
@@ -54,10 +54,10 @@ impl ScalarUDFImpl for JsonObjectKeys {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<ListArray, Vec<String>>(
+        invoke::<ListArrayWrapper, Vec<String>>(
             args,
             jiter_json_object_keys,
-            |c| Ok(Arc::new(c) as ArrayRef),
+            |w| Ok(Arc::new(w.0) as ArrayRef),
             keys_to_scalar,
             true,
         )
@@ -68,8 +68,12 @@ impl ScalarUDFImpl for JsonObjectKeys {
     }
 }
 
-impl JiterFromIterator<Option<Vec<String>>> for ListArray {
-    fn jiter_from_iter<I: IntoIterator<Item = Option<Vec<String>>>>(iter: I) -> Self {
+/// Wrapper for a `ListArray` that allows us to implement `FromIterator<Option<Vec<String>>>` as required.
+#[derive(Debug)]
+struct ListArrayWrapper(ListArray);
+
+impl FromIterator<Option<Vec<String>>> for ListArrayWrapper {
+    fn from_iter<I: IntoIterator<Item = Option<Vec<String>>>>(iter: I) -> Self {
         let values_builder = StringBuilder::new();
         let mut builder = ListBuilder::new(values_builder);
         for opt_keys in iter {
@@ -82,7 +86,7 @@ impl JiterFromIterator<Option<Vec<String>>> for ListArray {
                 builder.append(false);
             }
         }
-        builder.finish()
+        Self(builder.finish())
     }
 }
 
