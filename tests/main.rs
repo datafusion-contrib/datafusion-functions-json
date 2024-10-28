@@ -1432,3 +1432,100 @@ async fn test_dict_filter_contains() {
 
     assert_batches_eq!(expected, &batches);
 }
+
+#[tokio::test]
+async fn test_json_object_keys() {
+    let expected = [
+        "+----------------------------------+",
+        "| json_object_keys(test.json_data) |",
+        "+----------------------------------+",
+        "| [foo]                            |",
+        "| [foo]                            |",
+        "| [foo]                            |",
+        "| [foo]                            |",
+        "| [bar]                            |",
+        "|                                  |",
+        "|                                  |",
+        "+----------------------------------+",
+    ];
+
+    let sql = "select json_object_keys(json_data) from test";
+    let batches = run_query(sql).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+
+    let sql = "select json_object_keys(json_data) from test";
+    let batches = run_query_dict(sql).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+
+    let sql = "select json_object_keys(json_data) from test";
+    let batches = run_query_large(sql).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_object_keys_many() {
+    let expected = [
+        "+-----------------------+",
+        "| v                     |",
+        "+-----------------------+",
+        "| [foo, bar, spam, ham] |",
+        "+-----------------------+",
+    ];
+
+    let sql = r#"select json_object_keys('{"foo": 1, "bar": 2.2, "spam": true, "ham": []}') as v"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_object_keys_nested() {
+    let json = r#"'{"foo": [{"bar": {"spam": true, "ham": []}}]}'"#;
+
+    let sql = format!("select json_object_keys({json}) as v");
+    let batches = run_query(&sql).await.unwrap();
+    #[rustfmt::skip]
+    let expected = [
+        "+-------+",
+        "| v     |",
+        "+-------+",
+        "| [foo] |",
+        "+-------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+
+    let sql = format!("select json_object_keys({json}, 'foo') as v");
+    let batches = run_query(&sql).await.unwrap();
+    #[rustfmt::skip]
+    let expected = [
+        "+---+",
+        "| v |",
+        "+---+",
+        "|   |",
+        "+---+",
+    ];
+    assert_batches_eq!(expected, &batches);
+
+    let sql = format!("select json_object_keys({json}, 'foo', 0) as v");
+    let batches = run_query(&sql).await.unwrap();
+    #[rustfmt::skip]
+    let expected = [
+        "+-------+",
+        "| v     |",
+        "+-------+",
+        "| [bar] |",
+        "+-------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+
+    let sql = format!("select json_object_keys({json}, 'foo', 0, 'bar') as v");
+    let batches = run_query(&sql).await.unwrap();
+    #[rustfmt::skip]
+    let expected = [
+        "+-------------+",
+        "| v           |",
+        "+-------------+",
+        "| [spam, ham] |",
+        "+-------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
