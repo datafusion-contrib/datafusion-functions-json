@@ -147,7 +147,16 @@ fn invoke_array<C: FromIterator<Option<I>> + 'static, I>(
 ) -> DataFusionResult<ArrayRef> {
     if let Some(d) = needle_array.as_any_dictionary_opt() {
         // this is the (very rare) case where the needle is a dictionary, it shouldn't affect what we return
-        invoke_array(json_array, d.values(), to_array, jiter_find, return_dict)
+        invoke_array(
+            json_array,
+            // Unpack the dictionary array into a values array, so that we can then use it as input.
+            // There's probably a way to do this with iterators to avoid exploding the input data,
+            // but due to possible nested dictionaries, it's not trivial.
+            &take(d.values(), d.keys(), None)?,
+            to_array,
+            jiter_find,
+            return_dict,
+        )
     } else if let Some(str_path_array) = needle_array.as_any().downcast_ref::<StringArray>() {
         let paths = str_path_array.iter().map(|opt_key| opt_key.map(JsonPath::Key));
         zip_apply(json_array, paths, to_array, jiter_find, true, return_dict)
