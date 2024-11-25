@@ -2,11 +2,13 @@ use std::str::Utf8Error;
 use std::sync::Arc;
 
 use datafusion::arrow::array::{
-    Array, ArrayRef, AsArray, DictionaryArray, Int64Array, LargeStringArray, PrimitiveArray, StringArray,
-    StringViewArray, UInt64Array, UnionArray,
+    Array, ArrayAccessor, ArrayRef, AsArray, DictionaryArray, Int64Array, LargeStringArray, PrimitiveArray,
+    StringArray, StringViewArray, UInt64Array, UnionArray,
 };
 use datafusion::arrow::compute::take;
-use datafusion::arrow::datatypes::{ArrowDictionaryKeyType, ArrowNativeType, ArrowPrimitiveType, DataType};
+use datafusion::arrow::datatypes::{
+    ArrowDictionaryKeyType, ArrowNativeType, ArrowPrimitiveType, DataType, Int64Type, UInt64Type,
+};
 use datafusion::arrow::downcast_dictionary_array;
 use datafusion::common::{exec_err, plan_err, Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::ColumnarValue;
@@ -70,6 +72,12 @@ pub enum JsonPath<'s> {
     Key(&'s str),
     Index(usize),
     None,
+}
+
+impl<'a> From<&'a str> for JsonPath<'a> {
+    fn from(key: &'a str) -> Self {
+        JsonPath::Key(key)
+    }
 }
 
 impl From<u64> for JsonPath<'_> {
@@ -145,41 +153,27 @@ fn invoke_array<C: FromIterator<Option<I>> + 'static, I>(
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
     return_dict: bool,
 ) -> DataFusionResult<ArrayRef> {
-    if let Some(d) = needle_array.as_any_dictionary_opt() {
-        // this is the (very rare) case where the needle is a dictionary, it shouldn't affect what we return
-        invoke_array(
-            json_array,
-            // Unpack the dictionary array into a values array, so that we can then use it as input.
-            // There's probably a way to do this with iterators to avoid exploding the input data,
-            // but due to possible nested dictionaries, it's not trivial.
-            &take(d.values(), d.keys(), None)?,
-            to_array,
-            jiter_find,
-            return_dict,
-        )
-    } else if let Some(str_path_array) = needle_array.as_any().downcast_ref::<StringArray>() {
-        let paths = str_path_array.iter().map(|opt_key| opt_key.map(JsonPath::Key));
-        zip_apply(json_array, paths, to_array, jiter_find, true, return_dict)
-    } else if let Some(str_path_array) = needle_array.as_any().downcast_ref::<LargeStringArray>() {
-        let paths = str_path_array.iter().map(|opt_key| opt_key.map(JsonPath::Key));
-        zip_apply(json_array, paths, to_array, jiter_find, true, return_dict)
-    } else if let Some(str_path_array) = needle_array.as_any().downcast_ref::<StringViewArray>() {
-        let paths = str_path_array.iter().map(|opt_key| opt_key.map(JsonPath::Key));
-        zip_apply(json_array, paths, to_array, jiter_find, true, return_dict)
-    } else if let Some(int_path_array) = needle_array.as_any().downcast_ref::<Int64Array>() {
-        let paths = int_path_array.iter().map(|opt_index| opt_index.map(Into::into));
-        zip_apply(json_array, paths, to_array, jiter_find, false, return_dict)
-    } else if let Some(int_path_array) = needle_array.as_any().downcast_ref::<UInt64Array>() {
-        let paths = int_path_array.iter().map(|opt_index| opt_index.map(Into::into));
-        zip_apply(json_array, paths, to_array, jiter_find, false, return_dict)
-    } else {
-        exec_err!("unexpected second argument type, expected string or int array")
-    }
+    downcast_dictionary_array!(
+        needle_array => match needle_array.values().data_type() {
+            DataType::Utf8 => zip_apply(json_array, needle_array.downcast_dict::<StringArray>().unwrap(), to_array, jiter_find, true, return_dict),
+            DataType::LargeUtf8 => zip_apply(json_array, needle_array.downcast_dict::<LargeStringArray>().unwrap(), to_array, jiter_find, true, return_dict),
+            DataType::Utf8View => zip_apply(json_array, needle_array.downcast_dict::<StringViewArray>().unwrap(), to_array, jiter_find, true, return_dict),
+            DataType::Int64 => zip_apply(json_array, needle_array.downcast_dict::<Int64Array>().unwrap(), to_array, jiter_find, false, return_dict),
+            DataType::UInt64 => zip_apply(json_array, needle_array.downcast_dict::<UInt64Array>().unwrap(), to_array, jiter_find, false, return_dict),
+            other => exec_err!("unexpected second argument type, expected string or int array, got {:?}", other),
+        },
+        DataType::Utf8 => zip_apply(json_array, needle_array.as_string::<i32>(), to_array, jiter_find, true, return_dict),
+        DataType::LargeUtf8 => zip_apply(json_array, needle_array.as_string::<i64>(), to_array, jiter_find, true, return_dict),
+        DataType::Utf8View => zip_apply(json_array, needle_array.as_string_view(), to_array, jiter_find, true, return_dict),
+        DataType::Int64 => zip_apply(json_array, needle_array.as_primitive::<Int64Type>(), to_array, jiter_find, false, return_dict),
+        DataType::UInt64 => zip_apply(json_array, needle_array.as_primitive::<UInt64Type>(), to_array, jiter_find, false, return_dict),
+        other => exec_err!("unexpected second argument type, expected string or int array, got {:?}", other)
+    )
 }
 
-fn zip_apply<'a, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Option<I>> + 'static, I>(
+fn zip_apply<'a, P: Into<JsonPath<'a>>, C: FromIterator<Option<I>> + 'static, I>(
     json_array: &ArrayRef,
-    path_array: P,
+    path_array: impl ArrayAccessor<Item = P>,
     to_array: impl Fn(C) -> DataFusionResult<ArrayRef>,
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
     object_lookup: bool,
@@ -203,18 +197,19 @@ fn zip_apply<'a, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Optio
     to_array(c)
 }
 
-fn zip_apply_iter<'a, 'j, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Option<I>> + 'static, I>(
+fn zip_apply_iter<'a, 'j, P: Into<JsonPath<'a>>, C: FromIterator<Option<I>> + 'static, I>(
     json_iter: impl Iterator<Item = Option<&'j str>>,
-    path_array: P,
+    path_array: impl ArrayAccessor<Item = P>,
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
 ) -> C {
     json_iter
-        .zip(path_array)
-        .map(|(opt_json, opt_path)| {
-            if let Some(path) = opt_path {
-                jiter_find(opt_json, &[path]).ok()
-            } else {
+        .enumerate()
+        .map(|(i, opt_json)| {
+            if path_array.is_null(i) {
                 None
+            } else {
+                let path = path_array.value(i).into();
+                jiter_find(opt_json, &[path]).ok()
             }
         })
         .collect::<C>()
