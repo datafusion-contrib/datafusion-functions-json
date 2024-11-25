@@ -500,7 +500,7 @@ fn test_json_get_utf8() {
         ColumnarValue::Scalar(ScalarValue::Utf8(Some("aa".to_string()))),
     ];
 
-    let ColumnarValue::Scalar(sv) = json_get_str.invoke(args).unwrap() else {
+    let ColumnarValue::Scalar(sv) = json_get_str.invoke_batch(args, 1).unwrap() else {
         panic!("expected scalar")
     };
 
@@ -518,7 +518,7 @@ fn test_json_get_large_utf8() {
         ColumnarValue::Scalar(ScalarValue::LargeUtf8(Some("aa".to_string()))),
     ];
 
-    let ColumnarValue::Scalar(sv) = json_get_str.invoke(args).unwrap() else {
+    let ColumnarValue::Scalar(sv) = json_get_str.invoke_batch(args, 1).unwrap() else {
         panic!("expected scalar")
     };
 

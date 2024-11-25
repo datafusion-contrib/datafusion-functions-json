@@ -176,9 +176,6 @@ fn zip_apply<'a, P: Iterator<Item = Option<JsonPath<'a>>>, C: FromIterator<Optio
     object_lookup: bool,
     return_dict: bool,
 ) -> DataFusionResult<ArrayRef> {
-    // arrow_schema "use" is workaround for https://github.com/apache/arrow-rs/issues/6400#issue-2528388332
-    use datafusion::arrow::datatypes as arrow_schema;
-
     let c = downcast_dictionary_array!(
         json_array => {
             let values = zip_apply(json_array.values(), path_array, to_array, jiter_find, object_lookup, false)?;
@@ -245,9 +242,6 @@ fn scalar_apply<C: FromIterator<Option<I>>, I>(
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
     return_dict: bool,
 ) -> DataFusionResult<ArrayRef> {
-    // arrow_schema "use" is workaround for https://github.com/apache/arrow-rs/issues/6400#issue-2528388332
-    use datafusion::arrow::datatypes as arrow_schema;
-
     let c = downcast_dictionary_array!(
         json_array => {
             let values = scalar_apply(json_array.values(), path, to_array, jiter_find, false)?;
