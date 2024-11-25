@@ -52,14 +52,23 @@ fn optimise_json_get_cast(cast: &Cast) -> Option<Transformed<Expr>> {
 fn unnest_json_calls(func: &ScalarFunction) -> Option<Transformed<Expr>> {
     if !matches!(
         func.func.name(),
-        "json_get" | "json_get_bool" | "json_get_float" | "json_get_int" | "json_get_json" | "json_get_str"
+        "json_get"
+            | "json_get_bool"
+            | "json_get_float"
+            | "json_get_int"
+            | "json_get_json"
+            | "json_get_str"
+            | "json_as_text"
     ) {
         return None;
     }
     let mut outer_args_iter = func.args.iter();
     let first_arg = outer_args_iter.next()?;
     let inner_func = extract_scalar_function(first_arg)?;
-    if inner_func.func.name() != "json_get" {
+
+    // both json_get and json_as_text would produce new JSON to be processed by the outer
+    // function so can be inlined
+    if !matches!(inner_func.func.name(), "json_get" | "json_as_text") {
         return None;
     }
 

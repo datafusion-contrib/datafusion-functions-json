@@ -915,6 +915,19 @@ async fn test_plan_arrow_double_nested_cast() {
 }
 
 #[tokio::test]
+async fn test_plan_double_arrow_double_nested_cast() {
+    let lines = logical_plan(r"explain select (json_data->>'foo'->>0)::int from test").await;
+
+    // NB: json_as_text(..)::int is NOT the same as `json_get_int(..)`, hence the cast is not rewritten
+    let expected = [
+        "Projection: CAST(json_as_text(test.json_data, Utf8(\"foo\"), Int64(0)) AS test.json_data ->> Utf8(\"foo\") ->> Int64(0) AS Int32)",
+        "  TableScan: test projection=[json_data]",
+    ];
+
+    assert_eq!(lines, expected);
+}
+
+#[tokio::test]
 async fn test_arrow_nested_columns() {
     let expected = [
         "+-------------+",
