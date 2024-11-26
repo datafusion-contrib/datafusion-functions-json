@@ -197,6 +197,7 @@ fn zip_apply<'a, P: Into<JsonPath<'a>>, C: FromIterator<Option<I>> + 'static, I>
     to_array(c)
 }
 
+#[allow(clippy::needless_pass_by_value)] // ArrayAccessor is implemented on references
 fn zip_apply_iter<'a, 'j, P: Into<JsonPath<'a>>, C: FromIterator<Option<I>> + 'static, I>(
     json_iter: impl Iterator<Item = Option<&'j str>>,
     path_array: impl ArrayAccessor<Item = P>,
