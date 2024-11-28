@@ -96,7 +96,11 @@ async fn create_test_table(large_utf8: bool, dict_encoded: bool) -> Result<Sessi
         Arc::new(Schema::new(vec![
             Field::new("json_data", DataType::Utf8, false),
             Field::new("str_key1", DataType::Utf8, false),
-            Field::new("str_key2", DataType::Utf8, false),
+            Field::new(
+                "str_key2",
+                DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
+                false,
+            ),
             Field::new("int_key", DataType::Int64, false),
         ])),
         vec![
@@ -109,12 +113,12 @@ async fn create_test_table(large_utf8: bool, dict_encoded: bool) -> Result<Sessi
                     .map(|(_, str_key1, _, _)| *str_key1)
                     .collect::<Vec<_>>(),
             )),
-            Arc::new(StringArray::from(
+            Arc::new(
                 more_nested
                     .iter()
                     .map(|(_, _, str_key2, _)| *str_key2)
-                    .collect::<Vec<_>>(),
-            )),
+                    .collect::<DictionaryArray<Int32Type>>(),
+            ),
             Arc::new(Int64Array::from(
                 more_nested
                     .iter()
