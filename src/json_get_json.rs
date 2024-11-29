@@ -1,12 +1,12 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use arrow::array::{ArrayRef, StringArray};
-use arrow_schema::DataType;
-use datafusion_common::{Result as DataFusionResult, ScalarValue};
-use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
+use datafusion::arrow::array::{ArrayRef, StringArray};
+use datafusion::arrow::datatypes::DataType;
+use datafusion::common::{Result as DataFusionResult, ScalarValue};
+use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 
-use crate::common::{check_args, get_err, invoke, jiter_json_find, GetError, JsonPath};
+use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
@@ -45,7 +45,7 @@ impl ScalarUDFImpl for JsonGetJson {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        check_args(arg_types, self.name()).map(|()| DataType::Utf8)
+        return_type_check(arg_types, self.name(), DataType::Utf8)
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
@@ -54,6 +54,7 @@ impl ScalarUDFImpl for JsonGetJson {
             jiter_json_get_json,
             |c| Ok(Arc::new(c) as ArrayRef),
             ScalarValue::Utf8,
+            true,
         )
     }
 

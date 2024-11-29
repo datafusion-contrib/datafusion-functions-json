@@ -1,13 +1,14 @@
-use arrow::datatypes::DataType;
-use datafusion_common::config::ConfigOptions;
-use datafusion_common::tree_node::Transformed;
-use datafusion_common::DFSchema;
-use datafusion_common::Result;
-use datafusion_expr::expr::{Alias, Cast, Expr, ScalarFunction};
-use datafusion_expr::expr_rewriter::FunctionRewrite;
-use datafusion_expr::planner::{ExprPlanner, PlannerResult, RawBinaryExpr};
-use datafusion_expr::sqlparser::ast::BinaryOperator;
+use datafusion::arrow::datatypes::DataType;
+use datafusion::common::config::ConfigOptions;
+use datafusion::common::tree_node::Transformed;
+use datafusion::common::DFSchema;
+use datafusion::common::Result;
+use datafusion::logical_expr::expr::{Alias, Cast, Expr, ScalarFunction};
+use datafusion::logical_expr::expr_rewriter::FunctionRewrite;
+use datafusion::logical_expr::planner::{ExprPlanner, PlannerResult, RawBinaryExpr};
+use datafusion::logical_expr::sqlparser::ast::BinaryOperator;
 
+#[derive(Debug)]
 pub(crate) struct JsonFunctionRewriter;
 
 impl FunctionRewrite for JsonFunctionRewriter {
@@ -51,14 +52,23 @@ fn optimise_json_get_cast(cast: &Cast) -> Option<Transformed<Expr>> {
 fn unnest_json_calls(func: &ScalarFunction) -> Option<Transformed<Expr>> {
     if !matches!(
         func.func.name(),
-        "json_get" | "json_get_bool" | "json_get_float" | "json_get_int" | "json_get_json" | "json_get_str"
+        "json_get"
+            | "json_get_bool"
+            | "json_get_float"
+            | "json_get_int"
+            | "json_get_json"
+            | "json_get_str"
+            | "json_as_text"
     ) {
         return None;
     }
     let mut outer_args_iter = func.args.iter();
     let first_arg = outer_args_iter.next()?;
     let inner_func = extract_scalar_function(first_arg)?;
-    if inner_func.func.name() != "json_get" {
+
+    // both json_get and json_as_text would produce new JSON to be processed by the outer
+    // function so can be inlined
+    if !matches!(inner_func.func.name(), "json_get" | "json_as_text") {
         return None;
     }
 

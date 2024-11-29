@@ -12,8 +12,46 @@ To use these functions, you'll just need to call:
 ```rust
 datafusion_functions_json::register_all(&mut ctx)?;
 ```
-
 To register the below JSON functions in your `SessionContext`.
+
+# Examples
+
+```sql
+-- Create a table with a JSON column stored as a string
+CREATE TABLE test_table (id INT, json_col VARCHAR) AS VALUES
+(1, '{}'),
+(2, '{ "a": 1 }'),
+(3, '{ "a": 2 }'),
+(4, '{ "a": 1, "b": 2 }'),
+(5, '{ "a": 1, "b": 2, "c": 3 }');
+
+-- Check if each document contains the key 'b'
+SELECT id, json_contains(json_col, 'b') as json_contains FROM test_table;
+-- Results in
+-- +----+---------------+
+-- | id | json_contains |
+-- +----+---------------+
+-- | 1  | false         |
+-- | 2  | false         |
+-- | 3  | false         |
+-- | 4  | true          |
+-- | 5  | true          |
+-- +----+---------------+
+
+-- Get the value of the key 'a' from each document
+SELECT id, json_col->'a' as json_col_a FROM test_table
+
+-- +----+------------+
+-- | id | json_col_a |
+-- +----+------------+
+-- | 1  | {null=}    |
+-- | 2  | {int=1}    |
+-- | 3  | {int=2}    |
+-- | 4  | {int=1}    |
+-- | 5  | {int=1}    |
+-- +----+------------+
+```
+
 
 ## Done
 
@@ -27,6 +65,11 @@ To register the below JSON functions in your `SessionContext`.
 * [x] `json_as_text(json: str, *keys: str | int) -> str` - Get any value from a JSON string by its "path", represented as a string (used for the `->>` operator)
 * [x] `json_length(json: str, *keys: str | int) -> int` - get the length of a JSON string or array
 
+- [x] `->` operator - alias for `json_get`
+- [x] `->>` operator - alias for `json_as_text`
+- [x] `?` operator - alias for `json_contains`
+
+### Notes
 Cast expressions with `json_get` are rewritten to the appropriate method, e.g.
 
 ```sql

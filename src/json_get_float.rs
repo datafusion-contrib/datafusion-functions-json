@@ -1,13 +1,13 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use arrow::array::{ArrayRef, Float64Array};
-use arrow_schema::DataType;
-use datafusion_common::{Result as DataFusionResult, ScalarValue};
-use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
+use datafusion::arrow::array::{ArrayRef, Float64Array};
+use datafusion::arrow::datatypes::DataType;
+use datafusion::common::{Result as DataFusionResult, ScalarValue};
+use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::{NumberAny, Peek};
 
-use crate::common::{check_args, get_err, invoke, jiter_json_find, GetError, JsonPath};
+use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
@@ -46,7 +46,7 @@ impl ScalarUDFImpl for JsonGetFloat {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        check_args(arg_types, self.name()).map(|()| DataType::Float64)
+        return_type_check(arg_types, self.name(), DataType::Float64)
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
@@ -55,6 +55,7 @@ impl ScalarUDFImpl for JsonGetFloat {
             jiter_json_get_float,
             |c| Ok(Arc::new(c) as ArrayRef),
             ScalarValue::Float64,
+            true,
         )
     }
 

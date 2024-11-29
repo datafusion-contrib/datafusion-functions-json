@@ -1,14 +1,14 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use arrow::array::ListArray;
-use arrow_schema::{DataType, Field};
-use datafusion_common::arrow::array::ArrayRef;
-use datafusion_common::{Result as DataFusionResult, ScalarValue};
-use datafusion_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
+use datafusion::arrow::array::{ArrayRef, ListArray};
+use datafusion::arrow::datatypes::{DataType, Field};
+use datafusion::error::Result as DatafusionResult;
+use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
+use datafusion::scalar::ScalarValue;
 use jiter::Peek;
 
-use crate::common::{check_args, get_err, invoke, jiter_json_find, GetError, JsonPath};
+use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 use crate::common_union::{JsonArrayField, JsonUnion};
 
@@ -47,19 +47,27 @@ impl ScalarUDFImpl for JsonGetArray {
         &self.signature
     }
 
-    fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        check_args(arg_types, self.name()).map(|()| DataType::List(Field::new("item", DataType::Utf8, true).into()))
+    fn return_type(&self, arg_types: &[DataType]) -> DatafusionResult<DataType> {
+        return_type_check(
+            arg_types,
+            self.name(),
+            DataType::List(Field::new("item", DataType::Utf8, true).into()),
+        )
     }
 
-    fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
+    fn invoke(&self, args: &[ColumnarValue]) -> DatafusionResult<ColumnarValue> {
         let to_array = |c: JsonUnion| {
             let array: ListArray = c.try_into()?;
             Ok(Arc::new(array) as ArrayRef)
         };
 
-        invoke::<JsonUnion, JsonArrayField>(args, jiter_json_get_array, to_array, |i| {
-            i.map_or_else(|| ScalarValue::Null, Into::into)
-        })
+        invoke::<JsonUnion, JsonArrayField>(
+            args,
+            jiter_json_get_array,
+            to_array,
+            |i| i.map_or_else(|| ScalarValue::Null, Into::into),
+            true,
+        )
     }
 
     fn aliases(&self) -> &[String] {
