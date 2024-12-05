@@ -230,7 +230,7 @@ fn invoke_scalar<I>(
             Ok(ColumnarValue::Scalar(to_scalar(v)))
         }
         ScalarValue::Union(type_id_value, union_fields, _) => {
-            let opt_json = json_from_union_scalar(type_id_value, union_fields);
+            let opt_json = json_from_union_scalar(type_id_value.as_ref(), union_fields);
             let v = jiter_find(opt_json, &JsonPath::extract_path(args)).ok();
             Ok(ColumnarValue::Scalar(to_scalar(v)))
         }
