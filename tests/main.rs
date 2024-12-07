@@ -67,23 +67,23 @@ async fn test_json_get_union() {
         .unwrap();
 
     let expected = [
-        "+------------------+--------------------------------------+",
-        "| name             | json_get(test.json_data,Utf8(\"foo\")) |",
-        "+------------------+--------------------------------------+",
-        "| object_foo       | {str=abc}                            |",
-        "| object_foo_array | {array=[1]}                          |",
-        "| object_foo_obj   | {object={}}                          |",
-        "| object_foo_null  | {null=}                              |",
-        "| object_bar       | {null=}                              |",
-        "| list_foo         | {null=}                              |",
-        "| invalid_json     | {null=}                              |",
-        "+------------------+--------------------------------------+",
+        "+------------------+--------------------------------------------------------------+",
+        "| name             | json_get(test.json_data,Utf8(\"foo\"))                         |",
+        "+------------------+--------------------------------------------------------------+",
+        "| object_foo       | {str=abc}                                                    |",
+        "| object_foo_array | {array=[1, true, {\"nested_foo\": \"baz\", \"nested_bar\": null}]} |",
+        "| object_foo_obj   | {object={}}                                                  |",
+        "| object_foo_null  | {null=}                                                      |",
+        "| object_bar       | {null=}                                                      |",
+        "| list_foo         | {null=}                                                      |",
+        "| invalid_json     | {null=}                                                      |",
+        "+------------------+--------------------------------------------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
 }
 
 #[tokio::test]
-async fn test_json_get_array() {
+async fn test_json_get_array_index() {
     let sql = "select json_get('[1, 2, 3]', 2)";
     let batches = run_query(sql).await.unwrap();
     let (value_type, value_repr) = display_val(batches).await;
@@ -319,17 +319,17 @@ async fn test_json_get_json() {
         .unwrap();
 
     let expected = [
-        "+------------------+-------------------------------------------+",
-        "| name             | json_get_json(test.json_data,Utf8(\"foo\")) |",
-        "+------------------+-------------------------------------------+",
-        "| object_foo       | \"abc\"                                     |",
-        "| object_foo_array | [1]                                       |",
-        "| object_foo_obj   | {}                                        |",
-        "| object_foo_null  | null                                      |",
-        "| object_bar       |                                           |",
-        "| list_foo         |                                           |",
-        "| invalid_json     |                                           |",
-        "+------------------+-------------------------------------------+",
+        "+------------------+------------------------------------------------------+",
+        "| name             | json_get_json(test.json_data,Utf8(\"foo\"))            |",
+        "+------------------+------------------------------------------------------+",
+        "| object_foo       | \"abc\"                                                |",
+        "| object_foo_array | [1, true, {\"nested_foo\": \"baz\", \"nested_bar\": null}] |",
+        "| object_foo_obj   | {}                                                   |",
+        "| object_foo_null  | null                                                 |",
+        "| object_bar       |                                                      |",
+        "| list_foo         |                                                      |",
+        "| invalid_json     |                                                      |",
+        "+------------------+------------------------------------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
 }
@@ -475,6 +475,27 @@ async fn test_json_length_vec() {
         "| invalid_json     |     |",
         "+------------------+-----+",
     ];
+    assert_batches_eq!(expected, &batches);
+
+    let batches = run_query_large(sql).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_get_array() {
+    let sql = r"select name, unnest(json_get_array(json_data, 'foo')) from test";
+    let batches = run_query(sql).await.unwrap();
+
+    let expected = [
+        "+------------------+----------------------------------------------------+",
+        "| name             | UNNEST(json_get_array(test.json_data,Utf8(\"foo\"))) |",
+        "+------------------+----------------------------------------------------+",
+        "| object_foo_array | 1                                                  |",
+        "| object_foo_array | true                                               |",
+        "| object_foo_array | {\"nested_foo\": \"baz\", \"nested_bar\": null}          |",
+        "+------------------+----------------------------------------------------+",
+    ];
+
     assert_batches_eq!(expected, &batches);
 
     let batches = run_query_large(sql).await.unwrap();
@@ -738,17 +759,17 @@ async fn test_arrow() {
     let batches = run_query("select name, json_data->'foo' from test").await.unwrap();
 
     let expected = [
-        "+------------------+-------------------------------+",
-        "| name             | test.json_data -> Utf8(\"foo\") |",
-        "+------------------+-------------------------------+",
-        "| object_foo       | {str=abc}                     |",
-        "| object_foo_array | {array=[1]}                   |",
-        "| object_foo_obj   | {object={}}                   |",
-        "| object_foo_null  | {null=}                       |",
-        "| object_bar       | {null=}                       |",
-        "| list_foo         | {null=}                       |",
-        "| invalid_json     | {null=}                       |",
-        "+------------------+-------------------------------+",
+        "+------------------+--------------------------------------------------------------+",
+        "| name             | test.json_data -> Utf8(\"foo\")                                |",
+        "+------------------+--------------------------------------------------------------+",
+        "| object_foo       | {str=abc}                                                    |",
+        "| object_foo_array | {array=[1, true, {\"nested_foo\": \"baz\", \"nested_bar\": null}]} |",
+        "| object_foo_obj   | {object={}}                                                  |",
+        "| object_foo_null  | {null=}                                                      |",
+        "| object_bar       | {null=}                                                      |",
+        "| list_foo         | {null=}                                                      |",
+        "| invalid_json     | {null=}                                                      |",
+        "+------------------+--------------------------------------------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
 }
@@ -770,17 +791,17 @@ async fn test_long_arrow() {
     let batches = run_query("select name, json_data->>'foo' from test").await.unwrap();
 
     let expected = [
-        "+------------------+--------------------------------+",
-        "| name             | test.json_data ->> Utf8(\"foo\") |",
-        "+------------------+--------------------------------+",
-        "| object_foo       | abc                            |",
-        "| object_foo_array | [1]                            |",
-        "| object_foo_obj   | {}                             |",
-        "| object_foo_null  |                                |",
-        "| object_bar       |                                |",
-        "| list_foo         |                                |",
-        "| invalid_json     |                                |",
-        "+------------------+--------------------------------+",
+        "+------------------+------------------------------------------------------+",
+        "| name             | test.json_data ->> Utf8(\"foo\")                       |",
+        "+------------------+------------------------------------------------------+",
+        "| object_foo       | abc                                                  |",
+        "| object_foo_array | [1, true, {\"nested_foo\": \"baz\", \"nested_bar\": null}] |",
+        "| object_foo_obj   | {}                                                   |",
+        "| object_foo_null  |                                                      |",
+        "| object_bar       |                                                      |",
+        "| list_foo         |                                                      |",
+        "| invalid_json     |                                                      |",
+        "+------------------+------------------------------------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
 }
