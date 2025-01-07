@@ -1,6 +1,6 @@
 [package]
 name = "datafusion-functions-json"
-version = "0.43.0"
+version = "0.44.0"
 edition = "2021"
 description = "JSON functions for DataFusion"
 readme = "README.md"
@@ -8,10 +8,10 @@ license = "Apache-2.0"
 keywords = ["datafusion", "JSON", "SQL"]
 categories = ["database-implementations", "parsing"]
 repository = "https://github.com/datafusion-contrib/datafusion-functions-json/"
-rust-version = "1.79.0"
+rust-version = "1.80.1"
 
 [dependencies]
-datafusion = { version = "43", default-features = false }
+datafusion = { version = "44", default-features = false }
 jiter = "0.8"
 paste = "1"
 log = "0.4"
