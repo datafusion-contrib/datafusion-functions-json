@@ -1596,3 +1596,79 @@ async fn test_json_object_keys_nested() {
     ];
     assert_batches_eq!(expected, &batches);
 }
+
+#[tokio::test]
+async fn test_lookup_literal_column_matrix() {
+    let sql = r#"
+WITH attr_names AS (
+    -- this is deliberately a different length to json_columns
+    SELECT unnest(['a', 'b', 'c']) as attr_name
+), json_columns AS (
+    SELECT unnest(['{"a": 1}', '{"b": 2}']) as json_column
+)
+SELECT
+    attr_name,
+    json_column,
+    'a' = attr_name,
+    json_get('{"a": 1}', attr_name),  -- literal lookup with column
+    json_get('{"a": 1}', 'a'),        -- literal lookup with literal
+    json_get(json_column, attr_name), -- column lookup with column
+    json_get(json_column, 'a')        -- column lookup with literal
+FROM attr_names, json_columns
+"#;
+
+    let expected = [
+        "+-----------+-------------+----------------------------------+-------------------------------------------------+--------------------------------------+---------------------------------------------------------+----------------------------------------------+",
+        "| attr_name | json_column | Utf8(\"a\") = attr_names.attr_name | json_get(Utf8(\"{\"a\": 1}\"),attr_names.attr_name) | json_get(Utf8(\"{\"a\": 1}\"),Utf8(\"a\")) | json_get(json_columns.json_column,attr_names.attr_name) | json_get(json_columns.json_column,Utf8(\"a\")) |",
+        "+-----------+-------------+----------------------------------+-------------------------------------------------+--------------------------------------+---------------------------------------------------------+----------------------------------------------+",
+        "| a         | {\"a\": 1}    | true                             | {int=1}                                         | {int=1}                              | {int=1}                                                 | {int=1}                                      |",
+        "| a         | {\"b\": 2}    | true                             | {int=1}                                         | {int=1}                              | {null=}                                                 | {null=}                                      |",
+        "| b         | {\"a\": 1}    | false                            | {null=}                                         | {int=1}                              | {null=}                                                 | {int=1}                                      |",
+        "| b         | {\"b\": 2}    | false                            | {null=}                                         | {int=1}                              | {int=2}                                                 | {null=}                                      |",
+        "| c         | {\"a\": 1}    | false                            | {null=}                                         | {int=1}                              | {null=}                                                 | {int=1}                                      |",
+        "| c         | {\"b\": 2}    | false                            | {null=}                                         | {int=1}                              | {null=}                                                 | {null=}                                      |",
+        "+-----------+-------------+----------------------------------+-------------------------------------------------+--------------------------------------+---------------------------------------------------------+----------------------------------------------+",
+    ];
+
+    let batches = run_query(sql).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_lookup_literal_column_matrix_dictionaries() {
+    let sql = r#"
+WITH attr_names AS (
+    -- this is deliberately a different length to json_columns
+    SELECT arrow_cast(unnest(['a', 'b', 'c']), 'Dictionary(Int32, Utf8)') as attr_name
+), json_columns AS (
+    SELECT arrow_cast(unnest(['{"a": 1}', '{"b": 2}']), 'Dictionary(Int32, Utf8)') as json_column
+)
+SELECT
+    attr_name,
+    json_column,
+    'a' = attr_name,
+    json_get('{"a": 1}', attr_name),  -- literal lookup with column
+    json_get('{"a": 1}', 'a'),        -- literal lookup with literal
+    json_get(json_column, attr_name), -- column lookup with column
+    json_get(json_column, 'a')        -- column lookup with literal
+FROM attr_names, json_columns
+"#;
+
+    // NB as compared to the non-dictionary case, we null out the dictionary keys if the return
+    // value is a dict, which is why we get true nulls instead of {null=}
+    let expected = [
+        "+-----------+-------------+----------------------------------+-------------------------------------------------+--------------------------------------+---------------------------------------------------------+----------------------------------------------+",
+        "| attr_name | json_column | Utf8(\"a\") = attr_names.attr_name | json_get(Utf8(\"{\"a\": 1}\"),attr_names.attr_name) | json_get(Utf8(\"{\"a\": 1}\"),Utf8(\"a\")) | json_get(json_columns.json_column,attr_names.attr_name) | json_get(json_columns.json_column,Utf8(\"a\")) |",
+        "+-----------+-------------+----------------------------------+-------------------------------------------------+--------------------------------------+---------------------------------------------------------+----------------------------------------------+",
+        "| a         | {\"a\": 1}    | true                             | {int=1}                                         | {int=1}                              | {int=1}                                                 | {int=1}                                      |",
+        "| a         | {\"b\": 2}    | true                             | {int=1}                                         | {int=1}                              |                                                         |                                              |",
+        "| b         | {\"a\": 1}    | false                            | {null=}                                         | {int=1}                              |                                                         | {int=1}                                      |",
+        "| b         | {\"b\": 2}    | false                            | {null=}                                         | {int=1}                              | {int=2}                                                 |                                              |",
+        "| c         | {\"a\": 1}    | false                            | {null=}                                         | {int=1}                              |                                                         | {int=1}                                      |",
+        "| c         | {\"b\": 2}    | false                            | {null=}                                         | {int=1}                              |                                                         |                                              |",
+        "+-----------+-------------+----------------------------------+-------------------------------------------------+--------------------------------------+---------------------------------------------------------+----------------------------------------------+",
+    ];
+
+    let batches = run_query(sql).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+}
