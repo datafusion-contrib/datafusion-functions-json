@@ -22,7 +22,7 @@ pub fn is_json_union(data_type: &DataType) -> bool {
 /// * `object_lookup` - If `true`, extract from the "object" member of the union,
 ///   otherwise extract from the "array" member
 pub(crate) fn nested_json_array(array: &ArrayRef, object_lookup: bool) -> Option<&StringArray> {
-    nested_json_array_ref(array, object_lookup).map(|a| a.as_string())
+    nested_json_array_ref(array, object_lookup).map(AsArray::as_string)
 }
 
 pub(crate) fn nested_json_array_ref(array: &ArrayRef, object_lookup: bool) -> Option<&ArrayRef> {
