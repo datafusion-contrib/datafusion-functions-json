@@ -12,7 +12,7 @@ use datafusion::logical_expr::sqlparser::ast::BinaryOperator;
 pub(crate) struct JsonFunctionRewriter;
 
 impl FunctionRewrite for JsonFunctionRewriter {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "JsonFunctionRewriter"
     }
 
