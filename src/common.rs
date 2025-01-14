@@ -14,7 +14,9 @@ use datafusion::common::{exec_err, plan_err, Result as DataFusionResult, ScalarV
 use datafusion::logical_expr::ColumnarValue;
 use jiter::{Jiter, JiterError, Peek};
 
-use crate::common_union::{is_json_union, json_from_union_scalar, nested_json_array, TYPE_ID_NULL};
+use crate::common_union::{
+    is_json_union, json_from_union_scalar, nested_json_array, nested_json_array_ref, TYPE_ID_NULL,
+};
 
 /// General implementation of `ScalarUDFImpl::return_type`.
 ///
@@ -153,7 +155,7 @@ pub fn invoke<C: FromIterator<Option<I>> + 'static, I>(
     let path = JsonPathArgs::extract_path(path_args)?;
     match (json_arg, path) {
         (ColumnarValue::Array(json_array), JsonPathArgs::Array(path_array)) => {
-            invoke_array_array(json_array, path_array, to_array, jiter_find).map(ColumnarValue::Array)
+            invoke_array_array(json_array, path_array, to_array, jiter_find, return_dict).map(ColumnarValue::Array)
         }
         (ColumnarValue::Array(json_array), JsonPathArgs::Scalars(path)) => {
             invoke_array_scalars(json_array, &path, to_array, jiter_find, return_dict).map(ColumnarValue::Array)
@@ -172,6 +174,7 @@ fn invoke_array_array<C: FromIterator<Option<I>> + 'static, I>(
     path_array: &ArrayRef,
     to_array: impl Fn(C) -> DataFusionResult<ArrayRef>,
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
+    return_dict: bool,
 ) -> DataFusionResult<ArrayRef> {
     downcast_dictionary_array!(
         json_array => {
@@ -198,11 +201,24 @@ fn invoke_array_array<C: FromIterator<Option<I>> + 'static, I>(
                 DataType::Utf8 => zip_apply(json_array.downcast_dict::<StringArray>().unwrap(), path_array, to_array, jiter_find),
                 DataType::LargeUtf8 => zip_apply(json_array.downcast_dict::<LargeStringArray>().unwrap(), path_array, to_array, jiter_find),
                 DataType::Utf8View => zip_apply(json_array.downcast_dict::<StringViewArray>().unwrap(), path_array, to_array, jiter_find),
-                other => exec_err!("unexpected json array type {:?}", other),
+                other => if let Some(child_array) = nested_json_array_ref(json_array.values(), is_object_lookup_array(path_array.data_type())) {
+                    // Horrible case: dict containing union as input with array for paths, figure
+                    // out from the path type which union members we should access, repack the
+                    // dictionary and then recurse.
+                    //
+                    // Use direct return because if return_dict applies, the recursion will handle it.
+                    return invoke_array_array(&(Arc::new(json_array.with_values(child_array.clone())) as _), path_array, to_array, jiter_find, return_dict)
+                } else {
+                    exec_err!("unexpected json array type {:?}", other)
+                }
             }?;
 
-            // ensure return is a dictionary to satisfy the declaration above in return_type_check
-            Ok(Arc::new(wrap_as_dictionary(json_array, output)))
+            if return_dict {
+                // ensure return is a dictionary to satisfy the declaration above in return_type_check
+                Ok(Arc::new(wrap_as_dictionary(json_array, output)))
+            } else {
+                Ok(output)
+            }
         },
         DataType::Utf8 => zip_apply(json_array.as_string::<i32>().iter(), path_array, to_array, jiter_find),
         DataType::LargeUtf8 => zip_apply(json_array.as_string::<i64>().iter(), path_array, to_array, jiter_find),

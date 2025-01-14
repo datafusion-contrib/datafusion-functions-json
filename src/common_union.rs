@@ -22,9 +22,13 @@ pub fn is_json_union(data_type: &DataType) -> bool {
 /// * `object_lookup` - If `true`, extract from the "object" member of the union,
 ///   otherwise extract from the "array" member
 pub(crate) fn nested_json_array(array: &ArrayRef, object_lookup: bool) -> Option<&StringArray> {
+    nested_json_array_ref(array, object_lookup).map(|a| a.as_string())
+}
+
+pub(crate) fn nested_json_array_ref(array: &ArrayRef, object_lookup: bool) -> Option<&ArrayRef> {
     let union_array: &UnionArray = array.as_any().downcast_ref::<UnionArray>()?;
     let type_id = if object_lookup { TYPE_ID_OBJECT } else { TYPE_ID_ARRAY };
-    union_array.child(type_id).as_any().downcast_ref()
+    Some(union_array.child(type_id))
 }
 
 /// Extract a JSON string from a `JsonUnion` scalar
