@@ -17,6 +17,7 @@ paste = "1"
 log = "0.4"
 
 [dev-dependencies]
+datafusion = { version = "44", default-features = false, features = ["nested_expressions"] }
 codspeed-criterion-compat = "2.6"
 criterion = "0.5.1"
 clap = "4"
