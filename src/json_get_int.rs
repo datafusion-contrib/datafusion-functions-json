@@ -1,13 +1,13 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use datafusion::arrow::array::{ArrayRef, Int64Array};
+use datafusion::arrow::array::{ArrayRef, Int64Array, Int64Builder};
 use datafusion::arrow::datatypes::DataType;
 use datafusion::common::{Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::{NumberInt, Peek};
 
-use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, JsonPath};
+use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
@@ -50,17 +50,36 @@ impl ScalarUDFImpl for JsonGetInt {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<Int64Array, i64>(
-            args,
-            jiter_json_get_int,
-            |c| Ok(Arc::new(c) as ArrayRef),
-            ScalarValue::Int64,
-            true,
-        )
+        invoke::<Int64Array>(args, jiter_json_get_int)
     }
 
     fn aliases(&self) -> &[String] {
         &self.aliases
+    }
+}
+
+impl InvokeResult for Int64Array {
+    type Item = i64;
+
+    type Builder = Int64Builder;
+
+    // Cheaper to return an int array rather than dict-encoded ints
+    const ACCEPT_DICT_RETURN: bool = false;
+
+    fn builder(capacity: usize) -> Self::Builder {
+        Int64Builder::with_capacity(capacity)
+    }
+
+    fn append_value(builder: &mut Self::Builder, value: Option<Self::Item>) {
+        builder.append_option(value);
+    }
+
+    fn finish(mut builder: Self::Builder) -> DataFusionResult<ArrayRef> {
+        Ok(Arc::new(builder.finish()))
+    }
+
+    fn scalar(value: Option<Self::Item>) -> ScalarValue {
+        ScalarValue::Int64(value)
     }
 }
 

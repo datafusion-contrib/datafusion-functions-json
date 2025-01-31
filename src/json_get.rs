@@ -6,8 +6,10 @@ use datafusion::arrow::array::UnionArray;
 use datafusion::arrow::datatypes::DataType;
 use datafusion::common::Result as DataFusionResult;
 use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
+use datafusion::scalar::ScalarValue;
 use jiter::{Jiter, NumberAny, NumberInt, Peek};
 
+use crate::common::InvokeResult;
 use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 use crate::common_union::{JsonUnion, JsonUnionField};
@@ -54,15 +56,40 @@ impl ScalarUDFImpl for JsonGet {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        let to_array = |c: JsonUnion| {
-            let array: UnionArray = c.try_into()?;
-            Ok(Arc::new(array) as ArrayRef)
-        };
-        invoke::<JsonUnion, JsonUnionField>(args, jiter_json_get_union, to_array, JsonUnionField::scalar_value, true)
+        invoke::<JsonUnion>(args, jiter_json_get_union)
     }
 
     fn aliases(&self) -> &[String] {
         &self.aliases
+    }
+}
+
+impl InvokeResult for JsonUnion {
+    type Item = JsonUnionField;
+
+    type Builder = JsonUnion;
+
+    const ACCEPT_DICT_RETURN: bool = true;
+
+    fn builder(capacity: usize) -> Self::Builder {
+        JsonUnion::new(capacity)
+    }
+
+    fn append_value(builder: &mut Self::Builder, value: Option<Self::Item>) {
+        if let Some(value) = value {
+            builder.push(value);
+        } else {
+            builder.push_none();
+        }
+    }
+
+    fn finish(builder: Self::Builder) -> DataFusionResult<ArrayRef> {
+        let array: UnionArray = builder.try_into()?;
+        Ok(Arc::new(array) as ArrayRef)
+    }
+
+    fn scalar(value: Option<Self::Item>) -> ScalarValue {
+        JsonUnionField::scalar_value(value)
     }
 }
 
