@@ -432,7 +432,7 @@ fn is_object_lookup_array(data_type: &DataType) -> bool {
 
 /// Cast an array to a dictionary with i64 indices.
 ///
-/// According to https://arrow.apache.org/docs/format/Columnar.html#dictionary-encoded-layout the
+/// According to <https://arrow.apache.org/docs/format/Columnar.html#dictionary-encoded-layout> the
 /// recommendation is to avoid unsigned indices due to technologies like the JVM making it harder to
 /// support unsigned integers.
 ///
@@ -445,7 +445,8 @@ fn cast_to_large_dictionary(dict_array: &dyn AnyDictionaryArray) -> DataFusionRe
 /// Wrap an array as a dictionary with i64 indices.
 fn wrap_as_large_dictionary(original: &dyn AnyDictionaryArray, new_values: ArrayRef) -> DictionaryArray<Int64Type> {
     assert_eq!(original.keys().len(), new_values.len());
-    let mut keys = PrimitiveArray::from_iter_values(0i64..original.keys().len() as i64);
+    let mut keys =
+        PrimitiveArray::from_iter_values(0i64..original.keys().len().try_into().expect("keys out of i64 range"));
     if is_json_union(new_values.data_type()) {
         // JSON union: post-process the array to set keys to null where the union member is null
         let type_ids = new_values.as_union().type_ids();
