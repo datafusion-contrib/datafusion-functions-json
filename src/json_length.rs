@@ -50,7 +50,7 @@ impl ScalarUDFImpl for JsonLength {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<UInt64Array>(args, jiter_json_length, true)
+        invoke::<UInt64Array>(args, jiter_json_length)
     }
 
     fn aliases(&self) -> &[String] {
@@ -62,6 +62,9 @@ impl InvokeResult for UInt64Array {
     type Item = u64;
 
     type Builder = UInt64Builder;
+
+    // cheaper to return integers without dict-encoding them
+    const ACCEPT_DICT_RETURN: bool = false;
 
     fn builder(capacity: usize) -> Self::Builder {
         UInt64Builder::with_capacity(capacity)

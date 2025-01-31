@@ -48,7 +48,7 @@ impl ScalarUDFImpl for JsonGetJson {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<StringArray>(args, jiter_json_get_json, true)
+        invoke::<StringArray>(args, jiter_json_get_json)
     }
 
     fn aliases(&self) -> &[String] {

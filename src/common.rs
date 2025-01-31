@@ -144,6 +144,9 @@ pub trait InvokeResult {
     type Item;
     type Builder;
 
+    // Whether the return type should is allowed to be a dictionary
+    const ACCEPT_DICT_RETURN: bool;
+
     fn builder(capacity: usize) -> Self::Builder;
     fn append_value(builder: &mut Self::Builder, value: Option<Self::Item>);
     fn finish(builder: Self::Builder) -> DataFusionResult<ArrayRef>;
@@ -155,7 +158,6 @@ pub trait InvokeResult {
 pub fn invoke<R: InvokeResult>(
     args: &[ColumnarValue],
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<R::Item, GetError>,
-    return_dict: bool,
 ) -> DataFusionResult<ColumnarValue> {
     let Some((json_arg, path_args)) = args.split_first() else {
         return exec_err!("expected at least one argument");
@@ -164,10 +166,10 @@ pub fn invoke<R: InvokeResult>(
     let path = JsonPathArgs::extract_path(path_args)?;
     match (json_arg, path) {
         (ColumnarValue::Array(json_array), JsonPathArgs::Array(path_array)) => {
-            invoke_array_array::<R>(json_array, path_array, jiter_find, return_dict).map(ColumnarValue::Array)
+            invoke_array_array::<R>(json_array, path_array, jiter_find).map(ColumnarValue::Array)
         }
         (ColumnarValue::Array(json_array), JsonPathArgs::Scalars(path)) => {
-            invoke_array_scalars::<R>(json_array, &path, jiter_find, return_dict).map(ColumnarValue::Array)
+            invoke_array_scalars::<R>(json_array, &path, jiter_find).map(ColumnarValue::Array)
         }
         (ColumnarValue::Scalar(s), JsonPathArgs::Array(path_array)) => {
             invoke_scalar_array::<R>(s, path_array, jiter_find)
@@ -182,7 +184,6 @@ fn invoke_array_array<R: InvokeResult>(
     json_array: &ArrayRef,
     path_array: &ArrayRef,
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<R::Item, GetError>,
-    return_dict: bool,
 ) -> DataFusionResult<ArrayRef> {
     match json_array.data_type() {
         // for string dictionaries, cast dictionary keys to larger types to avoid generic explosion
@@ -193,7 +194,7 @@ fn invoke_array_array<R: InvokeResult>(
                 path_array,
                 jiter_find,
             )?;
-            if return_dict {
+            if R::ACCEPT_DICT_RETURN {
                 // ensure return is a dictionary to satisfy the declaration above in return_type_check
                 Ok(Arc::new(wrap_as_large_dictionary(&json_array, output)))
             } else {
@@ -207,7 +208,7 @@ fn invoke_array_array<R: InvokeResult>(
                 path_array,
                 jiter_find,
             )?;
-            if return_dict {
+            if R::ACCEPT_DICT_RETURN {
                 // ensure return is a dictionary to satisfy the declaration above in return_type_check
                 Ok(Arc::new(wrap_as_large_dictionary(&json_array, output)))
             } else {
@@ -226,7 +227,6 @@ fn invoke_array_array<R: InvokeResult>(
                     &(Arc::new(json_array.as_any_dictionary().with_values(child_array.clone())) as _),
                     path_array,
                     jiter_find,
-                    return_dict,
                 )
             } else {
                 exec_err!("unexpected json array type {:?}", other_dict_type)
@@ -249,7 +249,6 @@ fn invoke_array_scalars<R: InvokeResult>(
     json_array: &ArrayRef,
     path: &[JsonPath],
     jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<R::Item, GetError>,
-    return_dict: bool,
 ) -> DataFusionResult<ArrayRef> {
     #[allow(clippy::needless_pass_by_value)] // ArrayAccessor is implemented on references
     fn inner<'j, R: InvokeResult>(
@@ -273,8 +272,8 @@ fn invoke_array_scalars<R: InvokeResult>(
     match json_array.data_type() {
         DataType::Dictionary(_, _) => {
             let json_array = json_array.as_any_dictionary();
-            let values = invoke_array_scalars::<R>(json_array.values(), path, jiter_find, false)?;
-            return if return_dict {
+            let values = invoke_array_scalars::<R>(json_array.values(), path, jiter_find)?;
+            return if R::ACCEPT_DICT_RETURN {
                 // make the keys into i64 to avoid generic bloat here
                 let mut keys: PrimitiveArray<Int64Type> = downcast_array(&cast(json_array.keys(), &DataType::Int64)?);
                 if is_json_union(values.data_type()) {

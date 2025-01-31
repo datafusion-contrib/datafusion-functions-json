@@ -56,7 +56,7 @@ impl ScalarUDFImpl for JsonGet {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<JsonUnion>(args, jiter_json_get_union, true)
+        invoke::<JsonUnion>(args, jiter_json_get_union)
     }
 
     fn aliases(&self) -> &[String] {
@@ -68,6 +68,8 @@ impl InvokeResult for JsonUnion {
     type Item = JsonUnionField;
 
     type Builder = JsonUnion;
+
+    const ACCEPT_DICT_RETURN: bool = true;
 
     fn builder(capacity: usize) -> Self::Builder {
         JsonUnion::new(capacity)

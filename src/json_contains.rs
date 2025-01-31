@@ -54,7 +54,7 @@ impl ScalarUDFImpl for JsonContains {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> Result<ColumnarValue> {
-        invoke::<BooleanArray>(args, jiter_json_contains, false)
+        invoke::<BooleanArray>(args, jiter_json_contains)
     }
 
     fn aliases(&self) -> &[String] {
@@ -66,6 +66,9 @@ impl InvokeResult for BooleanArray {
     type Item = bool;
 
     type Builder = BooleanBuilder;
+
+    // Using boolean inside a dictionary is not an optimization!
+    const ACCEPT_DICT_RETURN: bool = false;
 
     fn builder(capacity: usize) -> Self::Builder {
         BooleanBuilder::with_capacity(capacity)

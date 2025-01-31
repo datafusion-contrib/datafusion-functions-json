@@ -54,7 +54,7 @@ impl ScalarUDFImpl for JsonObjectKeys {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<BuildListArray>(args, jiter_json_object_keys, true)
+        invoke::<BuildListArray>(args, jiter_json_object_keys)
     }
 
     fn aliases(&self) -> &[String] {
@@ -70,6 +70,8 @@ impl InvokeResult for BuildListArray {
     type Item = Vec<String>;
 
     type Builder = ListBuilder<StringBuilder>;
+
+    const ACCEPT_DICT_RETURN: bool = true;
 
     fn builder(capacity: usize) -> Self::Builder {
         let values_builder = StringBuilder::new();

@@ -50,7 +50,7 @@ impl ScalarUDFImpl for JsonAsText {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<StringArray>(args, jiter_json_as_text, true)
+        invoke::<StringArray>(args, jiter_json_as_text)
     }
 
     fn aliases(&self) -> &[String] {
@@ -62,6 +62,8 @@ impl InvokeResult for StringArray {
     type Item = String;
 
     type Builder = StringBuilder;
+
+    const ACCEPT_DICT_RETURN: bool = true;
 
     fn builder(capacity: usize) -> Self::Builder {
         StringBuilder::with_capacity(capacity, 0)

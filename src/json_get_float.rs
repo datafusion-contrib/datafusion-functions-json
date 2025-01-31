@@ -50,7 +50,7 @@ impl ScalarUDFImpl for JsonGetFloat {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<Float64Array>(args, jiter_json_get_float, true)
+        invoke::<Float64Array>(args, jiter_json_get_float)
     }
 
     fn aliases(&self) -> &[String] {
@@ -62,6 +62,9 @@ impl InvokeResult for Float64Array {
     type Item = f64;
 
     type Builder = Float64Builder;
+
+    // Cheaper to produce a float array rather than dict-encoded floats
+    const ACCEPT_DICT_RETURN: bool = false;
 
     fn builder(capacity: usize) -> Self::Builder {
         Float64Builder::with_capacity(capacity)

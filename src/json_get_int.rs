@@ -50,7 +50,7 @@ impl ScalarUDFImpl for JsonGetInt {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<Int64Array>(args, jiter_json_get_int, true)
+        invoke::<Int64Array>(args, jiter_json_get_int)
     }
 
     fn aliases(&self) -> &[String] {
@@ -62,6 +62,9 @@ impl InvokeResult for Int64Array {
     type Item = i64;
 
     type Builder = Int64Builder;
+
+    // Cheaper to return an int array rather than dict-encoded ints
+    const ACCEPT_DICT_RETURN: bool = false;
 
     fn builder(capacity: usize) -> Self::Builder {
         Int64Builder::with_capacity(capacity)
