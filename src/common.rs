@@ -294,7 +294,7 @@ fn invoke_array_scalars<R: InvokeResult>(
             if let Some(string_array) = nested_json_array(json_array, is_object_lookup(path)) {
                 inner::<R>(string_array, path, jiter_find)
             } else {
-                return exec_err!("unexpected json array type {:?}", other);
+                exec_err!("unexpected json array type {:?}", other)
             }
         }
     }
@@ -421,7 +421,7 @@ fn zip_apply<'a, R: InvokeResult>(
         DataType::Int64 => inner::<_, R>(json_array, path_array.as_primitive::<Int64Type>(), jiter_find),
         DataType::UInt64 => inner::<_, R>(json_array, path_array.as_primitive::<UInt64Type>(), jiter_find),
         other => {
-            return exec_err!(
+            exec_err!(
                 "unexpected second argument type, expected string or int array, got {:?}",
                 other
             )

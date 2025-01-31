@@ -75,7 +75,7 @@ impl InvokeResult for BooleanArray {
     }
 
     fn append_value(builder: &mut Self::Builder, value: Option<Self::Item>) {
-        builder.append_option(value)
+        builder.append_option(value);
     }
 
     fn finish(mut builder: Self::Builder) -> Result<ArrayRef> {

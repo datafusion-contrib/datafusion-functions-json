@@ -77,9 +77,9 @@ impl InvokeResult for JsonUnion {
 
     fn append_value(builder: &mut Self::Builder, value: Option<Self::Item>) {
         if let Some(value) = value {
-            builder.push(value)
+            builder.push(value);
         } else {
-            builder.push_none()
+            builder.push_none();
         }
     }
 
