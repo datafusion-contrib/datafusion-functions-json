@@ -25,7 +25,10 @@ async fn create_test_table(large_utf8: bool, dict_encoded: bool) -> Result<Sessi
 
     let test_data = [
         ("object_foo", r#" {"foo": "abc"} "#),
-        ("object_foo_array", r#" {"foo": [1]} "#),
+        (
+            "object_foo_array",
+            r#" {"foo": [1, true, {"nested_foo": "baz", "nested_bar": null}]} "#,
+        ),
         ("object_foo_obj", r#" {"foo": {}} "#),
         ("object_foo_null", r#" {"foo": null} "#),
         ("object_bar", r#" {"bar": true} "#),
