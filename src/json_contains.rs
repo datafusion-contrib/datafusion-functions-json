@@ -1,12 +1,13 @@
 use std::any::Any;
 use std::sync::Arc;
 
+use datafusion::arrow::array::BooleanBuilder;
 use datafusion::arrow::datatypes::DataType;
 use datafusion::common::arrow::array::{ArrayRef, BooleanArray};
 use datafusion::common::{plan_err, Result, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 
-use crate::common::{invoke, jiter_json_find, return_type_check, GetError, JsonPath};
+use crate::common::{invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
@@ -53,17 +54,33 @@ impl ScalarUDFImpl for JsonContains {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> Result<ColumnarValue> {
-        invoke::<BooleanArray, bool>(
-            args,
-            jiter_json_contains,
-            |c| Ok(Arc::new(c) as ArrayRef),
-            ScalarValue::Boolean,
-            false,
-        )
+        invoke::<BooleanArray>(args, jiter_json_contains, false)
     }
 
     fn aliases(&self) -> &[String] {
         &self.aliases
+    }
+}
+
+impl InvokeResult for BooleanArray {
+    type Item = bool;
+
+    type Builder = BooleanBuilder;
+
+    fn builder(capacity: usize) -> Self::Builder {
+        BooleanBuilder::with_capacity(capacity)
+    }
+
+    fn append_value(builder: &mut Self::Builder, value: Option<Self::Item>) {
+        builder.append_option(value)
+    }
+
+    fn finish(mut builder: Self::Builder) -> Result<ArrayRef> {
+        Ok(Arc::new(builder.finish()))
+    }
+
+    fn scalar(value: Option<Self::Item>) -> ScalarValue {
+        ScalarValue::Boolean(value)
     }
 }
 

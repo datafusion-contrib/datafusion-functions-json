@@ -61,7 +61,7 @@ pub(crate) struct JsonUnion {
 }
 
 impl JsonUnion {
-    fn new(length: usize) -> Self {
+    pub fn new(length: usize) -> Self {
         Self {
             bools: vec![None; length],
             ints: vec![None; length],
@@ -79,7 +79,7 @@ impl JsonUnion {
         DataType::Union(union_fields(), UnionMode::Sparse)
     }
 
-    fn push(&mut self, field: JsonUnionField) {
+    pub fn push(&mut self, field: JsonUnionField) {
         self.type_ids[self.index] = field.type_id();
         match field {
             JsonUnionField::JsonNull => (),
@@ -94,7 +94,7 @@ impl JsonUnion {
         debug_assert!(self.index <= self.length);
     }
 
-    fn push_none(&mut self) {
+    pub fn push_none(&mut self) {
         self.index += 1;
         debug_assert!(self.index <= self.length);
     }
