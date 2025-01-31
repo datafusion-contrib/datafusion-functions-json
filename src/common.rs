@@ -43,7 +43,7 @@ pub fn return_type_check(args: &[DataType], fn_name: &str, value_type: DataType)
             )
         }
     })?;
-    if first_dict_key_type.is_some() {
+    if first_dict_key_type.is_some() && !value_type.is_primitive() {
         Ok(DataType::Dictionary(Box::new(DataType::Int64), Box::new(value_type)))
     } else {
         Ok(value_type)
