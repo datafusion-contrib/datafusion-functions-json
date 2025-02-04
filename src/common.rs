@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::str::Utf8Error;
 use std::sync::Arc;
 
@@ -258,27 +259,41 @@ fn remap_dictionary_key_nulls(
     keys: &PrimitiveArray<Int64Type>,
     values: &ArrayRef,
 ) -> DataFusionResult<DictionaryArray<Int64Type>> {
-    let mut new = PrimitiveBuilder::<Int64Type>::with_capacity(keys.len());
-    let mut null_value_count = 0;
-    let mut non_null_indices = PrimitiveBuilder::<Int64Type>::with_capacity(keys.len());
-    for key in keys {
-        match key {
-            Some(k) => {
-                if values.is_null(k.as_usize()) {
-                    null_value_count += 1;
-                    new.append_null();
-                } else {
-                    non_null_indices.append_value(k);
-                    new.append_value(k - null_value_count);
-                }
+    let mut new_keys_builder = PrimitiveBuilder::<Int64Type>::new();
+    let mut value_indices_builder = PrimitiveBuilder::<Int64Type>::new();
+    let mut value_map = HashMap::new(); // Map old indices to new indices
+    let mut next_index = 0i64;
+
+    // First pass: build mapping of old indices to new indices
+    for key in keys.iter() {
+        if let Some(k) = key {
+            let k_usize = k.as_usize();
+            if !values.is_null(k_usize) && !value_map.contains_key(&k) {
+                value_map.insert(k, next_index);
+                value_indices_builder.append_value(k);
+                next_index += 1;
             }
-            None => new.append_null(),
         }
     }
 
-    let new_keys = new.finish();
-    let non_null_indices = non_null_indices.finish();
-    let new_values = take(values, &non_null_indices, None)?;
+    // Second pass: build new keys array
+    for key in keys.iter() {
+        match key {
+            Some(k) => {
+                if values.is_null(k.as_usize()) {
+                    new_keys_builder.append_null();
+                } else {
+                    new_keys_builder.append_value(*value_map.get(&k).unwrap());
+                }
+            }
+            None => new_keys_builder.append_null(),
+        }
+    }
+    
+    let new_keys = new_keys_builder.finish();
+    let value_indices = value_indices_builder.finish();
+    let new_values = take(values, &value_indices, None)?;
+    
     Ok(DictionaryArray::new(new_keys, new_values))
 }
 
