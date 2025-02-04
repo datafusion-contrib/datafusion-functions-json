@@ -289,11 +289,11 @@ fn remap_dictionary_key_nulls(
             None => new_keys_builder.append_null(),
         }
     }
-    
+
     let new_keys = new_keys_builder.finish();
     let value_indices = value_indices_builder.finish();
     let new_values = take(values, &value_indices, None)?;
-    
+
     Ok(DictionaryArray::new(new_keys, new_values))
 }
 
