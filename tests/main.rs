@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use datafusion::arrow::array::{ArrayRef, RecordBatch};
-use datafusion::arrow::datatypes::{Field, Int8Type, Schema};
+use datafusion::arrow::array::{ArrayRef, AsArray, RecordBatch};
+use datafusion::arrow::datatypes::{Field, Int64Type, Int8Type, Schema};
 use datafusion::arrow::{array::StringDictionaryBuilder, datatypes::DataType};
 use datafusion::assert_batches_eq;
 use datafusion::common::ScalarValue;
@@ -1278,6 +1278,22 @@ async fn test_dict_haystack() {
 
     let batches = run_query(sql).await.unwrap();
     assert_batches_eq!(expected, &batches);
+
+    // check that there are no nulls in dictionary values
+    for batch in batches {
+        // we know keys are always Int64
+        let array = batch.column(0).as_dictionary::<Int64Type>();
+        let keys_array = array.keys();
+        let keys = keys_array.iter().filter_map(|x| x.map(|v| usize::try_from(v).unwrap())).collect::<Vec<_>>();
+        let values_array = array.values();
+        // no non-null keys should point to a null value
+        for i in 0..values_array.len() {
+            if values_array.is_null(i) {
+                // keys should not contain
+                assert!(!keys.contains(&i));
+            }
+        }
+    }
 }
 
 #[tokio::test]

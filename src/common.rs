@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::str::Utf8Error;
 use std::sync::Arc;
 
@@ -259,44 +258,22 @@ fn remap_dictionary_key_nulls(
     values: ArrayRef,
 ) -> DataFusionResult<DictionaryArray<Int64Type>> {
     // fast path: no nulls in values
-    if values.null_count() == 0 {
+    if values.null_count() == 0{
         return Ok(DictionaryArray::new(keys, values));
     }
 
     let mut new_keys_builder = PrimitiveBuilder::<Int64Type>::new();
-    let mut value_indices_builder = PrimitiveBuilder::<Int64Type>::new();
-    let mut value_map: HashMap<i64, i64> = HashMap::new(); // Map old indices to new indices
 
-    // First pass: build mapping of old indices to new indices
-    for key in keys.iter() {
-        if let Some(k) = key {
-            let k_usize = k.as_usize();
-            if !values.is_null(k_usize) && !value_map.contains_key(&k) {
-                value_map.insert(k, i64::try_from(value_map.len()).expect("value_map overflow"));
-                value_indices_builder.append_value(k);
-            }
-        }
-    }
-
-    // Second pass: build new keys array
     for key in keys.iter() {
         match key {
-            Some(k) => {
-                if values.is_null(k.as_usize()) {
-                    new_keys_builder.append_null();
-                } else {
-                    new_keys_builder.append_value(*value_map.get(&k).unwrap());
-                }
-            }
+            Some(k) if values.is_null(k.as_usize()) => new_keys_builder.append_null(),
+            Some(k) => new_keys_builder.append_value(k),
             None => new_keys_builder.append_null(),
         }
     }
 
     let new_keys = new_keys_builder.finish();
-    let value_indices = value_indices_builder.finish();
-    let new_values = take(&values, &value_indices, None)?;
-
-    Ok(DictionaryArray::new(new_keys, new_values))
+    Ok(DictionaryArray::new(new_keys, values))
 }
 
 fn invoke_array_scalars<R: InvokeResult>(
