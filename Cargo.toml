@@ -11,6 +11,7 @@ repository = "https://github.com/datafusion-contrib/datafusion-functions-json/"
 rust-version = "1.80.1"
 
 [dependencies]
+arrow = "53.4.0"
 datafusion = { version = "44", default-features = false }
 jiter = "0.8"
 paste = "1"
