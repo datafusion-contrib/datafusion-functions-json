@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use datafusion::arrow::array::{
     downcast_array, AnyDictionaryArray, Array, ArrayAccessor, ArrayRef, AsArray, DictionaryArray, LargeStringArray,
-    PrimitiveArray, PrimitiveBuilder, RunArray, StringArray, StringViewArray,
+    PrimitiveArray, RunArray, StringArray, StringViewArray, PrimitiveBuilder
 };
 use datafusion::arrow::compute::kernels::cast;
 use datafusion::arrow::compute::take;
@@ -255,9 +255,14 @@ fn invoke_array_array<R: InvokeResult>(
 /// Not following this invariant causes invalid dictionary arrays to be built later on inside of DataFusion
 /// when arrays are concacted and such.
 fn remap_dictionary_key_nulls(
-    keys: &PrimitiveArray<Int64Type>,
-    values: &ArrayRef,
+    keys: PrimitiveArray<Int64Type>,
+    values: ArrayRef,
 ) -> DataFusionResult<DictionaryArray<Int64Type>> {
+    // fast path: no nulls in values
+    if values.null_count() == 0 {
+        return Ok(DictionaryArray::new(keys, values));
+    }
+
     let mut new_keys_builder = PrimitiveBuilder::<Int64Type>::new();
     let mut value_indices_builder = PrimitiveBuilder::<Int64Type>::new();
     let mut value_map: HashMap<i64, i64> = HashMap::new(); // Map old indices to new indices
@@ -289,7 +294,7 @@ fn remap_dictionary_key_nulls(
 
     let new_keys = new_keys_builder.finish();
     let value_indices = value_indices_builder.finish();
-    let new_values = take(values, &value_indices, None)?;
+    let new_values = take(&values, &value_indices, None)?;
 
     Ok(DictionaryArray::new(new_keys, new_values))
 }
@@ -330,7 +335,7 @@ fn invoke_array_scalars<R: InvokeResult>(
                     let type_ids = values.as_union().type_ids();
                     keys = mask_dictionary_keys(&keys, type_ids);
                 }
-                Ok(Arc::new(remap_dictionary_key_nulls(&keys, &values)?))
+                Ok(Arc::new(remap_dictionary_key_nulls(keys, values)?))
             } else {
                 // this is what cast would do under the hood to unpack a dictionary into an array of its values
                 Ok(take(&values, json_array.keys(), None)?)
