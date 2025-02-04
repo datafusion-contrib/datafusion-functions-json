@@ -2,10 +2,9 @@ use std::collections::HashMap;
 use std::str::Utf8Error;
 use std::sync::Arc;
 
-use arrow::array::PrimitiveBuilder;
 use datafusion::arrow::array::{
     downcast_array, AnyDictionaryArray, Array, ArrayAccessor, ArrayRef, AsArray, DictionaryArray, LargeStringArray,
-    PrimitiveArray, RunArray, StringArray, StringViewArray,
+    PrimitiveArray, RunArray, StringArray, StringViewArray, PrimitiveBuilder
 };
 use datafusion::arrow::compute::kernels::cast;
 use datafusion::arrow::compute::take;
