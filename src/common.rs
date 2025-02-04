@@ -261,17 +261,15 @@ fn remap_dictionary_key_nulls(
 ) -> DataFusionResult<DictionaryArray<Int64Type>> {
     let mut new_keys_builder = PrimitiveBuilder::<Int64Type>::new();
     let mut value_indices_builder = PrimitiveBuilder::<Int64Type>::new();
-    let mut value_map = HashMap::new(); // Map old indices to new indices
-    let mut next_index = 0i64;
+    let mut value_map: HashMap<i64, i64> = HashMap::new(); // Map old indices to new indices
 
     // First pass: build mapping of old indices to new indices
     for key in keys.iter() {
         if let Some(k) = key {
             let k_usize = k.as_usize();
             if !values.is_null(k_usize) && !value_map.contains_key(&k) {
-                value_map.insert(k, next_index);
+                value_map.insert(k, i64::try_from(value_map.len()).expect("value_map overflow"));
                 value_indices_builder.append_value(k);
-                next_index += 1;
             }
         }
     }
