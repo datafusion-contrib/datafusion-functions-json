@@ -1,13 +1,13 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use datafusion::arrow::array::{ArrayRef, Float64Array};
+use datafusion::arrow::array::{ArrayRef, Float64Array, Float64Builder};
 use datafusion::arrow::datatypes::DataType;
 use datafusion::common::{Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::{NumberAny, Peek};
 
-use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, JsonPath};
+use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
@@ -50,17 +50,36 @@ impl ScalarUDFImpl for JsonGetFloat {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<Float64Array, f64>(
-            args,
-            jiter_json_get_float,
-            |c| Ok(Arc::new(c) as ArrayRef),
-            ScalarValue::Float64,
-            true,
-        )
+        invoke::<Float64Array>(args, jiter_json_get_float)
     }
 
     fn aliases(&self) -> &[String] {
         &self.aliases
+    }
+}
+
+impl InvokeResult for Float64Array {
+    type Item = f64;
+
+    type Builder = Float64Builder;
+
+    // Cheaper to produce a float array rather than dict-encoded floats
+    const ACCEPT_DICT_RETURN: bool = false;
+
+    fn builder(capacity: usize) -> Self::Builder {
+        Float64Builder::with_capacity(capacity)
+    }
+
+    fn append_value(builder: &mut Self::Builder, value: Option<Self::Item>) {
+        builder.append_option(value);
+    }
+
+    fn finish(mut builder: Self::Builder) -> DataFusionResult<ArrayRef> {
+        Ok(Arc::new(builder.finish()))
+    }
+
+    fn scalar(value: Option<Self::Item>) -> ScalarValue {
+        ScalarValue::Float64(value)
     }
 }
 

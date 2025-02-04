@@ -1,9 +1,8 @@
 use std::any::Any;
-use std::sync::Arc;
 
-use datafusion::arrow::array::{ArrayRef, BooleanArray};
+use datafusion::arrow::array::BooleanArray;
 use datafusion::arrow::datatypes::DataType;
-use datafusion::common::{Result as DataFusionResult, ScalarValue};
+use datafusion::common::Result as DataFusionResult;
 use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::Peek;
 
@@ -50,13 +49,7 @@ impl ScalarUDFImpl for JsonGetBool {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<BooleanArray, bool>(
-            args,
-            jiter_json_get_bool,
-            |c| Ok(Arc::new(c) as ArrayRef),
-            ScalarValue::Boolean,
-            false,
-        )
+        invoke::<BooleanArray>(args, jiter_json_get_bool)
     }
 
     fn aliases(&self) -> &[String] {

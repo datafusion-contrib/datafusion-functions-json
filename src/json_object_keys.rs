@@ -1,13 +1,13 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use datafusion::arrow::array::{ArrayRef, ListArray, ListBuilder, StringBuilder};
+use datafusion::arrow::array::{ArrayRef, ListBuilder, StringBuilder};
 use datafusion::arrow::datatypes::{DataType, Field};
 use datafusion::common::{Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::Peek;
 
-use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, JsonPath};
+use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
@@ -54,13 +54,7 @@ impl ScalarUDFImpl for JsonObjectKeys {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<ListArrayWrapper, Vec<String>>(
-            args,
-            jiter_json_object_keys,
-            |w| Ok(Arc::new(w.0) as ArrayRef),
-            keys_to_scalar,
-            true,
-        )
+        invoke::<BuildListArray>(args, jiter_json_object_keys)
     }
 
     fn aliases(&self) -> &[String] {
@@ -68,25 +62,32 @@ impl ScalarUDFImpl for JsonObjectKeys {
     }
 }
 
-/// Wrapper for a `ListArray` that allows us to implement `FromIterator<Option<Vec<String>>>` as required.
+/// Struct used to build a `ListArray` from the result of `jiter_json_object_keys`.
 #[derive(Debug)]
-struct ListArrayWrapper(ListArray);
+struct BuildListArray;
 
-impl FromIterator<Option<Vec<String>>> for ListArrayWrapper {
-    fn from_iter<I: IntoIterator<Item = Option<Vec<String>>>>(iter: I) -> Self {
+impl InvokeResult for BuildListArray {
+    type Item = Vec<String>;
+
+    type Builder = ListBuilder<StringBuilder>;
+
+    const ACCEPT_DICT_RETURN: bool = true;
+
+    fn builder(capacity: usize) -> Self::Builder {
         let values_builder = StringBuilder::new();
-        let mut builder = ListBuilder::new(values_builder);
-        for opt_keys in iter {
-            if let Some(keys) = opt_keys {
-                for value in keys {
-                    builder.values().append_value(value);
-                }
-                builder.append(true);
-            } else {
-                builder.append(false);
-            }
-        }
-        Self(builder.finish())
+        ListBuilder::with_capacity(values_builder, capacity)
+    }
+
+    fn append_value(builder: &mut Self::Builder, value: Option<Self::Item>) {
+        builder.append_option(value.map(|v| v.into_iter().map(Some)));
+    }
+
+    fn finish(mut builder: Self::Builder) -> DataFusionResult<ArrayRef> {
+        Ok(Arc::new(builder.finish()))
+    }
+
+    fn scalar(value: Option<Self::Item>) -> ScalarValue {
+        keys_to_scalar(value)
     }
 }
 

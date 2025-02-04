@@ -1,13 +1,13 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use datafusion::arrow::array::{ArrayRef, StringArray};
+use datafusion::arrow::array::{ArrayRef, StringArray, StringBuilder};
 use datafusion::arrow::datatypes::DataType;
 use datafusion::common::{Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::Peek;
 
-use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, JsonPath};
+use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
@@ -50,17 +50,35 @@ impl ScalarUDFImpl for JsonAsText {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<StringArray, String>(
-            args,
-            jiter_json_as_text,
-            |c| Ok(Arc::new(c) as ArrayRef),
-            ScalarValue::Utf8,
-            true,
-        )
+        invoke::<StringArray>(args, jiter_json_as_text)
     }
 
     fn aliases(&self) -> &[String] {
         &self.aliases
+    }
+}
+
+impl InvokeResult for StringArray {
+    type Item = String;
+
+    type Builder = StringBuilder;
+
+    const ACCEPT_DICT_RETURN: bool = true;
+
+    fn builder(capacity: usize) -> Self::Builder {
+        StringBuilder::with_capacity(capacity, 0)
+    }
+
+    fn append_value(builder: &mut Self::Builder, value: Option<Self::Item>) {
+        builder.append_option(value);
+    }
+
+    fn finish(mut builder: Self::Builder) -> DataFusionResult<ArrayRef> {
+        Ok(Arc::new(builder.finish()))
+    }
+
+    fn scalar(value: Option<Self::Item>) -> ScalarValue {
+        ScalarValue::Utf8(value)
     }
 }
 
