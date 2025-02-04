@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use datafusion::arrow::array::{
     downcast_array, AnyDictionaryArray, Array, ArrayAccessor, ArrayRef, AsArray, DictionaryArray, LargeStringArray,
-    PrimitiveArray, RunArray, StringArray, StringViewArray,
+    PrimitiveArray, PrimitiveBuilder, RunArray, StringArray, StringViewArray,
 };
 use datafusion::arrow::compute::kernels::cast;
 use datafusion::arrow::compute::take;
@@ -245,6 +245,34 @@ fn invoke_array_array<R: InvokeResult>(
     }
 }
 
+/// Transform keys that may be pointing to values with nulls to nulls themselves.
+/// keys = `[0, 1, 2, 3]`, values = `[null, "a", null, "b"]`
+/// into
+/// keys = `[null, 0, null, 1]`, values = `["a", "b"]`
+///
+/// Arrow / `DataFusion` assumes that dictionary values do not contain nulls, nulls are encoded by the keys.
+/// Not following this invariant causes invalid dictionary arrays to be built later on inside of `DataFusion`
+/// when arrays are concacted and such.
+fn remap_dictionary_key_nulls(keys: PrimitiveArray<Int64Type>, values: ArrayRef) -> DictionaryArray<Int64Type> {
+    // fast path: no nulls in values
+    if values.null_count() == 0 {
+        return DictionaryArray::new(keys, values);
+    }
+
+    let mut new_keys_builder = PrimitiveBuilder::<Int64Type>::new();
+
+    for key in &keys {
+        match key {
+            Some(k) if values.is_null(k.as_usize()) => new_keys_builder.append_null(),
+            Some(k) => new_keys_builder.append_value(k),
+            None => new_keys_builder.append_null(),
+        }
+    }
+
+    let new_keys = new_keys_builder.finish();
+    DictionaryArray::new(new_keys, values)
+}
+
 fn invoke_array_scalars<R: InvokeResult>(
     json_array: &ArrayRef,
     path: &[JsonPath],
@@ -281,7 +309,7 @@ fn invoke_array_scalars<R: InvokeResult>(
                     let type_ids = values.as_union().type_ids();
                     keys = mask_dictionary_keys(&keys, type_ids);
                 }
-                Ok(Arc::new(DictionaryArray::new(keys, values)))
+                Ok(Arc::new(remap_dictionary_key_nulls(keys, values)))
             } else {
                 // this is what cast would do under the hood to unpack a dictionary into an array of its values
                 Ok(take(&values, json_array.keys(), None)?)
