@@ -258,7 +258,7 @@ fn remap_dictionary_key_nulls(
     values: ArrayRef,
 ) -> DataFusionResult<DictionaryArray<Int64Type>> {
     // fast path: no nulls in values
-    if values.null_count() == 0{
+    if values.null_count() == 0 {
         return Ok(DictionaryArray::new(keys, values));
     }
 

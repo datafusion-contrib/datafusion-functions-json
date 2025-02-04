@@ -1280,11 +1280,13 @@ async fn test_dict_haystack() {
     assert_batches_eq!(expected, &batches);
 }
 
-
 fn check_for_null_dictionary_values(array: &dyn Array) {
     let array = array.as_any().downcast_ref::<DictionaryArray<Int64Type>>().unwrap();
     let keys_array = array.keys();
-    let keys = keys_array.iter().filter_map(|x| x.map(|v| usize::try_from(v).unwrap())).collect::<Vec<_>>();
+    let keys = keys_array
+        .iter()
+        .filter_map(|x| x.map(|v| usize::try_from(v).unwrap()))
+        .collect::<Vec<_>>();
     let values_array = array.values();
     // no non-null keys should point to a null value
     for i in 0..values_array.len() {
@@ -1330,20 +1332,8 @@ async fn test_dict_get_no_null_values() {
 
     let sql = "select json_get_str(x, 'baz') v from data";
     let expected = [
-        "+------+",
-        "| v    |",
-        "+------+",
-        "|      |",
-        "| fizz |",
-        "|      |",
-        "| abcd |",
-        "|      |",
-        "| fizz |",
-        "| fizz |",
-        "| fizz |",
-        "| fizz |",
-        "|      |",
-        "+------+",
+        "+------+", "| v    |", "+------+", "|      |", "| fizz |", "|      |", "| abcd |", "|      |", "| fizz |",
+        "| fizz |", "| fizz |", "| fizz |", "|      |", "+------+",
     ];
     let batches = ctx.sql(&sql).await.unwrap().collect().await.unwrap();
     assert_batches_eq!(expected, &batches);
