@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use datafusion::arrow::array::{ArrayRef, AsArray, RecordBatch};
+use datafusion::arrow::array::{Array, ArrayRef, DictionaryArray, RecordBatch};
 use datafusion::arrow::datatypes::{Field, Int64Type, Int8Type, Schema};
 use datafusion::arrow::{array::StringDictionaryBuilder, datatypes::DataType};
 use datafusion::assert_batches_eq;
@@ -1278,21 +1278,77 @@ async fn test_dict_haystack() {
 
     let batches = run_query(sql).await.unwrap();
     assert_batches_eq!(expected, &batches);
+}
 
-    // check that there are no nulls in dictionary values
-    for batch in batches {
-        // we know keys are always Int64
-        let array = batch.column(0).as_dictionary::<Int64Type>();
-        let keys_array = array.keys();
-        let keys = keys_array.iter().filter_map(|x| x.map(|v| usize::try_from(v).unwrap())).collect::<Vec<_>>();
-        let values_array = array.values();
-        // no non-null keys should point to a null value
-        for i in 0..values_array.len() {
-            if values_array.is_null(i) {
-                // keys should not contain
-                assert!(!keys.contains(&i));
+
+fn check_for_null_dictionary_values(array: &dyn Array) {
+    let array = array.as_any().downcast_ref::<DictionaryArray<Int64Type>>().unwrap();
+    let keys_array = array.keys();
+    let keys = keys_array.iter().filter_map(|x| x.map(|v| usize::try_from(v).unwrap())).collect::<Vec<_>>();
+    let values_array = array.values();
+    // no non-null keys should point to a null value
+    for i in 0..values_array.len() {
+        if values_array.is_null(i) {
+            // keys should not contain
+            if keys.contains(&i) {
+                println!("keys: {:?}", keys);
+                println!("values: {:?}", values_array);
+                panic!("keys should not contain null values");
             }
         }
+    }
+}
+
+/// Test that we don't output nulls in dictionary values.
+/// This can cause issues with arrow-rs and DataFusion; they expect nulls to be in keys.
+#[tokio::test]
+async fn test_dict_get_no_null_values() {
+    let ctx = build_dict_schema().await;
+
+    let sql = "select json_get(x, 'baz') v from data";
+    let expected = [
+        "+------------+",
+        "| v          |",
+        "+------------+",
+        "|            |",
+        "| {str=fizz} |",
+        "|            |",
+        "| {str=abcd} |",
+        "|            |",
+        "| {str=fizz} |",
+        "| {str=fizz} |",
+        "| {str=fizz} |",
+        "| {str=fizz} |",
+        "|            |",
+        "+------------+",
+    ];
+    let batches = ctx.sql(&sql).await.unwrap().collect().await.unwrap();
+    assert_batches_eq!(expected, &batches);
+    for batch in batches {
+        check_for_null_dictionary_values(batch.column(0).as_ref());
+    }
+
+    let sql = "select json_get_str(x, 'baz') v from data";
+    let expected = [
+        "+------+",
+        "| v    |",
+        "+------+",
+        "|      |",
+        "| fizz |",
+        "|      |",
+        "| abcd |",
+        "|      |",
+        "| fizz |",
+        "| fizz |",
+        "| fizz |",
+        "| fizz |",
+        "|      |",
+        "+------+",
+    ];
+    let batches = ctx.sql(&sql).await.unwrap().collect().await.unwrap();
+    assert_batches_eq!(expected, &batches);
+    for batch in batches {
+        check_for_null_dictionary_values(batch.column(0).as_ref());
     }
 }
 
