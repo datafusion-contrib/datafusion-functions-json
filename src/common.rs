@@ -246,25 +246,22 @@ fn invoke_array_array<R: InvokeResult>(
 }
 
 /// Transform keys that may be pointing to values with nulls to nulls themselves.
-/// keys = [0, 1, 2, 3], values = [null, "a", null, "b"]
+/// keys = `[0, 1, 2, 3]`, values = `[null, "a", null, "b"]`
 /// into
-/// keys = [null, 0, null, 1], values = ["a", "b"]
+/// keys = `[null, 0, null, 1]`, values = `["a", "b"]`
 ///
-/// Arrow / DataFusion assumes that dictionary values do not contain nulls, nulls are encoded by the keys.
-/// Not following this invariant causes invalid dictionary arrays to be built later on inside of DataFusion
+/// Arrow / `DataFusion` assumes that dictionary values do not contain nulls, nulls are encoded by the keys.
+/// Not following this invariant causes invalid dictionary arrays to be built later on inside of `DataFusion`
 /// when arrays are concacted and such.
-fn remap_dictionary_key_nulls(
-    keys: PrimitiveArray<Int64Type>,
-    values: ArrayRef,
-) -> DataFusionResult<DictionaryArray<Int64Type>> {
+fn remap_dictionary_key_nulls(keys: PrimitiveArray<Int64Type>, values: ArrayRef) -> DictionaryArray<Int64Type> {
     // fast path: no nulls in values
     if values.null_count() == 0 {
-        return Ok(DictionaryArray::new(keys, values));
+        return DictionaryArray::new(keys, values);
     }
 
     let mut new_keys_builder = PrimitiveBuilder::<Int64Type>::new();
 
-    for key in keys.iter() {
+    for key in &keys {
         match key {
             Some(k) if values.is_null(k.as_usize()) => new_keys_builder.append_null(),
             Some(k) => new_keys_builder.append_value(k),
@@ -273,7 +270,7 @@ fn remap_dictionary_key_nulls(
     }
 
     let new_keys = new_keys_builder.finish();
-    Ok(DictionaryArray::new(new_keys, values))
+    DictionaryArray::new(new_keys, values)
 }
 
 fn invoke_array_scalars<R: InvokeResult>(
@@ -312,7 +309,7 @@ fn invoke_array_scalars<R: InvokeResult>(
                     let type_ids = values.as_union().type_ids();
                     keys = mask_dictionary_keys(&keys, type_ids);
                 }
-                Ok(Arc::new(remap_dictionary_key_nulls(keys, values)?))
+                Ok(Arc::new(remap_dictionary_key_nulls(keys, values)))
             } else {
                 // this is what cast would do under the hood to unpack a dictionary into an array of its values
                 Ok(take(&values, json_array.keys(), None)?)
