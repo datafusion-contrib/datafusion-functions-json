@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use datafusion::arrow::array::{
     downcast_array, AnyDictionaryArray, Array, ArrayAccessor, ArrayRef, AsArray, DictionaryArray, LargeStringArray,
-    PrimitiveArray, RunArray, StringArray, StringViewArray, PrimitiveBuilder
+    PrimitiveArray, PrimitiveBuilder, RunArray, StringArray, StringViewArray,
 };
 use datafusion::arrow::compute::kernels::cast;
 use datafusion::arrow::compute::take;
