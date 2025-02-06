@@ -6,7 +6,6 @@ use datafusion::common::tree_node::Transformed;
 use datafusion::common::Column;
 use datafusion::common::DFSchema;
 use datafusion::common::Result;
-use datafusion::error::DataFusionError;
 use datafusion::logical_expr::expr::{Alias, Cast, Expr, ScalarFunction};
 use datafusion::logical_expr::expr_rewriter::FunctionRewrite;
 use datafusion::logical_expr::planner::{ExprPlanner, PlannerResult, RawBinaryExpr};
@@ -107,17 +106,14 @@ enum JsonOperator {
 }
 
 impl TryFrom<&BinaryOperator> for JsonOperator {
-    type Error = DataFusionError;
+    type Error = ();
 
-    fn try_from(op: &BinaryOperator) -> Result<Self> {
+    fn try_from(op: &BinaryOperator) -> Result<Self, Self::Error> {
         match op {
             BinaryOperator::Arrow => Ok(JsonOperator::Arrow),
             BinaryOperator::LongArrow => Ok(JsonOperator::LongArrow),
             BinaryOperator::Question => Ok(JsonOperator::Question),
-            _ => Err(DataFusionError::Internal(format!(
-                "Unexpected operator {:?} in JSON function rewriter",
-                op
-            ))),
+            _ => Err(()),
         }
     }
 }

@@ -819,21 +819,21 @@ async fn test_long_arrow_eq_str() {
     assert_batches_eq!(expected, &batches);
 }
 
+/// Test column name / alias creation with a cast in the needle / key
 #[tokio::test]
 async fn test_arrow_cast_key_text() {
-    let sql = r#"select ('{"foo": 42}'->('foo'::text))"#;
+    let sql = r#"select ('{"foo": 42}'->>('foo'::text))"#;
     let batches = run_query(sql).await.unwrap();
 
     let expected = [
-        "+------------------------+",
-        "| '{\"foo\": 42}' -> 'foo' |",
-        "+------------------------+",
-        "| {int=42}               |",
-        "+------------------------+",
+        "+-------------------------+",
+        "| '{\"foo\": 42}' ->> 'foo' |",
+        "+-------------------------+",
+        "| 42                      |",
+        "+-------------------------+",
     ];
-    assert_batches_eq!(expected, &batches);
 
-    assert_eq!(display_val(batches).await, (DataType::Int64, "42".to_string()));
+    assert_batches_eq!(expected, &batches);
 }
 
 #[tokio::test]
