@@ -1,12 +1,18 @@
+use std::sync::Arc;
+
 use datafusion::arrow::datatypes::DataType;
 use datafusion::common::config::ConfigOptions;
 use datafusion::common::tree_node::Transformed;
+use datafusion::common::Column;
 use datafusion::common::DFSchema;
 use datafusion::common::Result;
+use datafusion::error::DataFusionError;
 use datafusion::logical_expr::expr::{Alias, Cast, Expr, ScalarFunction};
 use datafusion::logical_expr::expr_rewriter::FunctionRewrite;
 use datafusion::logical_expr::planner::{ExprPlanner, PlannerResult, RawBinaryExpr};
 use datafusion::logical_expr::sqlparser::ast::BinaryOperator;
+use datafusion::logical_expr::ScalarUDF;
+use datafusion::scalar::ScalarValue;
 
 #[derive(Debug)]
 pub(crate) struct JsonFunctionRewriter;
@@ -93,27 +99,95 @@ fn extract_scalar_function(expr: &Expr) -> Option<&ScalarFunction> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum JsonOperator {
+    Arrow,
+    LongArrow,
+    Question,
+}
+
+impl TryFrom<&BinaryOperator> for JsonOperator {
+    type Error = DataFusionError;
+
+    fn try_from(op: &BinaryOperator) -> Result<Self> {
+        match op {
+            BinaryOperator::Arrow => Ok(JsonOperator::Arrow),
+            BinaryOperator::LongArrow => Ok(JsonOperator::LongArrow),
+            BinaryOperator::Question => Ok(JsonOperator::Question),
+            _ => Err(DataFusionError::Internal(format!(
+                "Unexpected operator {:?} in JSON function rewriter",
+                op
+            ))),
+        }
+    }
+}
+
+impl From<JsonOperator> for Arc<ScalarUDF> {
+    fn from(op: JsonOperator) -> Arc<ScalarUDF> {
+        match op {
+            JsonOperator::Arrow => crate::udfs::json_get_udf(),
+            JsonOperator::LongArrow => crate::udfs::json_as_text_udf(),
+            JsonOperator::Question => crate::udfs::json_contains_udf(),
+        }
+    }
+}
+
+impl std::fmt::Display for JsonOperator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            JsonOperator::Arrow => write!(f, "->"),
+            JsonOperator::LongArrow => write!(f, "->>"),
+            JsonOperator::Question => write!(f, "?"),
+        }
+    }
+}
+
+/// Convert an Expr to a String representatiion for use in alias names.
+fn expr_to_sql_repr(expr: &Expr) -> String {
+    match expr {
+        Expr::Column(Column { name, relation }) => relation
+            .as_ref()
+            .map(|r| format!("{}.{}", r, name))
+            .unwrap_or_else(|| name.clone()),
+        Expr::Alias(alias) => alias.name.clone(),
+        Expr::Literal(scalar) => match scalar {
+            ScalarValue::Utf8(Some(v)) | ScalarValue::Utf8View(Some(v)) | ScalarValue::LargeUtf8(Some(v)) => {
+                format!("'{v}'")
+            }
+            ScalarValue::UInt8(Some(v)) => v.to_string(),
+            ScalarValue::UInt16(Some(v)) => v.to_string(),
+            ScalarValue::UInt32(Some(v)) => v.to_string(),
+            ScalarValue::UInt64(Some(v)) => v.to_string(),
+            ScalarValue::Int8(Some(v)) => v.to_string(),
+            ScalarValue::Int16(Some(v)) => v.to_string(),
+            ScalarValue::Int32(Some(v)) => v.to_string(),
+            ScalarValue::Int64(Some(v)) => v.to_string(),
+            _ => scalar.to_string(),
+        },
+        Expr::Cast(cast) => expr_to_sql_repr(&cast.expr),
+        _ => expr.to_string(),
+    }
+}
+
 /// Implement a custom SQL planner to replace postgres JSON operators with custom UDFs
 #[derive(Debug, Default)]
 pub struct JsonExprPlanner;
 
 impl ExprPlanner for JsonExprPlanner {
     fn plan_binary_op(&self, expr: RawBinaryExpr, _schema: &DFSchema) -> Result<PlannerResult<RawBinaryExpr>> {
-        let (func, op_display) = match &expr.op {
-            BinaryOperator::Arrow => (crate::json_get::json_get_udf(), "->"),
-            BinaryOperator::LongArrow => (crate::json_as_text::json_as_text_udf(), "->>"),
-            BinaryOperator::Question => (crate::json_contains::json_contains_udf(), "?"),
-            _ => return Ok(PlannerResult::Original(expr)),
+        let Ok(op) = JsonOperator::try_from(&expr.op) else {
+            return Ok(PlannerResult::Original(expr));
         };
-        let alias_name = match &expr.left {
-            Expr::Alias(alias) => format!("{} {} {}", alias.name, op_display, expr.right),
-            left_expr => format!("{} {} {}", left_expr, op_display, expr.right),
-        };
+
+        let left_repr = expr_to_sql_repr(&expr.left);
+        let right_repr = expr_to_sql_repr(&expr.right);
+
+        let alias_name = format!("{left_repr} {op} {right_repr}");
 
         // we put the alias in so that default column titles are `foo -> bar` instead of `json_get(foo, bar)`
         Ok(PlannerResult::Planned(Expr::Alias(Alias::new(
             Expr::ScalarFunction(ScalarFunction {
-                func,
+                func: op.into(),
                 args: vec![expr.left, expr.right],
             }),
             None::<&str>,
