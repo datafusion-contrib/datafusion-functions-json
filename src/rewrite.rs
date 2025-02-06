@@ -143,7 +143,7 @@ fn expr_to_sql_repr(expr: &Expr) -> String {
     match expr {
         Expr::Column(Column { name, relation }) => relation
             .as_ref()
-            .map(|r| format!("{}.{}", r, name))
+            .map(|r| format!("{r}.{name}"))
             .unwrap_or_else(|| name.clone()),
         Expr::Alias(alias) => alias.name.clone(),
         Expr::Literal(scalar) => match scalar {
