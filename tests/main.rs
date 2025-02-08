@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use datafusion::arrow::array::{ArrayRef, RecordBatch};
-use datafusion::arrow::datatypes::{Field, Int8Type, Schema};
+use datafusion::arrow::array::{Array, ArrayRef, DictionaryArray, RecordBatch};
+use datafusion::arrow::datatypes::{Field, Int64Type, Int8Type, Schema};
 use datafusion::arrow::{array::StringDictionaryBuilder, datatypes::DataType};
 use datafusion::assert_batches_eq;
 use datafusion::common::ScalarValue;
@@ -738,17 +738,17 @@ async fn test_arrow() {
     let batches = run_query("select name, json_data->'foo' from test").await.unwrap();
 
     let expected = [
-        "+------------------+-------------------------------+",
-        "| name             | test.json_data -> Utf8(\"foo\") |",
-        "+------------------+-------------------------------+",
-        "| object_foo       | {str=abc}                     |",
-        "| object_foo_array | {array=[1]}                   |",
-        "| object_foo_obj   | {object={}}                   |",
-        "| object_foo_null  | {null=}                       |",
-        "| object_bar       | {null=}                       |",
-        "| list_foo         | {null=}                       |",
-        "| invalid_json     | {null=}                       |",
-        "+------------------+-------------------------------+",
+        "+------------------+-------------------------+",
+        "| name             | test.json_data -> 'foo' |",
+        "+------------------+-------------------------+",
+        "| object_foo       | {str=abc}               |",
+        "| object_foo_array | {array=[1]}             |",
+        "| object_foo_obj   | {object={}}             |",
+        "| object_foo_null  | {null=}                 |",
+        "| object_bar       | {null=}                 |",
+        "| list_foo         | {null=}                 |",
+        "| invalid_json     | {null=}                 |",
+        "+------------------+-------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
 }
@@ -758,7 +758,7 @@ async fn test_plan_arrow() {
     let lines = logical_plan(r"explain select json_data->'foo' from test").await;
 
     let expected = [
-        "Projection: json_get(test.json_data, Utf8(\"foo\")) AS test.json_data -> Utf8(\"foo\")",
+        "Projection: json_get(test.json_data, Utf8(\"foo\")) AS test.json_data -> 'foo'",
         "  TableScan: test projection=[json_data]",
     ];
 
@@ -770,17 +770,17 @@ async fn test_long_arrow() {
     let batches = run_query("select name, json_data->>'foo' from test").await.unwrap();
 
     let expected = [
-        "+------------------+--------------------------------+",
-        "| name             | test.json_data ->> Utf8(\"foo\") |",
-        "+------------------+--------------------------------+",
-        "| object_foo       | abc                            |",
-        "| object_foo_array | [1]                            |",
-        "| object_foo_obj   | {}                             |",
-        "| object_foo_null  |                                |",
-        "| object_bar       |                                |",
-        "| list_foo         |                                |",
-        "| invalid_json     |                                |",
-        "+------------------+--------------------------------+",
+        "+------------------+--------------------------+",
+        "| name             | test.json_data ->> 'foo' |",
+        "+------------------+--------------------------+",
+        "| object_foo       | abc                      |",
+        "| object_foo_array | [1]                      |",
+        "| object_foo_obj   | {}                       |",
+        "| object_foo_null  |                          |",
+        "| object_bar       |                          |",
+        "| list_foo         |                          |",
+        "| invalid_json     |                          |",
+        "+------------------+--------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
 }
@@ -790,7 +790,7 @@ async fn test_plan_long_arrow() {
     let lines = logical_plan(r"explain select json_data->>'foo' from test").await;
 
     let expected = [
-        "Projection: json_as_text(test.json_data, Utf8(\"foo\")) AS test.json_data ->> Utf8(\"foo\")",
+        "Projection: json_as_text(test.json_data, Utf8(\"foo\")) AS test.json_data ->> 'foo'",
         "  TableScan: test projection=[json_data]",
     ];
 
@@ -804,18 +804,35 @@ async fn test_long_arrow_eq_str() {
         .unwrap();
 
     let expected = [
-        "+------------------+----------------------------------------------+",
-        "| name             | test.json_data ->> Utf8(\"foo\") = Utf8(\"abc\") |",
-        "+------------------+----------------------------------------------+",
-        "| object_foo       | true                                         |",
-        "| object_foo_array | false                                        |",
-        "| object_foo_obj   | false                                        |",
-        "| object_foo_null  |                                              |",
-        "| object_bar       |                                              |",
-        "| list_foo         |                                              |",
-        "| invalid_json     |                                              |",
-        "+------------------+----------------------------------------------+",
+        "+------------------+----------------------------------------+",
+        "| name             | test.json_data ->> 'foo' = Utf8(\"abc\") |",
+        "+------------------+----------------------------------------+",
+        "| object_foo       | true                                   |",
+        "| object_foo_array | false                                  |",
+        "| object_foo_obj   | false                                  |",
+        "| object_foo_null  |                                        |",
+        "| object_bar       |                                        |",
+        "| list_foo         |                                        |",
+        "| invalid_json     |                                        |",
+        "+------------------+----------------------------------------+",
     ];
+    assert_batches_eq!(expected, &batches);
+}
+
+/// Test column name / alias creation with a cast in the needle / key
+#[tokio::test]
+async fn test_arrow_cast_key_text() {
+    let sql = r#"select ('{"foo": 42}'->>('foo'::text))"#;
+    let batches = run_query(sql).await.unwrap();
+
+    let expected = [
+        "+-------------------------+",
+        "| '{\"foo\": 42}' ->> 'foo' |",
+        "+-------------------------+",
+        "| 42                      |",
+        "+-------------------------+",
+    ];
+
     assert_batches_eq!(expected, &batches);
 }
 
@@ -825,11 +842,11 @@ async fn test_arrow_cast_int() {
     let batches = run_query(sql).await.unwrap();
 
     let expected = [
-        "+------------------------------------+",
-        "| Utf8(\"{\"foo\": 42}\") -> Utf8(\"foo\") |",
-        "+------------------------------------+",
-        "| 42                                 |",
-        "+------------------------------------+",
+        "+------------------------+",
+        "| '{\"foo\": 42}' -> 'foo' |",
+        "+------------------------+",
+        "| 42                     |",
+        "+------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
 
@@ -841,7 +858,7 @@ async fn test_plan_arrow_cast_int() {
     let lines = logical_plan(r"explain select (json_data->'foo')::int from test").await;
 
     let expected = [
-        "Projection: json_get_int(test.json_data, Utf8(\"foo\")) AS test.json_data -> Utf8(\"foo\")",
+        "Projection: json_get_int(test.json_data, Utf8(\"foo\")) AS test.json_data -> 'foo'",
         "  TableScan: test projection=[json_data]",
     ];
 
@@ -853,17 +870,17 @@ async fn test_arrow_double_nested() {
     let batches = run_query("select name, json_data->'foo'->0 from test").await.unwrap();
 
     let expected = [
-        "+------------------+-------------------------------------------+",
-        "| name             | test.json_data -> Utf8(\"foo\") -> Int64(0) |",
-        "+------------------+-------------------------------------------+",
-        "| object_foo       | {null=}                                   |",
-        "| object_foo_array | {int=1}                                   |",
-        "| object_foo_obj   | {null=}                                   |",
-        "| object_foo_null  | {null=}                                   |",
-        "| object_bar       | {null=}                                   |",
-        "| list_foo         | {null=}                                   |",
-        "| invalid_json     | {null=}                                   |",
-        "+------------------+-------------------------------------------+",
+        "+------------------+------------------------------+",
+        "| name             | test.json_data -> 'foo' -> 0 |",
+        "+------------------+------------------------------+",
+        "| object_foo       | {null=}                      |",
+        "| object_foo_array | {int=1}                      |",
+        "| object_foo_obj   | {null=}                      |",
+        "| object_foo_null  | {null=}                      |",
+        "| object_bar       | {null=}                      |",
+        "| list_foo         | {null=}                      |",
+        "| invalid_json     | {null=}                      |",
+        "+------------------+------------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
 }
@@ -873,7 +890,7 @@ async fn test_plan_arrow_double_nested() {
     let lines = logical_plan(r"explain select json_data->'foo'->0 from test").await;
 
     let expected = [
-        "Projection: json_get(test.json_data, Utf8(\"foo\"), Int64(0)) AS test.json_data -> Utf8(\"foo\") -> Int64(0)",
+        "Projection: json_get(test.json_data, Utf8(\"foo\"), Int64(0)) AS test.json_data -> 'foo' -> 0",
         "  TableScan: test projection=[json_data]",
     ];
 
@@ -885,17 +902,17 @@ async fn test_double_arrow_double_nested() {
     let batches = run_query("select name, json_data->>'foo'->>0 from test").await.unwrap();
 
     let expected = [
-        "+------------------+---------------------------------------------+",
-        "| name             | test.json_data ->> Utf8(\"foo\") ->> Int64(0) |",
-        "+------------------+---------------------------------------------+",
-        "| object_foo       |                                             |",
-        "| object_foo_array | 1                                           |",
-        "| object_foo_obj   |                                             |",
-        "| object_foo_null  |                                             |",
-        "| object_bar       |                                             |",
-        "| list_foo         |                                             |",
-        "| invalid_json     |                                             |",
-        "+------------------+---------------------------------------------+",
+        "+------------------+--------------------------------+",
+        "| name             | test.json_data ->> 'foo' ->> 0 |",
+        "+------------------+--------------------------------+",
+        "| object_foo       |                                |",
+        "| object_foo_array | 1                              |",
+        "| object_foo_obj   |                                |",
+        "| object_foo_null  |                                |",
+        "| object_bar       |                                |",
+        "| list_foo         |                                |",
+        "| invalid_json     |                                |",
+        "+------------------+--------------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
 }
@@ -905,7 +922,7 @@ async fn test_plan_double_arrow_double_nested() {
     let lines = logical_plan(r"explain select json_data->>'foo'->>0 from test").await;
 
     let expected = [
-        "Projection: json_as_text(test.json_data, Utf8(\"foo\"), Int64(0)) AS test.json_data ->> Utf8(\"foo\") ->> Int64(0)",
+        "Projection: json_as_text(test.json_data, Utf8(\"foo\"), Int64(0)) AS test.json_data ->> 'foo' ->> 0",
         "  TableScan: test projection=[json_data]",
     ];
 
@@ -919,17 +936,17 @@ async fn test_arrow_double_nested_cast() {
         .unwrap();
 
     let expected = [
-        "+------------------+-------------------------------------------+",
-        "| name             | test.json_data -> Utf8(\"foo\") -> Int64(0) |",
-        "+------------------+-------------------------------------------+",
-        "| object_foo       |                                           |",
-        "| object_foo_array | 1                                         |",
-        "| object_foo_obj   |                                           |",
-        "| object_foo_null  |                                           |",
-        "| object_bar       |                                           |",
-        "| list_foo         |                                           |",
-        "| invalid_json     |                                           |",
-        "+------------------+-------------------------------------------+",
+        "+------------------+------------------------------+",
+        "| name             | test.json_data -> 'foo' -> 0 |",
+        "+------------------+------------------------------+",
+        "| object_foo       |                              |",
+        "| object_foo_array | 1                            |",
+        "| object_foo_obj   |                              |",
+        "| object_foo_null  |                              |",
+        "| object_bar       |                              |",
+        "| list_foo         |                              |",
+        "| invalid_json     |                              |",
+        "+------------------+------------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
 }
@@ -939,7 +956,7 @@ async fn test_plan_arrow_double_nested_cast() {
     let lines = logical_plan(r"explain select (json_data->'foo'->0)::int from test").await;
 
     let expected = [
-        "Projection: json_get_int(test.json_data, Utf8(\"foo\"), Int64(0)) AS test.json_data -> Utf8(\"foo\") -> Int64(0)",
+        "Projection: json_get_int(test.json_data, Utf8(\"foo\"), Int64(0)) AS test.json_data -> 'foo' -> 0",
         "  TableScan: test projection=[json_data]",
     ];
 
@@ -953,17 +970,17 @@ async fn test_double_arrow_double_nested_cast() {
         .unwrap();
 
     let expected = [
-        "+------------------+---------------------------------------------+",
-        "| name             | test.json_data ->> Utf8(\"foo\") ->> Int64(0) |",
-        "+------------------+---------------------------------------------+",
-        "| object_foo       |                                             |",
-        "| object_foo_array | 1                                           |",
-        "| object_foo_obj   |                                             |",
-        "| object_foo_null  |                                             |",
-        "| object_bar       |                                             |",
-        "| list_foo         |                                             |",
-        "| invalid_json     |                                             |",
-        "+------------------+---------------------------------------------+",
+        "+------------------+--------------------------------+",
+        "| name             | test.json_data ->> 'foo' ->> 0 |",
+        "+------------------+--------------------------------+",
+        "| object_foo       |                                |",
+        "| object_foo_array | 1                              |",
+        "| object_foo_obj   |                                |",
+        "| object_foo_null  |                                |",
+        "| object_bar       |                                |",
+        "| list_foo         |                                |",
+        "| invalid_json     |                                |",
+        "+------------------+--------------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
 }
@@ -974,7 +991,7 @@ async fn test_plan_double_arrow_double_nested_cast() {
 
     // NB: json_as_text(..)::int is NOT the same as `json_get_int(..)`, hence the cast is not rewritten
     let expected = [
-        "Projection: CAST(json_as_text(test.json_data, Utf8(\"foo\"), Int64(0)) AS test.json_data ->> Utf8(\"foo\") ->> Int64(0) AS Int32)",
+        "Projection: CAST(json_as_text(test.json_data, Utf8(\"foo\"), Int64(0)) AS test.json_data ->> 'foo' ->> 0 AS Int32)",
         "  TableScan: test projection=[json_data]",
     ];
 
@@ -1033,17 +1050,17 @@ async fn test_lexical_precedence_correct() {
 #[tokio::test]
 async fn test_question_mark_contains() {
     let expected = [
-        "+------------------+------------------------------+",
-        "| name             | test.json_data ? Utf8(\"foo\") |",
-        "+------------------+------------------------------+",
-        "| object_foo       | true                         |",
-        "| object_foo_array | true                         |",
-        "| object_foo_obj   | true                         |",
-        "| object_foo_null  | true                         |",
-        "| object_bar       | false                        |",
-        "| list_foo         | false                        |",
-        "| invalid_json     | false                        |",
-        "+------------------+------------------------------+",
+        "+------------------+------------------------+",
+        "| name             | test.json_data ? 'foo' |",
+        "+------------------+------------------------+",
+        "| object_foo       | true                   |",
+        "| object_foo_array | true                   |",
+        "| object_foo_obj   | true                   |",
+        "| object_foo_null  | true                   |",
+        "| object_bar       | false                  |",
+        "| list_foo         | false                  |",
+        "| invalid_json     | false                  |",
+        "+------------------+------------------------+",
     ];
 
     let batches = run_query("select name, json_data ? 'foo' from test").await.unwrap();
@@ -1136,17 +1153,17 @@ async fn test_arrow_union_is_null() {
         .unwrap();
 
     let expected = [
-        "+------------------+---------------------------------------+",
-        "| name             | test.json_data -> Utf8(\"foo\") IS NULL |",
-        "+------------------+---------------------------------------+",
-        "| object_foo       | false                                 |",
-        "| object_foo_array | false                                 |",
-        "| object_foo_obj   | false                                 |",
-        "| object_foo_null  | true                                  |",
-        "| object_bar       | true                                  |",
-        "| list_foo         | true                                  |",
-        "| invalid_json     | true                                  |",
-        "+------------------+---------------------------------------+",
+        "+------------------+---------------------------------+",
+        "| name             | test.json_data -> 'foo' IS NULL |",
+        "+------------------+---------------------------------+",
+        "| object_foo       | false                           |",
+        "| object_foo_array | false                           |",
+        "| object_foo_obj   | false                           |",
+        "| object_foo_null  | true                            |",
+        "| object_bar       | true                            |",
+        "| list_foo         | true                            |",
+        "| invalid_json     | true                            |",
+        "+------------------+---------------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
 }
@@ -1158,17 +1175,17 @@ async fn test_arrow_union_is_null_dict_encoded() {
         .unwrap();
 
     let expected = [
-        "+------------------+---------------------------------------+",
-        "| name             | test.json_data -> Utf8(\"foo\") IS NULL |",
-        "+------------------+---------------------------------------+",
-        "| object_foo       | false                                 |",
-        "| object_foo_array | false                                 |",
-        "| object_foo_obj   | false                                 |",
-        "| object_foo_null  | true                                  |",
-        "| object_bar       | true                                  |",
-        "| list_foo         | true                                  |",
-        "| invalid_json     | true                                  |",
-        "+------------------+---------------------------------------+",
+        "+------------------+---------------------------------+",
+        "| name             | test.json_data -> 'foo' IS NULL |",
+        "+------------------+---------------------------------+",
+        "| object_foo       | false                           |",
+        "| object_foo_array | false                           |",
+        "| object_foo_obj   | false                           |",
+        "| object_foo_null  | true                            |",
+        "| object_bar       | true                            |",
+        "| list_foo         | true                            |",
+        "| invalid_json     | true                            |",
+        "+------------------+---------------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
 }
@@ -1180,17 +1197,17 @@ async fn test_arrow_union_is_not_null() {
         .unwrap();
 
     let expected = [
-        "+------------------+-------------------------------------------+",
-        "| name             | test.json_data -> Utf8(\"foo\") IS NOT NULL |",
-        "+------------------+-------------------------------------------+",
-        "| object_foo       | true                                      |",
-        "| object_foo_array | true                                      |",
-        "| object_foo_obj   | true                                      |",
-        "| object_foo_null  | false                                     |",
-        "| object_bar       | false                                     |",
-        "| list_foo         | false                                     |",
-        "| invalid_json     | false                                     |",
-        "+------------------+-------------------------------------------+",
+        "+------------------+-------------------------------------+",
+        "| name             | test.json_data -> 'foo' IS NOT NULL |",
+        "+------------------+-------------------------------------+",
+        "| object_foo       | true                                |",
+        "| object_foo_array | true                                |",
+        "| object_foo_obj   | true                                |",
+        "| object_foo_null  | false                               |",
+        "| object_bar       | false                               |",
+        "| list_foo         | false                               |",
+        "| invalid_json     | false                               |",
+        "+------------------+-------------------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
 }
@@ -1202,17 +1219,17 @@ async fn test_arrow_union_is_not_null_dict_encoded() {
         .unwrap();
 
     let expected = [
-        "+------------------+-------------------------------------------+",
-        "| name             | test.json_data -> Utf8(\"foo\") IS NOT NULL |",
-        "+------------------+-------------------------------------------+",
-        "| object_foo       | true                                      |",
-        "| object_foo_array | true                                      |",
-        "| object_foo_obj   | true                                      |",
-        "| object_foo_null  | false                                     |",
-        "| object_bar       | false                                     |",
-        "| list_foo         | false                                     |",
-        "| invalid_json     | false                                     |",
-        "+------------------+-------------------------------------------+",
+        "+------------------+-------------------------------------+",
+        "| name             | test.json_data -> 'foo' IS NOT NULL |",
+        "+------------------+-------------------------------------+",
+        "| object_foo       | true                                |",
+        "| object_foo_array | true                                |",
+        "| object_foo_obj   | true                                |",
+        "| object_foo_null  | false                               |",
+        "| object_bar       | false                               |",
+        "| list_foo         | false                               |",
+        "| invalid_json     | false                               |",
+        "+------------------+-------------------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
 }
@@ -1243,14 +1260,14 @@ async fn test_long_arrow_cast() {
     let batches = run_query("select (json_data->>'foo')::int from other").await.unwrap();
 
     let expected = [
-        "+---------------------------------+",
-        "| other.json_data ->> Utf8(\"foo\") |",
-        "+---------------------------------+",
-        "| 42                              |",
-        "| 42                              |",
-        "|                                 |",
-        "|                                 |",
-        "+---------------------------------+",
+        "+---------------------------+",
+        "| other.json_data ->> 'foo' |",
+        "+---------------------------+",
+        "| 42                        |",
+        "| 42                        |",
+        "|                           |",
+        "|                           |",
+        "+---------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
 }
@@ -1278,6 +1295,68 @@ async fn test_dict_haystack() {
 
     let batches = run_query(sql).await.unwrap();
     assert_batches_eq!(expected, &batches);
+}
+
+fn check_for_null_dictionary_values(array: &dyn Array) {
+    let array = array.as_any().downcast_ref::<DictionaryArray<Int64Type>>().unwrap();
+    let keys_array = array.keys();
+    let keys = keys_array
+        .iter()
+        .filter_map(|x| x.map(|v| usize::try_from(v).unwrap()))
+        .collect::<Vec<_>>();
+    let values_array = array.values();
+    // no non-null keys should point to a null value
+    for i in 0..values_array.len() {
+        if values_array.is_null(i) {
+            // keys should not contain
+            if keys.contains(&i) {
+                println!("keys: {:?}", keys);
+                println!("values: {:?}", values_array);
+                panic!("keys should not contain null values");
+            }
+        }
+    }
+}
+
+/// Test that we don't output nulls in dictionary values.
+/// This can cause issues with arrow-rs and DataFusion; they expect nulls to be in keys.
+#[tokio::test]
+async fn test_dict_get_no_null_values() {
+    let ctx = build_dict_schema().await;
+
+    let sql = "select json_get(x, 'baz') v from data";
+    let expected = [
+        "+------------+",
+        "| v          |",
+        "+------------+",
+        "|            |",
+        "| {str=fizz} |",
+        "|            |",
+        "| {str=abcd} |",
+        "|            |",
+        "| {str=fizz} |",
+        "| {str=fizz} |",
+        "| {str=fizz} |",
+        "| {str=fizz} |",
+        "|            |",
+        "+------------+",
+    ];
+    let batches = ctx.sql(&sql).await.unwrap().collect().await.unwrap();
+    assert_batches_eq!(expected, &batches);
+    for batch in batches {
+        check_for_null_dictionary_values(batch.column(0).as_ref());
+    }
+
+    let sql = "select json_get_str(x, 'baz') v from data";
+    let expected = [
+        "+------+", "| v    |", "+------+", "|      |", "| fizz |", "|      |", "| abcd |", "|      |", "| fizz |",
+        "| fizz |", "| fizz |", "| fizz |", "|      |", "+------+",
+    ];
+    let batches = ctx.sql(&sql).await.unwrap().collect().await.unwrap();
+    assert_batches_eq!(expected, &batches);
+    for batch in batches {
+        check_for_null_dictionary_values(batch.column(0).as_ref());
+    }
 }
 
 #[tokio::test]
