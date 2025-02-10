@@ -1,6 +1,6 @@
 [package]
 name = "datafusion-functions-json"
-version = "0.44.2"
+version = "0.45.0"
 edition = "2021"
 description = "JSON functions for DataFusion"
 readme = "README.md"
@@ -34,9 +34,3 @@ pedantic = { level = "deny", priority = -1 }
 [[bench]]
 name = "main"
 harness = false
-
-[patch.crates-io]
-datafusion = { git = "https://github.com/pydantic/datafusion.git", rev = "b978115" }
-datafusion-common = { git = "https://github.com/pydantic/datafusion.git", rev = "b978115" }
-datafusion-expr = { git = "https://github.com/pydantic/datafusion.git", rev = "b978115" }
-datafusion-execution = { git = "https://github.com/pydantic/datafusion.git", rev = "b978115" }
