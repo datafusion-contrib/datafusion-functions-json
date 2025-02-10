@@ -21,7 +21,7 @@ datafusion = { version = "45", default-features = false, features = ["nested_exp
 codspeed-criterion-compat = "2.6"
 criterion = "0.5.1"
 clap = "4"
-tokio = { version = "1.38", features = ["full"] }
+tokio = { version = "1.43", features = ["full"] }
 
 [lints.clippy]
 dbg_macro = "deny"
@@ -34,3 +34,6 @@ pedantic = { level = "deny", priority = -1 }
 [[bench]]
 name = "main"
 harness = false
+
+[patch.crates-io]
+datafusion = { git = "https://github.com/apache/datafusion.git", rev = "5239d1ac" }
