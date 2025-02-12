@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
 use datafusion::arrow::array::{
@@ -158,14 +159,22 @@ fn union_fields() -> UnionFields {
     static FIELDS: OnceLock<UnionFields> = OnceLock::new();
     FIELDS
         .get_or_init(|| {
+            let json_metadata: HashMap<String, String> =
+                HashMap::from_iter(vec![("is_json".to_string(), "true".to_string())]);
             UnionFields::from_iter([
                 (TYPE_ID_NULL, Arc::new(Field::new("null", DataType::Null, true))),
                 (TYPE_ID_BOOL, Arc::new(Field::new("bool", DataType::Boolean, false))),
                 (TYPE_ID_INT, Arc::new(Field::new("int", DataType::Int64, false))),
                 (TYPE_ID_FLOAT, Arc::new(Field::new("float", DataType::Float64, false))),
                 (TYPE_ID_STR, Arc::new(Field::new("str", DataType::Utf8, false))),
-                (TYPE_ID_ARRAY, Arc::new(Field::new("array", DataType::Utf8, false))),
-                (TYPE_ID_OBJECT, Arc::new(Field::new("object", DataType::Utf8, false))),
+                (
+                    TYPE_ID_ARRAY,
+                    Arc::new(Field::new("array", DataType::Utf8, false).with_metadata(json_metadata.clone())),
+                ),
+                (
+                    TYPE_ID_OBJECT,
+                    Arc::new(Field::new("object", DataType::Utf8, false).with_metadata(json_metadata.clone())),
+                ),
             ])
         })
         .clone()
