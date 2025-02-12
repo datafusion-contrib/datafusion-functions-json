@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, LazyLock, OnceLock};
+use std::sync::{Arc, OnceLock};
 
 use datafusion::arrow::array::{
     Array, ArrayRef, AsArray, BooleanArray, Float64Array, Int64Array, NullArray, StringArray, UnionArray,
@@ -155,13 +155,12 @@ const TYPE_ID_STR: i8 = 4;
 const TYPE_ID_ARRAY: i8 = 5;
 const TYPE_ID_OBJECT: i8 = 6;
 
-static JSON_METADATA: LazyLock<HashMap<String, String>> =
-    LazyLock::new(|| HashMap::from_iter(vec![("is_json".to_string(), "true".to_string())]));
-
 fn union_fields() -> UnionFields {
     static FIELDS: OnceLock<UnionFields> = OnceLock::new();
     FIELDS
         .get_or_init(|| {
+            let json_metadata: HashMap<String, String> =
+                HashMap::from_iter(vec![("is_json".to_string(), "true".to_string())]);
             UnionFields::from_iter([
                 (TYPE_ID_NULL, Arc::new(Field::new("null", DataType::Null, true))),
                 (TYPE_ID_BOOL, Arc::new(Field::new("bool", DataType::Boolean, false))),
@@ -170,11 +169,11 @@ fn union_fields() -> UnionFields {
                 (TYPE_ID_STR, Arc::new(Field::new("str", DataType::Utf8, false))),
                 (
                     TYPE_ID_ARRAY,
-                    Arc::new(Field::new("array", DataType::Utf8, false).with_metadata(JSON_METADATA.clone())),
+                    Arc::new(Field::new("array", DataType::Utf8, false).with_metadata(json_metadata.clone())),
                 ),
                 (
                     TYPE_ID_OBJECT,
-                    Arc::new(Field::new("object", DataType::Utf8, false).with_metadata(JSON_METADATA.clone())),
+                    Arc::new(Field::new("object", DataType::Utf8, false).with_metadata(json_metadata.clone())),
                 ),
             ])
         })
