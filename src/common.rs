@@ -613,6 +613,14 @@ pub(crate) enum Sortedness {
 }
 
 impl Sortedness {
+    pub(crate) fn iter() -> impl Iterator<Item = Self> {
+        [Sortedness::Unspecified, Sortedness::TopLevel, Sortedness::Recursive]
+            .iter()
+            .copied()
+    }
+}
+
+impl Sortedness {
     pub(crate) fn function_name_suffix(self) -> &'static str {
         match self {
             Sortedness::Unspecified => "",

@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::LazyLock;
 
 use datafusion::arrow::datatypes::DataType;
 use datafusion::common::config::ConfigOptions;
@@ -11,7 +12,11 @@ use datafusion::logical_expr::expr_rewriter::FunctionRewrite;
 use datafusion::logical_expr::planner::{ExprPlanner, PlannerResult, RawBinaryExpr};
 use datafusion::logical_expr::sqlparser::ast::BinaryOperator;
 use datafusion::logical_expr::ScalarUDF;
+use datafusion::logical_expr::ScalarUDFImpl;
 use datafusion::scalar::ScalarValue;
+
+use crate::common::Sortedness;
+use crate::json_get::JsonGet;
 
 #[derive(Debug)]
 pub(crate) struct JsonFunctionRewriter;
@@ -31,11 +36,14 @@ impl FunctionRewrite for JsonFunctionRewriter {
     }
 }
 
+static JSON_GET_FUNC_NAMES: LazyLock<Vec<String>> =
+    LazyLock::new(|| Sortedness::iter().map(|s| JsonGet::new(s).name().to_string()).collect());
+
 /// This replaces `get_json(foo, bar)::int` with `json_get_int(foo, bar)` so the JSON function can take care of
 /// extracting the right value type from JSON without the need to materialize the JSON union.
 fn optimise_json_get_cast(cast: &Cast) -> Option<Transformed<Expr>> {
     let scalar_func = extract_scalar_function(&cast.expr)?;
-    if scalar_func.func.name() != "json_get" {
+    if !JSON_GET_FUNC_NAMES.contains(&scalar_func.func.name().to_owned()) {
         return None;
     }
     let func = match &cast.data_type {
@@ -53,18 +61,24 @@ fn optimise_json_get_cast(cast: &Cast) -> Option<Transformed<Expr>> {
     })))
 }
 
+static JSON_FUNCTION_NAMES: LazyLock<Vec<String>> = LazyLock::new(|| {
+    Sortedness::iter()
+        .flat_map(|s| {
+            [
+                crate::json_get::JsonGet::new(s).name().to_string(),
+                crate::json_get_bool::JsonGetBool::new(s).name().to_string(),
+                crate::json_get_float::JsonGetFloat::new(s).name().to_string(),
+                crate::json_get_int::JsonGetInt::new(s).name().to_string(),
+                crate::json_get_str::JsonGetStr::new(s).name().to_string(),
+                crate::json_as_text::JsonAsText::new(s).name().to_string(),
+            ]
+        })
+        .collect()
+});
+
 // Replace nested JSON functions e.g. `json_get(json_get(col, 'foo'), 'bar')` with `json_get(col, 'foo', 'bar')`
 fn unnest_json_calls(func: &ScalarFunction) -> Option<Transformed<Expr>> {
-    if !matches!(
-        func.func.name(),
-        "json_get"
-            | "json_get_bool"
-            | "json_get_float"
-            | "json_get_int"
-            | "json_get_json"
-            | "json_get_str"
-            | "json_as_text"
-    ) {
+    if !JSON_FUNCTION_NAMES.contains(&func.func.name().to_owned()) {
         return None;
     }
     let mut outer_args_iter = func.args.iter();
