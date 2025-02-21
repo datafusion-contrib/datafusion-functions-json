@@ -40,12 +40,6 @@ pub(super) struct JsonGetStr {
     sorted: Sortedness,
 }
 
-impl Default for JsonGetStr {
-    fn default() -> Self {
-        Self::new(Sortedness::Unspecified)
-    }
-}
-
 impl JsonGetStr {
     pub fn new(sorted: Sortedness) -> Self {
         Self {
