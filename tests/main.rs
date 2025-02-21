@@ -346,6 +346,10 @@ async fn test_json_get_cast_int() {
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Int64, "42".to_string()));
 
+    let sql = r#"select json_get_top_level_sorted('{"foo": 42}', 'foo')::int"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Int64, "42".to_string()));
+
     // floats not allowed
     let sql = r#"select json_get('{"foo": 4.2}', 'foo')::int"#;
     let batches = run_query(sql).await.unwrap();
@@ -400,11 +404,19 @@ async fn test_json_get_cast_float() {
     let sql = r#"select json_get('{"foo": 4.2e2}', 'foo')::float"#;
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Float64, "420.0".to_string()));
+
+    let sql = r#"select json_get_top_level_sorted('{"foo": 4.2e2}', 'foo')::float"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Float64, "420.0".to_string()));
 }
 
 #[tokio::test]
 async fn test_json_get_cast_numeric() {
     let sql = r#"select json_get('{"foo": 4.2e2}', 'foo')::numeric"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Float64, "420.0".to_string()));
+
+    let sql = r#"select json_get_top_level_sorted('{"foo": 4.2e2}', 'foo')::numeric"#;
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Float64, "420.0".to_string()));
 }
