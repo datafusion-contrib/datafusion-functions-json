@@ -20,6 +20,7 @@ pub async fn create_context() -> Result<SessionContext> {
     Ok(ctx)
 }
 
+#[expect(clippy::too_many_lines)]
 async fn create_test_table(large_utf8: bool, dict_encoded: bool) -> Result<SessionContext> {
     let ctx = create_context().await?;
 
