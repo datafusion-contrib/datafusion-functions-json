@@ -7,27 +7,51 @@ use datafusion::common::{Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::Peek;
 
-use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath};
+use crate::common::{
+    get_err, invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath, Sortedness,
+};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
     JsonObjectKeys,
     json_object_keys,
     json_data path,
-    r"Get the keys of a JSON object as an array."
+    r#"Get the keys of a JSON object as an array."#,
+    Sortedness::Unspecified
+);
+
+make_udf_function!(
+    JsonObjectKeys,
+    json_keys_sorted,
+    json_data path,
+    r#"Get the keys of a JSON object as an array; assumes the JSON object's keys are sorted."#,
+    Sortedness::TopLevel
+);
+
+make_udf_function!(
+    JsonObjectKeys,
+    json_keys_recursive_sorted,
+    json_data path,
+    r#"Get the keys of a JSON object as an array; assumes all object's keys are sorted."#,
+    Sortedness::Recursive
 );
 
 #[derive(Debug)]
 pub(super) struct JsonObjectKeys {
     signature: Signature,
     aliases: [String; 2],
+    sorted: Sortedness,
 }
 
-impl Default for JsonObjectKeys {
-    fn default() -> Self {
+impl JsonObjectKeys {
+    pub fn new(sorted: Sortedness) -> Self {
         Self {
             signature: Signature::variadic_any(Volatility::Immutable),
-            aliases: ["json_object_keys".to_string(), "json_keys".to_string()],
+            aliases: [
+                format!("json_object_keys{}", sorted.function_name_suffix()),
+                format!("json_keys{}", sorted.function_name_suffix()),
+            ],
+            sorted,
         }
     }
 }
@@ -54,7 +78,9 @@ impl ScalarUDFImpl for JsonObjectKeys {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<BuildListArray>(args, jiter_json_object_keys)
+        invoke::<BuildListArray>(args, |opt_json, path| {
+            jiter_json_object_keys(opt_json, path, self.sorted)
+        })
     }
 
     fn aliases(&self) -> &[String] {
@@ -106,8 +132,12 @@ fn keys_to_scalar(opt_keys: Option<Vec<String>>) -> ScalarValue {
     ScalarValue::List(Arc::new(array))
 }
 
-fn jiter_json_object_keys(opt_json: Option<&str>, path: &[JsonPath]) -> Result<Vec<String>, GetError> {
-    if let Some((mut jiter, peek)) = jiter_json_find(opt_json, path) {
+fn jiter_json_object_keys(
+    opt_json: Option<&str>,
+    path: &[JsonPath],
+    sorted: Sortedness,
+) -> Result<Vec<String>, GetError> {
+    if let Some((mut jiter, peek)) = jiter_json_find(opt_json, path, sorted) {
         match peek {
             Peek::Object => {
                 let mut opt_key = jiter.known_object()?;

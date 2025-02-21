@@ -5,27 +5,52 @@ use datafusion::arrow::datatypes::DataType;
 use datafusion::common::Result as DataFusionResult;
 use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 
-use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, JsonPath};
+use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, JsonPath, Sortedness};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
     JsonGetJson,
     json_get_json,
     json_data path,
-    r#"Get a nested raw JSON string from a JSON string by its "path""#
+    r#"Get a nested raw JSON string from a JSON string by its "path""#,
+    Sortedness::Unspecified
+);
+
+make_udf_function!(
+    JsonGetJson,
+    json_get_json_top_level_sorted,
+    json_data path,
+    r#"Get a nested raw JSON string from a JSON string by its "path"; assumes the JSON string's top level object's keys are sorted."#,
+    Sortedness::TopLevel
+);
+
+make_udf_function!(
+    JsonGetJson,
+    json_get_json_recursive_sorted,
+    json_data path,
+    r#"Get a nested raw JSON string from a JSON string by its "path"; assumes all json object's keys are sorted."#,
+    Sortedness::Recursive
 );
 
 #[derive(Debug)]
 pub(super) struct JsonGetJson {
     signature: Signature,
     aliases: [String; 1],
+    sorted: Sortedness,
 }
 
 impl Default for JsonGetJson {
     fn default() -> Self {
+        Self::new(Sortedness::Unspecified)
+    }
+}
+
+impl JsonGetJson {
+    pub fn new(sorted: Sortedness) -> Self {
         Self {
             signature: Signature::variadic_any(Volatility::Immutable),
-            aliases: ["json_get_json".to_string()],
+            aliases: [format!("json_get_json{}", sorted.function_name_suffix())],
+            sorted,
         }
     }
 }
@@ -48,7 +73,7 @@ impl ScalarUDFImpl for JsonGetJson {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<StringArray>(args, jiter_json_get_json)
+        invoke::<StringArray>(args, |json, path| jiter_json_get_json(json, path, self.sorted))
     }
 
     fn aliases(&self) -> &[String] {
@@ -56,8 +81,8 @@ impl ScalarUDFImpl for JsonGetJson {
     }
 }
 
-fn jiter_json_get_json(opt_json: Option<&str>, path: &[JsonPath]) -> Result<String, GetError> {
-    if let Some((mut jiter, peek)) = jiter_json_find(opt_json, path) {
+fn jiter_json_get_json(opt_json: Option<&str>, path: &[JsonPath], sorted: Sortedness) -> Result<String, GetError> {
+    if let Some((mut jiter, peek)) = jiter_json_find(opt_json, path, sorted) {
         let start = jiter.current_index();
         jiter.known_skip(peek)?;
         let object_slice = jiter.slice_to_current(start);

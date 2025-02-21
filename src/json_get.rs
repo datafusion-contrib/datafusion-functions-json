@@ -10,6 +10,7 @@ use datafusion::scalar::ScalarValue;
 use jiter::{Jiter, NumberAny, NumberInt, Peek};
 
 use crate::common::InvokeResult;
+use crate::common::Sortedness;
 use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
 use crate::common_union::{JsonUnion, JsonUnionField};
@@ -18,22 +19,39 @@ make_udf_function!(
     JsonGet,
     json_get,
     json_data path,
-    r#"Get a value from a JSON string by its "path""#
+    r#"Get a value from a JSON string by its "path""#,
+    Sortedness::Unspecified
 );
 
-// build_typed_get!(JsonGet, "json_get", Union, Float64Array, jiter_json_get_float);
+make_udf_function!(
+    JsonGet,
+    json_get_top_level_sorted,
+    json_data path,
+    r#"Get a value from a JSON string by its "path"; assumes the JSON string's top level object's keys are sorted."#,
+    Sortedness::TopLevel
+);
+
+make_udf_function!(
+    JsonGet,
+    json_get_recursive_sorted,
+    json_data path,
+    r#"Get a value from a JSON string by its "path"; assumes all object's keys are sorted."#,
+    Sortedness::Recursive
+);
 
 #[derive(Debug)]
 pub(super) struct JsonGet {
     signature: Signature,
     aliases: [String; 1],
+    sorted: Sortedness,
 }
 
-impl Default for JsonGet {
-    fn default() -> Self {
+impl JsonGet {
+    pub fn new(sorted: Sortedness) -> Self {
         Self {
             signature: Signature::variadic_any(Volatility::Immutable),
-            aliases: ["json_get".to_string()],
+            aliases: [format!("json_get{}", sorted.function_name_suffix())],
+            sorted,
         }
     }
 }
@@ -56,7 +74,7 @@ impl ScalarUDFImpl for JsonGet {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<JsonUnion>(args, jiter_json_get_union)
+        invoke::<JsonUnion>(args, |json, path| jiter_json_get_union(json, path, self.sorted))
     }
 
     fn aliases(&self) -> &[String] {
@@ -93,8 +111,12 @@ impl InvokeResult for JsonUnion {
     }
 }
 
-fn jiter_json_get_union(opt_json: Option<&str>, path: &[JsonPath]) -> Result<JsonUnionField, GetError> {
-    if let Some((mut jiter, peek)) = jiter_json_find(opt_json, path) {
+fn jiter_json_get_union(
+    opt_json: Option<&str>,
+    path: &[JsonPath],
+    sorted: Sortedness,
+) -> Result<JsonUnionField, GetError> {
+    if let Some((mut jiter, peek)) = jiter_json_find(opt_json, path, sorted) {
         build_union(&mut jiter, peek)
     } else {
         get_err!()

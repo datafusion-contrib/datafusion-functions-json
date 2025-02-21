@@ -14,20 +14,39 @@ make_udf_function!(
     JsonContains,
     json_contains,
     json_data path,
-    r#"Does the key/index exist within the JSON value as the specified "path"?"#
+    r#"Does the key/index exist within the JSON value as the specified "path"?"#,
+    crate::common::Sortedness::Unspecified
+);
+
+make_udf_function!(
+    JsonContains,
+    json_contains_top_level_sorted,
+    json_data path,
+    r#"Does the key/index exist within the JSON value as the specified "path"; assumes the JSON string's top level object's keys are sorted?"#,
+    crate::common::Sortedness::TopLevel
+);
+
+make_udf_function!(
+    JsonContains,
+    json_contains_recursive_sorted,
+    json_data path,
+    r#"Does the key/index exist within the JSON value as the specified "path"; assumes all json object's keys are sorted?"#,
+    crate::common::Sortedness::Recursive
 );
 
 #[derive(Debug)]
 pub(super) struct JsonContains {
     signature: Signature,
     aliases: [String; 1],
+    sorted: crate::common::Sortedness,
 }
 
-impl Default for JsonContains {
-    fn default() -> Self {
+impl JsonContains {
+    pub fn new(sorted: crate::common::Sortedness) -> Self {
         Self {
             signature: Signature::variadic_any(Volatility::Immutable),
-            aliases: ["json_contains".to_string()],
+            aliases: [format!("json_contains{}", sorted.function_name_suffix())],
+            sorted,
         }
     }
 }
@@ -54,7 +73,7 @@ impl ScalarUDFImpl for JsonContains {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> Result<ColumnarValue> {
-        invoke::<BooleanArray>(args, jiter_json_contains)
+        invoke::<BooleanArray>(args, |json, path| jiter_json_contains(json, path, self.sorted))
     }
 
     fn aliases(&self) -> &[String] {
@@ -88,6 +107,10 @@ impl InvokeResult for BooleanArray {
 }
 
 #[allow(clippy::unnecessary_wraps)]
-fn jiter_json_contains(json_data: Option<&str>, path: &[JsonPath]) -> Result<bool, GetError> {
-    Ok(jiter_json_find(json_data, path).is_some())
+fn jiter_json_contains(
+    json_data: Option<&str>,
+    path: &[JsonPath],
+    sorted: crate::common::Sortedness,
+) -> Result<bool, GetError> {
+    Ok(jiter_json_find(json_data, path, sorted).is_some())
 }

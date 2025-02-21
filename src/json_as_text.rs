@@ -7,27 +7,48 @@ use datafusion::common::{Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::Peek;
 
-use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath};
+use crate::common::{
+    get_err, invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath, Sortedness,
+};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
     JsonAsText,
     json_as_text,
     json_data path,
-    r#"Get any value from a JSON string by its "path", represented as a string"#
+    r#"Get any value from a JSON string by its "path", represented as a string"#,
+    Sortedness::Unspecified
+);
+
+make_udf_function!(
+    JsonAsText,
+    json_as_text_top_level_sorted,
+    json_data path,
+    r#"Get any value from a JSON string by its "path", represented as a string; assumes the JSON string's top level object's keys are sorted."#,
+    Sortedness::TopLevel
+);
+
+make_udf_function!(
+    JsonAsText,
+    json_as_text_recursive_sorted,
+    json_data path,
+    r#"Get any value from a JSON string by its "path", represented as a string; assumes all json object's keys are sorted."#,
+    Sortedness::Recursive
 );
 
 #[derive(Debug)]
 pub(super) struct JsonAsText {
     signature: Signature,
     aliases: [String; 1],
+    sorted: Sortedness,
 }
 
-impl Default for JsonAsText {
-    fn default() -> Self {
+impl JsonAsText {
+    pub fn new(sorted: Sortedness) -> Self {
         Self {
             signature: Signature::variadic_any(Volatility::Immutable),
-            aliases: ["json_as_text".to_string()],
+            aliases: [format!("json_as_text{}", sorted.function_name_suffix())],
+            sorted,
         }
     }
 }
@@ -50,7 +71,7 @@ impl ScalarUDFImpl for JsonAsText {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<StringArray>(args, jiter_json_as_text)
+        invoke::<StringArray>(args, |json, path| jiter_json_as_text(json, path, self.sorted))
     }
 
     fn aliases(&self) -> &[String] {
@@ -82,8 +103,8 @@ impl InvokeResult for StringArray {
     }
 }
 
-fn jiter_json_as_text(opt_json: Option<&str>, path: &[JsonPath]) -> Result<String, GetError> {
-    if let Some((mut jiter, peek)) = jiter_json_find(opt_json, path) {
+fn jiter_json_as_text(opt_json: Option<&str>, path: &[JsonPath], sorted: Sortedness) -> Result<String, GetError> {
+    if let Some((mut jiter, peek)) = jiter_json_find(opt_json, path, sorted) {
         match peek {
             Peek::Null => {
                 jiter.known_null()?;

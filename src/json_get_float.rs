@@ -7,27 +7,48 @@ use datafusion::common::{Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::{NumberAny, Peek};
 
-use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath};
+use crate::common::{
+    get_err, invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath, Sortedness,
+};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
     JsonGetFloat,
     json_get_float,
     json_data path,
-    r#"Get a float value from a JSON string by its "path""#
+    r#"Get a float value from a JSON string by its "path""#,
+    Sortedness::Unspecified
+);
+
+make_udf_function!(
+    JsonGetFloat,
+    json_get_float_top_level_sorted,
+    json_data path,
+    r#"Get an float value from a JSON string by its "path"; assumes the JSON string's top level object's keys are sorted."#,
+    Sortedness::TopLevel
+);
+
+make_udf_function!(
+    JsonGetFloat,
+    json_get_float_recursive_sorted,
+    json_data path,
+    r#"Get an float value from a JSON string by its "path"; assumes all object's keys are sorted."#,
+    Sortedness::Recursive
 );
 
 #[derive(Debug)]
 pub(super) struct JsonGetFloat {
     signature: Signature,
     aliases: [String; 1],
+    sorted: Sortedness,
 }
 
-impl Default for JsonGetFloat {
-    fn default() -> Self {
+impl JsonGetFloat {
+    pub fn new(sorted: Sortedness) -> Self {
         Self {
             signature: Signature::variadic_any(Volatility::Immutable),
-            aliases: ["json_get_float".to_string()],
+            aliases: [format!("json_get_float{}", sorted.function_name_suffix())],
+            sorted,
         }
     }
 }
@@ -50,7 +71,9 @@ impl ScalarUDFImpl for JsonGetFloat {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<Float64Array>(args, jiter_json_get_float)
+        invoke::<Float64Array>(args, |json_data, path| {
+            jiter_json_get_float(json_data, path, self.sorted)
+        })
     }
 
     fn aliases(&self) -> &[String] {
@@ -83,8 +106,8 @@ impl InvokeResult for Float64Array {
     }
 }
 
-fn jiter_json_get_float(json_data: Option<&str>, path: &[JsonPath]) -> Result<f64, GetError> {
-    if let Some((mut jiter, peek)) = jiter_json_find(json_data, path) {
+fn jiter_json_get_float(json_data: Option<&str>, path: &[JsonPath], sorted: Sortedness) -> Result<f64, GetError> {
+    if let Some((mut jiter, peek)) = jiter_json_find(json_data, path, sorted) {
         match peek {
             // numbers are represented by everything else in peek, hence doing it this way
             Peek::Null

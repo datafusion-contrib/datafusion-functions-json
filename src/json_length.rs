@@ -7,27 +7,51 @@ use datafusion::common::{Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::Peek;
 
-use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath};
+use crate::common::{
+    get_err, invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath, Sortedness,
+};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
     JsonLength,
     json_length,
     json_data path,
-    r"Get the length of the array or object at the given path."
+    r#"Get the length of the array or object at the given path."#,
+    Sortedness::Unspecified
+);
+
+make_udf_function!(
+    JsonLength,
+    json_length_top_level_sorted,
+    json_data path,
+    r#"Get the length of the array or object at the given path; assumes the JSON object's keys are sorted."#,
+    Sortedness::TopLevel
+);
+
+make_udf_function!(
+    JsonLength,
+    json_length_recursive_sorted,
+    json_data path,
+    r#"Get the length of the array or object at the given path; assumes all object's keys are sorted."#,
+    Sortedness::Recursive
 );
 
 #[derive(Debug)]
 pub(super) struct JsonLength {
     signature: Signature,
     aliases: [String; 2],
+    sorted: Sortedness,
 }
 
-impl Default for JsonLength {
-    fn default() -> Self {
+impl JsonLength {
+    pub fn new(sorted: Sortedness) -> Self {
         Self {
             signature: Signature::variadic_any(Volatility::Immutable),
-            aliases: ["json_length".to_string(), "json_len".to_string()],
+            aliases: [
+                format!("json_length{}", sorted.function_name_suffix()),
+                format!("json_len{}", sorted.function_name_suffix()),
+            ],
+            sorted,
         }
     }
 }
@@ -50,7 +74,7 @@ impl ScalarUDFImpl for JsonLength {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<UInt64Array>(args, jiter_json_length)
+        invoke::<UInt64Array>(args, |json, path| jiter_json_length(json, path, self.sorted))
     }
 
     fn aliases(&self) -> &[String] {
@@ -83,8 +107,8 @@ impl InvokeResult for UInt64Array {
     }
 }
 
-fn jiter_json_length(opt_json: Option<&str>, path: &[JsonPath]) -> Result<u64, GetError> {
-    if let Some((mut jiter, peek)) = jiter_json_find(opt_json, path) {
+fn jiter_json_length(opt_json: Option<&str>, path: &[JsonPath], sorted: Sortedness) -> Result<u64, GetError> {
+    if let Some((mut jiter, peek)) = jiter_json_find(opt_json, path, sorted) {
         match peek {
             Peek::Array => {
                 let mut peek_opt = jiter.known_array()?;

@@ -7,27 +7,54 @@ use datafusion::common::{Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
 use jiter::{NumberInt, Peek};
 
-use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath};
+use crate::common::{
+    get_err, invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath, Sortedness,
+};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
     JsonGetInt,
     json_get_int,
     json_data path,
-    r#"Get an integer value from a JSON string by its "path""#
+    r#"Get an integer value from a JSON string by its "path""#,
+    Sortedness::Unspecified
+);
+
+make_udf_function!(
+    JsonGetInt,
+    json_get_int_top_level_sorted,
+    json_data path,
+    r#"Get an integer value from a JSON string by its "path"; assumes the JSON string's top level object's keys are sorted."#,
+    Sortedness::TopLevel
+);
+
+make_udf_function!(
+    JsonGetInt,
+    json_get_int_recursive_sorted,
+    json_data path,
+    r#"Get an integer value from a JSON string by its "path"; assumes all json object's keys are sorted."#,
+    Sortedness::Recursive
 );
 
 #[derive(Debug)]
 pub(super) struct JsonGetInt {
     signature: Signature,
     aliases: [String; 1],
+    sorted: Sortedness,
 }
 
 impl Default for JsonGetInt {
     fn default() -> Self {
+        Self::new(Sortedness::Unspecified)
+    }
+}
+
+impl JsonGetInt {
+    pub fn new(sorted: Sortedness) -> Self {
         Self {
             signature: Signature::variadic_any(Volatility::Immutable),
-            aliases: ["json_get_int".to_string()],
+            aliases: [format!("json_get_int{}", sorted.function_name_suffix())],
+            sorted,
         }
     }
 }
@@ -50,7 +77,7 @@ impl ScalarUDFImpl for JsonGetInt {
     }
 
     fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<Int64Array>(args, jiter_json_get_int)
+        invoke::<Int64Array>(args, |json, path| jiter_json_get_int(json, path, self.sorted))
     }
 
     fn aliases(&self) -> &[String] {
@@ -83,8 +110,8 @@ impl InvokeResult for Int64Array {
     }
 }
 
-fn jiter_json_get_int(json_data: Option<&str>, path: &[JsonPath]) -> Result<i64, GetError> {
-    if let Some((mut jiter, peek)) = jiter_json_find(json_data, path) {
+fn jiter_json_get_int(json_data: Option<&str>, path: &[JsonPath], sorted: Sortedness) -> Result<i64, GetError> {
+    if let Some((mut jiter, peek)) = jiter_json_find(json_data, path, sorted) {
         match peek {
             // numbers are represented by everything else in peek, hence doing it this way
             Peek::Null

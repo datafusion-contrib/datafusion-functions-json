@@ -511,7 +511,11 @@ fn wrap_as_large_dictionary(original: &dyn AnyDictionaryArray, new_values: Array
     DictionaryArray::new(keys, new_values)
 }
 
-pub fn jiter_json_find<'j>(opt_json: Option<&'j str>, path: &[JsonPath]) -> Option<(Jiter<'j>, Peek)> {
+pub fn jiter_json_find<'j>(
+    opt_json: Option<&'j str>,
+    path: &[JsonPath],
+    mut sorted: Sortedness,
+) -> Option<(Jiter<'j>, Peek)> {
     let json_str = opt_json?;
     let mut jiter = Jiter::new(json_str.as_bytes());
     let mut peek = jiter.peek().ok()?;
@@ -521,6 +525,11 @@ pub fn jiter_json_find<'j>(opt_json: Option<&'j str>, path: &[JsonPath]) -> Opti
                 let mut next_key = jiter.known_object().ok()??;
 
                 while next_key != *key {
+                    if next_key > *key && matches!(sorted, Sortedness::Recursive | Sortedness::TopLevel) {
+                        // The current object is sorted and next_key is lexicographically greater than key
+                        // we are looking for, so we can early stop here.
+                        return None;
+                    }
                     jiter.next_skip().ok()?;
                     next_key = jiter.next_key().ok()??;
                 }
@@ -540,6 +549,9 @@ pub fn jiter_json_find<'j>(opt_json: Option<&'j str>, path: &[JsonPath]) -> Opti
             _ => {
                 return None;
             }
+        }
+        if sorted == Sortedness::TopLevel {
+            sorted = Sortedness::Unspecified;
         }
     }
     Some((jiter, peek))
@@ -584,4 +596,28 @@ fn mask_dictionary_keys(keys: &PrimitiveArray<Int64Type>, type_ids: &[i8]) -> Pr
         }
     }
     PrimitiveArray::new(keys.values().clone(), Some(null_mask.into()))
+}
+
+/// Information about the sortedness of a JSON object.
+/// This is used to optimize key lookups by early stopping when the key we are looking for is
+/// lexicographically greater than the current key and the object is known to be sorted.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub(crate) enum Sortedness {
+    /// No guarantees about the order of the elements.
+    Unspecified,
+    /// Only the outermost object is known to be sorted.
+    /// If the outermost item is not an object, this is equivalent to `Unspecified`.
+    TopLevel,
+    /// All objects are known to be sorted, including objects nested within arrays.
+    Recursive,
+}
+
+impl Sortedness {
+    pub(crate) fn function_name_suffix(self) -> &'static str {
+        match self {
+            Sortedness::Unspecified => "",
+            Sortedness::TopLevel => "_top_level_sorted",
+            Sortedness::Recursive => "_recursive_sorted",
+        }
+    }
 }
