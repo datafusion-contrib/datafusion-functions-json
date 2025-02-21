@@ -16,7 +16,7 @@ make_udf_function!(
     JsonLength,
     json_length,
     json_data path,
-    r#"Get the length of the array or object at the given path."#,
+    r"Get the length of the array or object at the given path.",
     Sortedness::Unspecified
 );
 
@@ -24,7 +24,7 @@ make_udf_function!(
     JsonLength,
     json_length_top_level_sorted,
     json_data path,
-    r#"Get the length of the array or object at the given path; assumes the JSON object's keys are sorted."#,
+    r"Get the length of the array or object at the given path; assumes the JSON object's keys are sorted.",
     Sortedness::TopLevel
 );
 
@@ -32,7 +32,7 @@ make_udf_function!(
     JsonLength,
     json_length_recursive_sorted,
     json_data path,
-    r#"Get the length of the array or object at the given path; assumes all object's keys are sorted."#,
+    r"Get the length of the array or object at the given path; assumes all object's keys are sorted.",
     Sortedness::Recursive
 );
 

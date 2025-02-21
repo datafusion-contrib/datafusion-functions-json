@@ -16,7 +16,7 @@ make_udf_function!(
     JsonObjectKeys,
     json_object_keys,
     json_data path,
-    r#"Get the keys of a JSON object as an array."#,
+    r"Get the keys of a JSON object as an array.",
     Sortedness::Unspecified
 );
 
@@ -24,7 +24,7 @@ make_udf_function!(
     JsonObjectKeys,
     json_keys_sorted,
     json_data path,
-    r#"Get the keys of a JSON object as an array; assumes the JSON object's keys are sorted."#,
+    r"Get the keys of a JSON object as an array; assumes the JSON object's keys are sorted.",
     Sortedness::TopLevel
 );
 
@@ -32,7 +32,7 @@ make_udf_function!(
     JsonObjectKeys,
     json_keys_recursive_sorted,
     json_data path,
-    r#"Get the keys of a JSON object as an array; assumes all object's keys are sorted."#,
+    r"Get the keys of a JSON object as an array; assumes all object's keys are sorted.",
     Sortedness::Recursive
 );
 
