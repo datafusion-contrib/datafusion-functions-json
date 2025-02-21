@@ -20,13 +20,14 @@ pub async fn create_context() -> Result<SessionContext> {
     Ok(ctx)
 }
 
+#[expect(clippy::too_many_lines)]
 async fn create_test_table(large_utf8: bool, dict_encoded: bool) -> Result<SessionContext> {
     let ctx = create_context().await?;
 
     let test_data = [
         ("object_foo", r#" {"foo": "abc"} "#),
         ("object_foo_array", r#" {"foo": [1]} "#),
-        ("object_foo_obj", r#" {"foo": {}} "#),
+        ("object_foo_obj", r#" {"foo": {"bar": 1}} "#),
         ("object_foo_null", r#" {"foo": null} "#),
         ("object_bar", r#" {"bar": true} "#),
         ("list_foo", r#" ["foo"] "#),

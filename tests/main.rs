@@ -72,7 +72,7 @@ async fn test_json_get_union() {
         "+------------------+--------------------------------------+",
         "| object_foo       | {str=abc}                            |",
         "| object_foo_array | {array=[1]}                          |",
-        "| object_foo_obj   | {object={}}                          |",
+        "| object_foo_obj   | {object={\"bar\": 1}}                  |",
         "| object_foo_null  | {null=}                              |",
         "| object_bar       | {null=}                              |",
         "| list_foo         | {null=}                              |",
@@ -143,6 +143,126 @@ async fn test_json_get_str() {
         "| list_foo         |                                          |",
         "| invalid_json     |                                          |",
         "+------------------+------------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_get_str_top_level_sorted() {
+    let batches = run_query("select name, json_get_str_top_level_sorted(json_data, 'aaa') from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+-----------------------------------------------------------+",
+        "| name             | json_get_str_top_level_sorted(test.json_data,Utf8(\"aaa\")) |",
+        "+------------------+-----------------------------------------------------------+",
+        "| object_foo       |                                                           |",
+        "| object_foo_array |                                                           |",
+        "| object_foo_obj   |                                                           |",
+        "| object_foo_null  |                                                           |",
+        "| object_bar       |                                                           |",
+        "| list_foo         |                                                           |",
+        "| invalid_json     |                                                           |",
+        "+------------------+-----------------------------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+
+    let batches = run_query("select name, json_get_str_top_level_sorted(json_data, 'foo') from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+-----------------------------------------------------------+",
+        "| name             | json_get_str_top_level_sorted(test.json_data,Utf8(\"foo\")) |",
+        "+------------------+-----------------------------------------------------------+",
+        "| object_foo       | abc                                                       |",
+        "| object_foo_array |                                                           |",
+        "| object_foo_obj   |                                                           |",
+        "| object_foo_null  |                                                           |",
+        "| object_bar       |                                                           |",
+        "| list_foo         |                                                           |",
+        "| invalid_json     |                                                           |",
+        "+------------------+-----------------------------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+
+    let batches = run_query("select name, json_get_str_top_level_sorted(json_data, 'zzz') from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+-----------------------------------------------------------+",
+        "| name             | json_get_str_top_level_sorted(test.json_data,Utf8(\"zzz\")) |",
+        "+------------------+-----------------------------------------------------------+",
+        "| object_foo       |                                                           |",
+        "| object_foo_array |                                                           |",
+        "| object_foo_obj   |                                                           |",
+        "| object_foo_null  |                                                           |",
+        "| object_bar       |                                                           |",
+        "| list_foo         |                                                           |",
+        "| invalid_json     |                                                           |",
+        "+------------------+-----------------------------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_get_str_recursive_level_sorted() {
+    let batches = run_query("select name, json_get_str_recursive_sorted(json_data, 'aaa') from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+-----------------------------------------------------------+",
+        "| name             | json_get_str_recursive_sorted(test.json_data,Utf8(\"aaa\")) |",
+        "+------------------+-----------------------------------------------------------+",
+        "| object_foo       |                                                           |",
+        "| object_foo_array |                                                           |",
+        "| object_foo_obj   |                                                           |",
+        "| object_foo_null  |                                                           |",
+        "| object_bar       |                                                           |",
+        "| list_foo         |                                                           |",
+        "| invalid_json     |                                                           |",
+        "+------------------+-----------------------------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+
+    let batches = run_query("select name, json_get_str_recursive_sorted(json_data, 'foo') from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+-----------------------------------------------------------+",
+        "| name             | json_get_str_recursive_sorted(test.json_data,Utf8(\"foo\")) |",
+        "+------------------+-----------------------------------------------------------+",
+        "| object_foo       | abc                                                       |",
+        "| object_foo_array |                                                           |",
+        "| object_foo_obj   |                                                           |",
+        "| object_foo_null  |                                                           |",
+        "| object_bar       |                                                           |",
+        "| list_foo         |                                                           |",
+        "| invalid_json     |                                                           |",
+        "+------------------+-----------------------------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+
+    let batches = run_query("select name, json_get_str_recursive_sorted(json_data, 'zzz') from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+-----------------------------------------------------------+",
+        "| name             | json_get_str_recursive_sorted(test.json_data,Utf8(\"zzz\")) |",
+        "+------------------+-----------------------------------------------------------+",
+        "| object_foo       |                                                           |",
+        "| object_foo_array |                                                           |",
+        "| object_foo_obj   |                                                           |",
+        "| object_foo_null  |                                                           |",
+        "| object_bar       |                                                           |",
+        "| list_foo         |                                                           |",
+        "| invalid_json     |                                                           |",
+        "+------------------+-----------------------------------------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
 }
@@ -226,6 +346,10 @@ async fn test_json_get_cast_int() {
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Int64, "42".to_string()));
 
+    let sql = r#"select json_get_top_level_sorted('{"foo": 42}', 'foo')::int"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Int64, "42".to_string()));
+
     // floats not allowed
     let sql = r#"select json_get('{"foo": 4.2}', 'foo')::int"#;
     let batches = run_query(sql).await.unwrap();
@@ -280,11 +404,19 @@ async fn test_json_get_cast_float() {
     let sql = r#"select json_get('{"foo": 4.2e2}', 'foo')::float"#;
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Float64, "420.0".to_string()));
+
+    let sql = r#"select json_get_top_level_sorted('{"foo": 4.2e2}', 'foo')::float"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Float64, "420.0".to_string()));
 }
 
 #[tokio::test]
 async fn test_json_get_cast_numeric() {
     let sql = r#"select json_get('{"foo": 4.2e2}', 'foo')::numeric"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Float64, "420.0".to_string()));
+
+    let sql = r#"select json_get_top_level_sorted('{"foo": 4.2e2}', 'foo')::numeric"#;
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Float64, "420.0".to_string()));
 }
@@ -324,7 +456,7 @@ async fn test_json_get_json() {
         "+------------------+-------------------------------------------+",
         "| object_foo       | \"abc\"                                     |",
         "| object_foo_array | [1]                                       |",
-        "| object_foo_obj   | {}                                        |",
+        "| object_foo_obj   | {\"bar\": 1}                                |",
         "| object_foo_null  | null                                      |",
         "| object_bar       |                                           |",
         "| list_foo         |                                           |",
@@ -743,7 +875,7 @@ async fn test_arrow() {
         "+------------------+-------------------------+",
         "| object_foo       | {str=abc}               |",
         "| object_foo_array | {array=[1]}             |",
-        "| object_foo_obj   | {object={}}             |",
+        "| object_foo_obj   | {object={\"bar\": 1}}     |",
         "| object_foo_null  | {null=}                 |",
         "| object_bar       | {null=}                 |",
         "| list_foo         | {null=}                 |",
@@ -775,7 +907,7 @@ async fn test_long_arrow() {
         "+------------------+--------------------------+",
         "| object_foo       | abc                      |",
         "| object_foo_array | [1]                      |",
-        "| object_foo_obj   | {}                       |",
+        "| object_foo_obj   | {\"bar\": 1}               |",
         "| object_foo_null  |                          |",
         "| object_bar       |                          |",
         "| list_foo         |                          |",
@@ -1309,11 +1441,7 @@ fn check_for_null_dictionary_values(array: &dyn Array) {
     for i in 0..values_array.len() {
         if values_array.is_null(i) {
             // keys should not contain
-            if keys.contains(&i) {
-                println!("keys: {:?}", keys);
-                println!("values: {:?}", values_array);
-                panic!("keys should not contain null values");
-            }
+            assert!(!keys.contains(&i), "keys should not contain null values");
         }
     }
 }
@@ -1341,7 +1469,7 @@ async fn test_dict_get_no_null_values() {
         "|            |",
         "+------------+",
     ];
-    let batches = ctx.sql(&sql).await.unwrap().collect().await.unwrap();
+    let batches = ctx.sql(sql).await.unwrap().collect().await.unwrap();
     assert_batches_eq!(expected, &batches);
     for batch in batches {
         check_for_null_dictionary_values(batch.column(0).as_ref());
@@ -1352,7 +1480,7 @@ async fn test_dict_get_no_null_values() {
         "+------+", "| v    |", "+------+", "|      |", "| fizz |", "|      |", "| abcd |", "|      |", "| fizz |",
         "| fizz |", "| fizz |", "| fizz |", "|      |", "+------+",
     ];
-    let batches = ctx.sql(&sql).await.unwrap().collect().await.unwrap();
+    let batches = ctx.sql(sql).await.unwrap().collect().await.unwrap();
     assert_batches_eq!(expected, &batches);
     for batch in batches {
         check_for_null_dictionary_values(batch.column(0).as_ref());
