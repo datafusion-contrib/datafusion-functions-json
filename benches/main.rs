@@ -36,7 +36,7 @@ fn make_json_negative_testcase() -> String {
         .map(|i| format!(r#""b{}": "{}""#, i, "a".repeat(1024)))
         .collect::<Vec<_>>()
         .join(",");
-    format!(r#"{{ {} }}"#, kvs)
+    format!(r"{{ {kvs} }}")
 }
 
 fn bench_json_get_str_negative(b: &mut Bencher) {
