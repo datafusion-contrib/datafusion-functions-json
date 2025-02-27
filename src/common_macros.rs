@@ -15,7 +15,7 @@
 ///
 /// [`ScalarUDFImpl`]: datafusion_expr::ScalarUDFImpl
 macro_rules! make_udf_function {
-    ($udf_impl:ty, $expr_fn_name:ident, $($arg:ident)*, $doc:expr) => {
+    ($udf_impl:ty, $expr_fn_name:ident, $($arg:ident)*, $doc:expr, $sorted:expr) => {
         paste::paste! {
             #[doc = $doc]
             #[must_use] pub fn $expr_fn_name($($arg: datafusion::logical_expr::Expr),*) -> datafusion::logical_expr::Expr {
@@ -37,7 +37,7 @@ macro_rules! make_udf_function {
                 [< STATIC_ $expr_fn_name:upper >]
                     .get_or_init(|| {
                         std::sync::Arc::new(datafusion::logical_expr::ScalarUDF::new_from_impl(
-                            <$udf_impl>::default(),
+                            <$udf_impl>::new($sorted),
                         ))
                     })
                     .clone()
