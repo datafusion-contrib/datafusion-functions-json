@@ -91,6 +91,10 @@ fn unnest_json_calls(func: &ScalarFunction) -> Option<Transformed<Expr>> {
         return None;
     }
 
+    if func.name() != inner_func.func.name() {
+        return None;
+    }
+
     let mut args = inner_func.args.clone();
     args.extend(outer_args_iter.cloned());
     // See #23, unnest only when all lookup arguments are literals
