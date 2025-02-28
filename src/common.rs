@@ -515,7 +515,9 @@ pub fn jiter_json_find<'j>(opt_json: Option<&'j str>, path: &[JsonPath]) -> Opti
     let json_str = opt_json?;
     let mut jiter = Jiter::new(json_str.as_bytes());
     let mut peek = jiter.peek().ok()?;
-    for element in path {
+    let mut path_idx = 0;
+    while path_idx < path.len() {
+        let element = &path[path_idx];
         match element {
             JsonPath::Key(key) if peek == Peek::Object => {
                 let mut next_key = jiter.known_object().ok()??;
@@ -526,6 +528,7 @@ pub fn jiter_json_find<'j>(opt_json: Option<&'j str>, path: &[JsonPath]) -> Opti
                 }
 
                 peek = jiter.peek().ok()?;
+                path_idx += 1;
             }
             JsonPath::Index(index) if peek == Peek::Array => {
                 let mut array_item = jiter.known_array().ok()??;
@@ -536,10 +539,15 @@ pub fn jiter_json_find<'j>(opt_json: Option<&'j str>, path: &[JsonPath]) -> Opti
                 }
 
                 peek = array_item;
+                path_idx += 1;
             }
-            _ => {
-                return None;
+            _ if peek == Peek::String => {
+                // Create a new Jiter from the string content and continue traversing
+                let s = jiter.known_str().ok()?;
+                jiter = Jiter::new(s.as_bytes());
+                peek = jiter.peek().ok()?;
             }
+            _ => return None,
         }
     }
     Some((jiter, peek))
