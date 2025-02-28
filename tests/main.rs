@@ -221,6 +221,15 @@ async fn test_json_get_path() {
 }
 
 #[tokio::test]
+async fn test_json_get_path_nested_json_object() {
+    let batches = run_query(r#"select json_get('{"a":"{\"x\": 1}"}', 'a', 'x')::int = 1"#).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Boolean, "true".to_string()));
+
+    let batches = run_query(r#"select json_get('{"a":"[2]"}', 'a', 1)::int = 2"#).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Boolean, "true".to_string()));
+}
+
+#[tokio::test]
 async fn test_json_get_cast_int() {
     let sql = r#"select json_get('{"foo": 42}', 'foo')::int"#;
     let batches = run_query(sql).await.unwrap();

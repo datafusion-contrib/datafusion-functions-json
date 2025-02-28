@@ -31,6 +31,7 @@ async fn create_test_table(large_utf8: bool, dict_encoded: bool) -> Result<Sessi
         ("object_bar", r#" {"bar": true} "#),
         ("list_foo", r#" ["foo"] "#),
         ("invalid_json", "is not json"),
+        ("nested_json", r#" {"a":"{\"x\": 1}","y":"[2]"}"#),
     ];
     let json_values = test_data.iter().map(|(_, json)| *json).collect::<Vec<_>>();
     let (mut json_data_type, mut json_array): (DataType, ArrayRef) = if large_utf8 {
