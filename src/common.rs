@@ -68,6 +68,7 @@ fn dict_key_type(d: &DataType) -> Option<DataType> {
     None
 }
 
+/// Parsed representation of a JSON path element.
 #[derive(Debug)]
 pub enum JsonPath<'s> {
     Key(&'s str),
@@ -103,6 +104,10 @@ pub enum JsonPathArgs<'a> {
 }
 
 impl<'s> JsonPathArgs<'s> {
+    /// Extract the JSON path from the arguments to a json function.
+    /// The path can be:
+    /// - A single array argument (`json_get(json_data, keys_column)`)
+    /// - One or more scalar arguments (`json_get(json_data, 'foo', 0)`)
     pub fn extract_path(path_args: &'s [ColumnarValue]) -> DataFusionResult<Self> {
         // If there is a single argument as an array, we know how to handle it
         if let Some((ColumnarValue::Array(array), &[])) = path_args.split_first() {
