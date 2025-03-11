@@ -14,7 +14,7 @@ make_udf_function!(
     JsonLength,
     json_length,
     json_data path,
-    r#"Get the length of the array or object at the given path."#
+    r"Get the length of the array or object at the given path."
 );
 
 #[derive(Debug)]
