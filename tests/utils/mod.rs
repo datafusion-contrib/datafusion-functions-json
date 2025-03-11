@@ -20,6 +20,7 @@ pub async fn create_context() -> Result<SessionContext> {
     Ok(ctx)
 }
 
+#[expect(clippy::too_many_lines)]
 async fn create_test_table(large_utf8: bool, dict_encoded: bool) -> Result<SessionContext> {
     let ctx = create_context().await?;
 
@@ -42,7 +43,7 @@ async fn create_test_table(large_utf8: bool, dict_encoded: bool) -> Result<Sessi
     if dict_encoded {
         json_data_type = DataType::Dictionary(DataType::Int32.into(), json_data_type.into());
         json_array = Arc::new(DictionaryArray::<Int32Type>::new(
-            Int32Array::from_iter_values(0..(json_array.len() as i32)),
+            Int32Array::from_iter_values(0..(i32::try_from(json_array.len()).expect("fits in a i32"))),
             json_array,
         ));
     }
@@ -160,13 +161,23 @@ async fn create_test_table(large_utf8: bool, dict_encoded: bool) -> Result<Sessi
         ])),
         vec![
             Arc::new(DictionaryArray::<UInt32Type>::new(
-                UInt32Array::from_iter_values(dict_data.iter().enumerate().map(|(id, _)| id as u32)),
+                UInt32Array::from_iter_values(
+                    dict_data
+                        .iter()
+                        .enumerate()
+                        .map(|(id, _)| u32::try_from(id).expect("fits in a u32")),
+                ),
                 Arc::new(StringArray::from(
                     dict_data.iter().map(|(json, _, _, _)| *json).collect::<Vec<_>>(),
                 )),
             )),
             Arc::new(DictionaryArray::<UInt8Type>::new(
-                UInt8Array::from_iter_values(dict_data.iter().enumerate().map(|(id, _)| id as u8)),
+                UInt8Array::from_iter_values(
+                    dict_data
+                        .iter()
+                        .enumerate()
+                        .map(|(id, _)| u8::try_from(id).expect("fits in a u8")),
+                ),
                 Arc::new(LargeStringArray::from(
                     dict_data
                         .iter()
@@ -175,7 +186,12 @@ async fn create_test_table(large_utf8: bool, dict_encoded: bool) -> Result<Sessi
                 )),
             )),
             Arc::new(DictionaryArray::<UInt8Type>::new(
-                UInt8Array::from_iter_values(dict_data.iter().enumerate().map(|(id, _)| id as u8)),
+                UInt8Array::from_iter_values(
+                    dict_data
+                        .iter()
+                        .enumerate()
+                        .map(|(id, _)| u8::try_from(id).expect("fits in a u8")),
+                ),
                 Arc::new(StringViewArray::from(
                     dict_data
                         .iter()
@@ -184,9 +200,16 @@ async fn create_test_table(large_utf8: bool, dict_encoded: bool) -> Result<Sessi
                 )),
             )),
             Arc::new(DictionaryArray::<Int64Type>::new(
-                Int64Array::from_iter_values(dict_data.iter().enumerate().map(|(id, _)| id as i64)),
+                Int64Array::from_iter_values(
+                    dict_data
+                        .iter()
+                        .enumerate()
+                        .map(|(id, _)| i64::try_from(id).expect("fits in a i64")),
+                ),
                 Arc::new(UInt64Array::from_iter_values(
-                    dict_data.iter().map(|(_, _, _, int_key)| *int_key as u64),
+                    dict_data
+                        .iter()
+                        .map(|(_, _, _, int_key)| u64::try_from(*int_key).expect("not negative")),
                 )),
             )),
         ],

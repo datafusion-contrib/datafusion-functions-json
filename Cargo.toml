@@ -8,11 +8,11 @@ license = "Apache-2.0"
 keywords = ["datafusion", "JSON", "SQL"]
 categories = ["database-implementations", "parsing"]
 repository = "https://github.com/datafusion-contrib/datafusion-functions-json/"
-rust-version = "1.81.0"
+rust-version = "1.82.0"
 
 [dependencies]
 datafusion = { version = "46", default-features = false }
-jiter = "0.8"
+jiter = "0.9"
 paste = "1"
 log = "0.4"
 
