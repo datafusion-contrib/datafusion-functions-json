@@ -101,6 +101,13 @@ impl JsonUnion {
     }
 }
 
+/// Get the `DataType` for a `JsonUnion`.
+/// This will be the data type of the result of `json_array->'field'`.
+#[must_use]
+pub fn json_union_data_type() -> DataType {
+    JsonUnion::data_type()
+}
+
 /// So we can do `collect::<JsonUnion>()`
 impl FromIterator<Option<JsonUnionField>> for JsonUnion {
     fn from_iter<I: IntoIterator<Item = Option<JsonUnionField>>>(iter: I) -> Self {

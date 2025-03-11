@@ -97,13 +97,13 @@ impl From<i64> for JsonPath<'_> {
 }
 
 #[derive(Debug)]
-enum JsonPathArgs<'a> {
+pub enum JsonPathArgs<'a> {
     Array(&'a ArrayRef),
     Scalars(Vec<JsonPath<'a>>),
 }
 
 impl<'s> JsonPathArgs<'s> {
-    fn extract_path(path_args: &'s [ColumnarValue]) -> DataFusionResult<Self> {
+    pub fn extract_path(path_args: &'s [ColumnarValue]) -> DataFusionResult<Self> {
         // If there is a single argument as an array, we know how to handle it
         if let Some((ColumnarValue::Array(array), &[])) = path_args.split_first() {
             return Ok(Self::Array(array));
