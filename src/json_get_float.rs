@@ -4,7 +4,7 @@ use std::sync::Arc;
 use datafusion::arrow::array::{ArrayRef, Float64Array, Float64Builder};
 use datafusion::arrow::datatypes::DataType;
 use datafusion::common::{Result as DataFusionResult, ScalarValue};
-use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
+use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
 use jiter::{NumberAny, Peek};
 
 use crate::common::{
@@ -70,8 +70,8 @@ impl ScalarUDFImpl for JsonGetFloat {
         return_type_check(arg_types, self.name(), DataType::Float64)
     }
 
-    fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<Float64Array>(args, |json_data, path| {
+    fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DataFusionResult<ColumnarValue> {
+        invoke::<Float64Array>(&args.args, |json_data, path| {
             jiter_json_get_float(json_data, path, self.sorted)
         })
     }

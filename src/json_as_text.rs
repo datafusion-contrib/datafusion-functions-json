@@ -4,7 +4,7 @@ use std::sync::Arc;
 use datafusion::arrow::array::{ArrayRef, StringArray, StringBuilder};
 use datafusion::arrow::datatypes::DataType;
 use datafusion::common::{Result as DataFusionResult, ScalarValue};
-use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
+use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
 use jiter::Peek;
 
 use crate::common::{
@@ -70,8 +70,8 @@ impl ScalarUDFImpl for JsonAsText {
         return_type_check(arg_types, self.name(), DataType::Utf8)
     }
 
-    fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<StringArray>(args, |json, path| jiter_json_as_text(json, path, self.sorted))
+    fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DataFusionResult<ColumnarValue> {
+        invoke::<StringArray>(&args.args, |args, path| jiter_json_as_text(args, path, self.sorted))
     }
 
     fn aliases(&self) -> &[String] {
