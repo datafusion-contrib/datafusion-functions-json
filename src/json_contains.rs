@@ -5,7 +5,7 @@ use datafusion::arrow::array::BooleanBuilder;
 use datafusion::arrow::datatypes::DataType;
 use datafusion::common::arrow::array::{ArrayRef, BooleanArray};
 use datafusion::common::{plan_err, Result, ScalarValue};
-use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
+use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
 
 use crate::common::{invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath};
 use crate::common_macros::make_udf_function;
@@ -53,8 +53,8 @@ impl ScalarUDFImpl for JsonContains {
         }
     }
 
-    fn invoke(&self, args: &[ColumnarValue]) -> Result<ColumnarValue> {
-        invoke::<BooleanArray>(args, jiter_json_contains)
+    fn invoke_with_args(&self, args: ScalarFunctionArgs) -> Result<ColumnarValue> {
+        invoke::<BooleanArray>(&args.args, jiter_json_contains)
     }
 
     fn aliases(&self) -> &[String] {
