@@ -5,7 +5,7 @@ use datafusion::arrow::datatypes::{Field, Int64Type, Int8Type, Schema};
 use datafusion::arrow::{array::StringDictionaryBuilder, datatypes::DataType};
 use datafusion::assert_batches_eq;
 use datafusion::common::ScalarValue;
-use datafusion::logical_expr::ColumnarValue;
+use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs};
 use datafusion::prelude::SessionContext;
 use datafusion_functions_json::udfs::json_get_str_udf;
 use utils::{create_context, display_val, logical_plan, run_query, run_query_dict, run_query_large, run_query_params};
@@ -72,7 +72,7 @@ async fn test_json_get_union() {
         "+------------------+--------------------------------------+",
         "| object_foo       | {str=abc}                            |",
         "| object_foo_array | {array=[1]}                          |",
-        "| object_foo_obj   | {object={}}                          |",
+        "| object_foo_obj   | {object={\"bar\": 1}}                  |",
         "| object_foo_null  | {null=}                              |",
         "| object_bar       | {null=}                              |",
         "| list_foo         | {null=}                              |",
@@ -143,6 +143,126 @@ async fn test_json_get_str() {
         "| list_foo         |                                          |",
         "| invalid_json     |                                          |",
         "+------------------+------------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_get_str_top_level_sorted() {
+    let batches = run_query("select name, json_get_str_top_level_sorted(json_data, 'aaa') from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+-----------------------------------------------------------+",
+        "| name             | json_get_str_top_level_sorted(test.json_data,Utf8(\"aaa\")) |",
+        "+------------------+-----------------------------------------------------------+",
+        "| object_foo       |                                                           |",
+        "| object_foo_array |                                                           |",
+        "| object_foo_obj   |                                                           |",
+        "| object_foo_null  |                                                           |",
+        "| object_bar       |                                                           |",
+        "| list_foo         |                                                           |",
+        "| invalid_json     |                                                           |",
+        "+------------------+-----------------------------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+
+    let batches = run_query("select name, json_get_str_top_level_sorted(json_data, 'foo') from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+-----------------------------------------------------------+",
+        "| name             | json_get_str_top_level_sorted(test.json_data,Utf8(\"foo\")) |",
+        "+------------------+-----------------------------------------------------------+",
+        "| object_foo       | abc                                                       |",
+        "| object_foo_array |                                                           |",
+        "| object_foo_obj   |                                                           |",
+        "| object_foo_null  |                                                           |",
+        "| object_bar       |                                                           |",
+        "| list_foo         |                                                           |",
+        "| invalid_json     |                                                           |",
+        "+------------------+-----------------------------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+
+    let batches = run_query("select name, json_get_str_top_level_sorted(json_data, 'zzz') from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+-----------------------------------------------------------+",
+        "| name             | json_get_str_top_level_sorted(test.json_data,Utf8(\"zzz\")) |",
+        "+------------------+-----------------------------------------------------------+",
+        "| object_foo       |                                                           |",
+        "| object_foo_array |                                                           |",
+        "| object_foo_obj   |                                                           |",
+        "| object_foo_null  |                                                           |",
+        "| object_bar       |                                                           |",
+        "| list_foo         |                                                           |",
+        "| invalid_json     |                                                           |",
+        "+------------------+-----------------------------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_get_str_recursive_level_sorted() {
+    let batches = run_query("select name, json_get_str_recursive_sorted(json_data, 'aaa') from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+-----------------------------------------------------------+",
+        "| name             | json_get_str_recursive_sorted(test.json_data,Utf8(\"aaa\")) |",
+        "+------------------+-----------------------------------------------------------+",
+        "| object_foo       |                                                           |",
+        "| object_foo_array |                                                           |",
+        "| object_foo_obj   |                                                           |",
+        "| object_foo_null  |                                                           |",
+        "| object_bar       |                                                           |",
+        "| list_foo         |                                                           |",
+        "| invalid_json     |                                                           |",
+        "+------------------+-----------------------------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+
+    let batches = run_query("select name, json_get_str_recursive_sorted(json_data, 'foo') from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+-----------------------------------------------------------+",
+        "| name             | json_get_str_recursive_sorted(test.json_data,Utf8(\"foo\")) |",
+        "+------------------+-----------------------------------------------------------+",
+        "| object_foo       | abc                                                       |",
+        "| object_foo_array |                                                           |",
+        "| object_foo_obj   |                                                           |",
+        "| object_foo_null  |                                                           |",
+        "| object_bar       |                                                           |",
+        "| list_foo         |                                                           |",
+        "| invalid_json     |                                                           |",
+        "+------------------+-----------------------------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+
+    let batches = run_query("select name, json_get_str_recursive_sorted(json_data, 'zzz') from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+-----------------------------------------------------------+",
+        "| name             | json_get_str_recursive_sorted(test.json_data,Utf8(\"zzz\")) |",
+        "+------------------+-----------------------------------------------------------+",
+        "| object_foo       |                                                           |",
+        "| object_foo_array |                                                           |",
+        "| object_foo_obj   |                                                           |",
+        "| object_foo_null  |                                                           |",
+        "| object_bar       |                                                           |",
+        "| list_foo         |                                                           |",
+        "| invalid_json     |                                                           |",
+        "+------------------+-----------------------------------------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
 }
@@ -226,6 +346,10 @@ async fn test_json_get_cast_int() {
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Int64, "42".to_string()));
 
+    let sql = r#"select json_get_top_level_sorted('{"foo": 42}', 'foo')::int"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Int64, "42".to_string()));
+
     // floats not allowed
     let sql = r#"select json_get('{"foo": 4.2}', 'foo')::int"#;
     let batches = run_query(sql).await.unwrap();
@@ -280,11 +404,19 @@ async fn test_json_get_cast_float() {
     let sql = r#"select json_get('{"foo": 4.2e2}', 'foo')::float"#;
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Float64, "420.0".to_string()));
+
+    let sql = r#"select json_get_top_level_sorted('{"foo": 4.2e2}', 'foo')::float"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Float64, "420.0".to_string()));
 }
 
 #[tokio::test]
 async fn test_json_get_cast_numeric() {
     let sql = r#"select json_get('{"foo": 4.2e2}', 'foo')::numeric"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Float64, "420.0".to_string()));
+
+    let sql = r#"select json_get_top_level_sorted('{"foo": 4.2e2}', 'foo')::numeric"#;
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Float64, "420.0".to_string()));
 }
@@ -324,7 +456,7 @@ async fn test_json_get_json() {
         "+------------------+-------------------------------------------+",
         "| object_foo       | \"abc\"                                     |",
         "| object_foo_array | [1]                                       |",
-        "| object_foo_obj   | {}                                        |",
+        "| object_foo_obj   | {\"bar\": 1}                                |",
         "| object_foo_null  | null                                      |",
         "| object_bar       |                                           |",
         "| list_foo         |                                           |",
@@ -500,7 +632,14 @@ fn test_json_get_utf8() {
         ColumnarValue::Scalar(ScalarValue::Utf8(Some("aa".to_string()))),
     ];
 
-    let ColumnarValue::Scalar(sv) = json_get_str.invoke_batch(args, 1).unwrap() else {
+    let ColumnarValue::Scalar(sv) = json_get_str
+        .invoke_with_args(ScalarFunctionArgs {
+            args: args.to_vec(),
+            number_rows: 1,
+            return_type: &DataType::Utf8,
+        })
+        .unwrap()
+    else {
         panic!("expected scalar")
     };
 
@@ -518,7 +657,14 @@ fn test_json_get_large_utf8() {
         ColumnarValue::Scalar(ScalarValue::LargeUtf8(Some("aa".to_string()))),
     ];
 
-    let ColumnarValue::Scalar(sv) = json_get_str.invoke_batch(args, 1).unwrap() else {
+    let ColumnarValue::Scalar(sv) = json_get_str
+        .invoke_with_args(ScalarFunctionArgs {
+            args: args.to_vec(),
+            number_rows: 1,
+            return_type: &DataType::LargeUtf8,
+        })
+        .unwrap()
+    else {
         panic!("expected scalar")
     };
 
@@ -743,7 +889,7 @@ async fn test_arrow() {
         "+------------------+-------------------------+",
         "| object_foo       | {str=abc}               |",
         "| object_foo_array | {array=[1]}             |",
-        "| object_foo_obj   | {object={}}             |",
+        "| object_foo_obj   | {object={\"bar\": 1}}     |",
         "| object_foo_null  | {null=}                 |",
         "| object_bar       | {null=}                 |",
         "| list_foo         | {null=}                 |",
@@ -775,7 +921,7 @@ async fn test_long_arrow() {
         "+------------------+--------------------------+",
         "| object_foo       | abc                      |",
         "| object_foo_array | [1]                      |",
-        "| object_foo_obj   | {}                       |",
+        "| object_foo_obj   | {\"bar\": 1}               |",
         "| object_foo_null  |                          |",
         "| object_bar       |                          |",
         "| list_foo         |                          |",
