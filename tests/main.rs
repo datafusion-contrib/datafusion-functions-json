@@ -1310,9 +1310,12 @@ fn check_for_null_dictionary_values(array: &dyn Array) {
         if values_array.is_null(i) {
             // keys should not contain
             if keys.contains(&i) {
-                println!("keys: {:?}", keys);
-                println!("values: {:?}", values_array);
-                panic!("keys should not contain null values");
+                #[allow(clippy::print_stdout)]
+                {
+                    println!("keys: {keys:?}");
+                    println!("values: {values_array:?}");
+                    panic!("keys should not contain null values");
+                }
             }
         }
     }
@@ -1341,7 +1344,7 @@ async fn test_dict_get_no_null_values() {
         "|            |",
         "+------------+",
     ];
-    let batches = ctx.sql(&sql).await.unwrap().collect().await.unwrap();
+    let batches = ctx.sql(sql).await.unwrap().collect().await.unwrap();
     assert_batches_eq!(expected, &batches);
     for batch in batches {
         check_for_null_dictionary_values(batch.column(0).as_ref());
@@ -1352,7 +1355,7 @@ async fn test_dict_get_no_null_values() {
         "+------+", "| v    |", "+------+", "|      |", "| fizz |", "|      |", "| abcd |", "|      |", "| fizz |",
         "| fizz |", "| fizz |", "| fizz |", "|      |", "+------+",
     ];
-    let batches = ctx.sql(&sql).await.unwrap().collect().await.unwrap();
+    let batches = ctx.sql(sql).await.unwrap().collect().await.unwrap();
     assert_batches_eq!(expected, &batches);
     for batch in batches {
         check_for_null_dictionary_values(batch.column(0).as_ref());

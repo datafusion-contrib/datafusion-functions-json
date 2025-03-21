@@ -14,7 +14,7 @@ make_udf_function!(
     JsonObjectKeys,
     json_object_keys,
     json_data path,
-    r#"Get the keys of a JSON object as an array."#
+    r"Get the keys of a JSON object as an array."
 );
 
 #[derive(Debug)]

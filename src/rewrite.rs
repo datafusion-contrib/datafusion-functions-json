@@ -141,7 +141,11 @@ impl std::fmt::Display for JsonOperator {
 /// Convert an Expr to a String representatiion for use in alias names.
 fn expr_to_sql_repr(expr: &Expr) -> String {
     match expr {
-        Expr::Column(Column { name, relation, spans: _ }) => relation
+        Expr::Column(Column {
+                         name,
+                         relation,
+                         spans: _,
+                     }) => relation
             .as_ref()
             .map_or_else(|| name.clone(), |r| format!("{r}.{name}")),
         Expr::Alias(alias) => alias.name.clone(),
