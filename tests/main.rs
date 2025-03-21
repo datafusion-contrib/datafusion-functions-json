@@ -5,7 +5,7 @@ use datafusion::arrow::datatypes::{Field, Int64Type, Int8Type, Schema};
 use datafusion::arrow::{array::StringDictionaryBuilder, datatypes::DataType};
 use datafusion::assert_batches_eq;
 use datafusion::common::ScalarValue;
-use datafusion::logical_expr::ColumnarValue;
+use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs};
 use datafusion::prelude::SessionContext;
 use datafusion_functions_json::udfs::json_get_str_udf;
 use utils::{create_context, display_val, logical_plan, run_query, run_query_dict, run_query_large, run_query_params};
@@ -500,7 +500,14 @@ fn test_json_get_utf8() {
         ColumnarValue::Scalar(ScalarValue::Utf8(Some("aa".to_string()))),
     ];
 
-    let ColumnarValue::Scalar(sv) = json_get_str.invoke_batch(args, 1).unwrap() else {
+    let ColumnarValue::Scalar(sv) = json_get_str
+        .invoke_with_args(ScalarFunctionArgs {
+            args: args.to_vec(),
+            number_rows: 1,
+            return_type: &DataType::Utf8,
+        })
+        .unwrap()
+    else {
         panic!("expected scalar")
     };
 
@@ -518,7 +525,14 @@ fn test_json_get_large_utf8() {
         ColumnarValue::Scalar(ScalarValue::LargeUtf8(Some("aa".to_string()))),
     ];
 
-    let ColumnarValue::Scalar(sv) = json_get_str.invoke_batch(args, 1).unwrap() else {
+    let ColumnarValue::Scalar(sv) = json_get_str
+        .invoke_with_args(ScalarFunctionArgs {
+            args: args.to_vec(),
+            number_rows: 1,
+            return_type: &DataType::LargeUtf8,
+        })
+        .unwrap()
+    else {
         panic!("expected scalar")
     };
 
