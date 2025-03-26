@@ -56,7 +56,7 @@ impl ScalarUDFImpl for JsonGetJson {
     }
 }
 
-fn jiter_json_get_json(opt_json: Option<&str>, path: &[JsonPath]) -> Result<String, GetError> {
+pub(crate) fn jiter_json_get_json(opt_json: Option<&str>, path: &[JsonPath]) -> Result<String, GetError> {
     if let Some((mut jiter, peek)) = jiter_json_find(opt_json, path) {
         let start = jiter.current_index();
         jiter.known_skip(peek)?;
