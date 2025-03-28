@@ -10,6 +10,8 @@ mod common_macros;
 mod common_union;
 mod json_as_text;
 mod json_contains;
+mod json_extract;
+mod json_extract_scalar;
 mod json_get;
 mod json_get_bool;
 mod json_get_float;
@@ -19,15 +21,15 @@ mod json_get_str;
 mod json_length;
 mod json_object_keys;
 mod rewrite;
-mod json_extract;
 
 pub use common_union::{JsonUnionEncoder, JsonUnionValue};
 
 pub mod functions {
     pub use crate::json_as_text::json_as_text;
     pub use crate::json_contains::json_contains;
-    pub use crate::json_get::json_get;
     pub use crate::json_extract::json_extract;
+    pub use crate::json_extract_scalar::json_extract_scalar;
+    pub use crate::json_get::json_get;
     pub use crate::json_get_bool::json_get_bool;
     pub use crate::json_get_float::json_get_float;
     pub use crate::json_get_int::json_get_int;
@@ -63,6 +65,7 @@ pub fn register_all(registry: &mut dyn FunctionRegistry) -> Result<()> {
     let functions: Vec<Arc<ScalarUDF>> = vec![
         json_get::json_get_udf(),
         json_extract::json_extract_udf(),
+        json_extract_scalar::json_extract_scalar_udf(),
         json_get_bool::json_get_bool_udf(),
         json_get_float::json_get_float_udf(),
         json_get_int::json_get_int_udf(),
