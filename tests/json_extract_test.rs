@@ -1,5 +1,5 @@
-use rstest::{fixture, rstest};
 use crate::utils::{display_val, run_query};
+use rstest::{fixture, rstest};
 
 mod utils;
 
@@ -10,13 +10,12 @@ fn json_data() -> String {
 }
 
 #[rstest]
-#[case("$.a.ab", "[{\"ac\": \"Dune\", \"ca\": \"Frank Herbert\"},{\"ad\": \"Foundation\", \"da\": \"Isaac Asimov\"}]")]
+#[case(
+    "$.a.ab",
+    "[{\"ac\": \"Dune\", \"ca\": \"Frank Herbert\"},{\"ad\": \"Foundation\", \"da\": \"Isaac Asimov\"}]"
+)]
 #[tokio::test]
-async fn test_json_paths(
-    json_data: String,
-    #[case] path: &str,
-    #[case] expected: &str,
-) {
+async fn test_json_paths(json_data: String, #[case] path: &str, #[case] expected: &str) {
     let result = json_extract(&json_data, path).await;
     assert_eq!(result, expected.to_string());
 }
@@ -29,10 +28,8 @@ async fn test_invalid_json_path(json_data: String) {
     assert_eq!(result, "".to_string());
 }
 
-
 async fn json_extract(json: &str, path: &str) -> String {
     let sql = format!("select json_extract('{}', '{}')", json, path);
     let batches = run_query(sql.as_str()).await.unwrap();
     display_val(batches).await.1
 }
-
