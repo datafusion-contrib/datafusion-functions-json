@@ -68,7 +68,7 @@ fn dict_key_type(d: &DataType) -> Option<DataType> {
     None
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum JsonPath<'s> {
     Key(&'s str),
     Index(usize),

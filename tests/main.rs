@@ -83,6 +83,28 @@ async fn test_json_get_union() {
 }
 
 #[tokio::test]
+async fn test_json_extract_union() {
+    let batches = run_query("select name, json_extract(json_data, '$.foo') as foo from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+-------------+",
+        "| name             | foo         |",
+        "+------------------+-------------+",
+        "| object_foo       | {str=abc}   |",
+        "| object_foo_array | {array=[1]} |",
+        "| object_foo_obj   | {object={}} |",
+        "| object_foo_null  | {null=}     |",
+        "| object_bar       | {null=}     |",
+        "| list_foo         | {null=}     |",
+        "| invalid_json     | {null=}     |",
+        "+------------------+-------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
 async fn test_json_get_array() {
     let sql = "select json_get('[1, 2, 3]', 2)";
     let batches = run_query(sql).await.unwrap();

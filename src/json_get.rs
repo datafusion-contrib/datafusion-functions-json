@@ -93,7 +93,7 @@ impl InvokeResult for JsonUnion {
     }
 }
 
-fn jiter_json_get_union(opt_json: Option<&str>, path: &[JsonPath]) -> Result<JsonUnionField, GetError> {
+pub(crate) fn jiter_json_get_union(opt_json: Option<&str>, path: &[JsonPath]) -> Result<JsonUnionField, GetError> {
     if let Some((mut jiter, peek)) = jiter_json_find(opt_json, path) {
         build_union(&mut jiter, peek)
     } else {

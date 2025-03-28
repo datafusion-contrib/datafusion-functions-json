@@ -15,6 +15,7 @@ datafusion = { version = "46", default-features = false }
 jiter = "0.9"
 paste = "1"
 log = "0.4"
+jsonpath-rust = "1.0.0"
 
 [dev-dependencies]
 datafusion = { version = "46", default-features = false, features = ["nested_expressions"] }
@@ -22,6 +23,7 @@ codspeed-criterion-compat = "2.6"
 criterion = "0.5.1"
 clap = "4"
 tokio = { version = "1.43", features = ["full"] }
+rstest = "0.25.0"
 
 [lints.clippy]
 dbg_macro = "deny"
