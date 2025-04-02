@@ -21,6 +21,8 @@ mod json_get_str;
 mod json_length;
 mod json_object_keys;
 mod rewrite;
+mod json_format;
+mod json_parse;
 
 pub use common_union::{JsonUnionEncoder, JsonUnionValue};
 
@@ -29,6 +31,8 @@ pub mod functions {
     pub use crate::json_contains::json_contains;
     pub use crate::json_extract::json_extract;
     pub use crate::json_extract_scalar::json_extract_scalar;
+    pub use crate::json_format::json_format;
+    pub use crate::json_parse::json_parse;
     pub use crate::json_get::json_get;
     pub use crate::json_get_bool::json_get_bool;
     pub use crate::json_get_float::json_get_float;
@@ -66,6 +70,8 @@ pub fn register_all(registry: &mut dyn FunctionRegistry) -> Result<()> {
         json_get::json_get_udf(),
         json_extract::json_extract_udf(),
         json_extract_scalar::json_extract_scalar_udf(),
+        json_format::json_format_udf(),
+        json_parse::json_parse_udf(),
         json_get_bool::json_get_bool_udf(),
         json_get_float::json_get_float_udf(),
         json_get_int::json_get_int_udf(),
