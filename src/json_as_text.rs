@@ -82,7 +82,7 @@ impl InvokeResult for StringArray {
     }
 }
 
-fn jiter_json_as_text(opt_json: Option<&str>, path: &[JsonPath]) -> Result<String, GetError> {
+pub(crate) fn jiter_json_as_text(opt_json: Option<&str>, path: &[JsonPath]) -> Result<String, GetError> {
     if let Some((mut jiter, peek)) = jiter_json_find(opt_json, path) {
         match peek {
             Peek::Null => {
