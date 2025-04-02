@@ -12,7 +12,7 @@ fn json_data() -> String {
 #[rstest]
 #[case(
     "$.a.ab",
-    "[{\"ac\": \"Dune\", \"ca\": \"Frank Herbert\"},{\"ad\": \"Foundation\", \"da\": \"Isaac Asimov\"}]"
+    "{array=[{\"ac\": \"Dune\", \"ca\": \"Frank Herbert\"},{\"ad\": \"Foundation\", \"da\": \"Isaac Asimov\"}]}"
 )]
 #[tokio::test]
 async fn test_json_paths(json_data: String, #[case] path: &str, #[case] expected: &str) {
