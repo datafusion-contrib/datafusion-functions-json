@@ -1,11 +1,11 @@
 use crate::common::{invoke, parse_jsonpath, return_type_check};
 use crate::common_macros::make_udf_function;
-use crate::json_get_json::jiter_json_get_json;
-use datafusion::arrow::array::StringArray;
 use datafusion::arrow::datatypes::{DataType, DataType::Utf8};
 use datafusion::common::{exec_err, Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
 use std::any::Any;
+use crate::common_union::JsonUnion;
+use crate::json_get::jiter_json_get_union;
 
 make_udf_function!(
     JsonExtract,
@@ -46,7 +46,7 @@ impl ScalarUDFImpl for JsonExtract {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        return_type_check(arg_types, self.name(), Utf8)
+        return_type_check(arg_types, self.name(), JsonUnion::data_type())
     }
 
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DataFusionResult<ColumnarValue> {
@@ -73,7 +73,9 @@ impl ScalarUDFImpl for JsonExtract {
 
         let path = parse_jsonpath(path_str);
 
-        invoke::<StringArray>(&[json_arg.clone()], |json, _| jiter_json_get_json(json, &path))
+        invoke::<JsonUnion>(&[json_arg.clone()], |json, _| {
+            jiter_json_get_union(json, &path)
+        })
     }
 
     fn aliases(&self) -> &[String] {
