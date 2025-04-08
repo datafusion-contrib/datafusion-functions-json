@@ -1,12 +1,13 @@
 use codspeed_criterion_compat::{criterion_group, criterion_main, Bencher, Criterion};
 
-use datafusion::common::ScalarValue;
+use datafusion::arrow::datatypes::DataType;
 use datafusion::logical_expr::ColumnarValue;
+use datafusion::{common::ScalarValue, logical_expr::ScalarFunctionArgs};
 use datafusion_functions_json::udfs::{json_contains_udf, json_get_str_udf};
 
 fn bench_json_contains(b: &mut Bencher) {
     let json_contains = json_contains_udf();
-    let args = &[
+    let args = vec![
         ColumnarValue::Scalar(ScalarValue::Utf8(Some(
             r#"{"a": {"aa": "x", "ab: "y"}, "b": []}"#.to_string(),
         ))),
@@ -14,7 +15,15 @@ fn bench_json_contains(b: &mut Bencher) {
         ColumnarValue::Scalar(ScalarValue::Utf8(Some("aa".to_string()))),
     ];
 
-    b.iter(|| json_contains.invoke_batch(args, 1).unwrap());
+    b.iter(|| {
+        json_contains
+            .invoke_with_args(ScalarFunctionArgs {
+                args: args.clone(),
+                number_rows: 1,
+                return_type: &DataType::Boolean,
+            })
+            .unwrap()
+    });
 }
 
 fn bench_json_get_str(b: &mut Bencher) {
@@ -27,7 +36,15 @@ fn bench_json_get_str(b: &mut Bencher) {
         ColumnarValue::Scalar(ScalarValue::Utf8(Some("aa".to_string()))),
     ];
 
-    b.iter(|| json_get_str.invoke_batch(args, 1).unwrap());
+    b.iter(|| {
+        json_get_str
+            .invoke_with_args(ScalarFunctionArgs {
+                args: args.to_vec(),
+                number_rows: 1,
+                return_type: &DataType::Utf8,
+            })
+            .unwrap()
+    });
 }
 
 fn criterion_benchmark(c: &mut Criterion) {

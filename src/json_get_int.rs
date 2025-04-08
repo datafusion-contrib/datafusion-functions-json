@@ -4,7 +4,7 @@ use std::sync::Arc;
 use datafusion::arrow::array::{ArrayRef, Int64Array, Int64Builder};
 use datafusion::arrow::datatypes::DataType;
 use datafusion::common::{Result as DataFusionResult, ScalarValue};
-use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
+use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
 use jiter::{NumberInt, Peek};
 
 use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath};
@@ -49,8 +49,8 @@ impl ScalarUDFImpl for JsonGetInt {
         return_type_check(arg_types, self.name(), DataType::Int64)
     }
 
-    fn invoke(&self, args: &[ColumnarValue]) -> DataFusionResult<ColumnarValue> {
-        invoke::<Int64Array>(args, jiter_json_get_int)
+    fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DataFusionResult<ColumnarValue> {
+        invoke::<Int64Array>(&args.args, jiter_json_get_int)
     }
 
     fn aliases(&self) -> &[String] {
