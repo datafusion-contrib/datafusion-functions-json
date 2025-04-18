@@ -11,13 +11,13 @@ repository = "https://github.com/datafusion-contrib/datafusion-functions-json/"
 rust-version = "1.82.0"
 
 [dependencies]
-datafusion = { version = "46", default-features = false }
+datafusion = { version = "47", default-features = false }
 jiter = "0.9"
 paste = "1"
 log = "0.4"
 
 [dev-dependencies]
-datafusion = { version = "46", default-features = false, features = ["nested_expressions"] }
+datafusion = { version = "47", default-features = false, features = ["nested_expressions"] }
 codspeed-criterion-compat = "2.6"
 criterion = "0.5.1"
 clap = "4"
