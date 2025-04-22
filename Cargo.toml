@@ -12,7 +12,7 @@ rust-version = "1.82.0"
 
 [dependencies]
 datafusion = { version = "47", default-features = false }
-jiter = "0.8" # Jitter has a dependency on pyo3, which needs to match the version used in DataFusion
+jiter = "0.9" # Jitter has a dependency on pyo3, which needs to match the version used in DataFusion
 paste = "1"
 log = "0.4"
 
