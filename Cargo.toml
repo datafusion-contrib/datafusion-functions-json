@@ -34,11 +34,3 @@ pedantic = { level = "deny", priority = -1 }
 [[bench]]
 name = "main"
 harness = false
-
-[patch.crates-io]
-datafusion = { git = "https://github.com/apache/datafusion.git", rev = "66a7423" }
-datafusion-common = { git = "https://github.com/apache/datafusion.git", rev = "66a7423" }
-datafusion-physical-expr = { git = "https://github.com/apache/datafusion.git", rev = "66a7423" }
-datafusion-functions-aggregate = { git = "https://github.com/apache/datafusion.git", rev = "66a7423" }
-datafusion-expr = { git = "https://github.com/apache/datafusion.git", rev = "66a7423" }
-datafusion-macros = { git = "https://github.com/apache/datafusion.git", rev = "66a7423" }
