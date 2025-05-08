@@ -80,7 +80,7 @@ fn unnest_json_calls(func: &ScalarFunction) -> Option<Transformed<Expr>> {
     let mut args = inner_func.args.clone();
     args.extend(outer_args_iter.cloned());
     // See #23, unnest only when all lookup arguments are literals
-    if args.iter().skip(1).all(|arg| matches!(arg, Expr::Literal(_))) {
+    if args.iter().skip(1).all(|arg| matches!(arg, Expr::Literal(_, _))) {
         Some(Transformed::yes(Expr::ScalarFunction(ScalarFunction {
             func: func.func.clone(),
             args,
@@ -149,7 +149,7 @@ fn expr_to_sql_repr(expr: &Expr) -> String {
             .as_ref()
             .map_or_else(|| name.clone(), |r| format!("{r}.{name}")),
         Expr::Alias(alias) => alias.name.clone(),
-        Expr::Literal(scalar) => match scalar {
+        Expr::Literal(scalar, _) => match scalar {
             ScalarValue::Utf8(Some(v)) | ScalarValue::Utf8View(Some(v)) | ScalarValue::LargeUtf8(Some(v)) => {
                 format!("'{v}'")
             }

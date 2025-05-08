@@ -503,8 +503,13 @@ fn test_json_get_utf8() {
     let ColumnarValue::Scalar(sv) = json_get_str
         .invoke_with_args(ScalarFunctionArgs {
             args: args.to_vec(),
+            arg_fields: vec![
+                Arc::new(Field::new("arg_1", DataType::LargeUtf8, false)),
+                Arc::new(Field::new("arg_2", DataType::LargeUtf8, false)),
+                Arc::new(Field::new("arg_3", DataType::LargeUtf8, false)),
+            ],
             number_rows: 1,
-            return_type: &DataType::Utf8,
+            return_field: Arc::new(Field::new("ret_field", DataType::Utf8, false)),
         })
         .unwrap()
     else {
@@ -528,8 +533,13 @@ fn test_json_get_large_utf8() {
     let ColumnarValue::Scalar(sv) = json_get_str
         .invoke_with_args(ScalarFunctionArgs {
             args: args.to_vec(),
+            arg_fields: vec![
+                Arc::new(Field::new("arg_1", DataType::LargeUtf8, false)),
+                Arc::new(Field::new("arg_2", DataType::LargeUtf8, false)),
+                Arc::new(Field::new("arg_3", DataType::LargeUtf8, false)),
+            ],
             number_rows: 1,
-            return_type: &DataType::LargeUtf8,
+            return_field: Arc::new(Field::new("ret_field", DataType::Utf8, false)),
         })
         .unwrap()
     else {
