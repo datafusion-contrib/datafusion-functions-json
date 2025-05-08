@@ -11,15 +11,18 @@ repository = "https://github.com/datafusion-contrib/datafusion-functions-json/"
 rust-version = "1.82.0"
 
 [dependencies]
-datafusion = { git = "https://github.com/apache/datafusion.git", rev = "5bdaeaf" }
+datafusion = { version = "47", default-features = false }
 jiter = "0.9"
 paste = "1"
 log = "0.4"
 
 [dev-dependencies]
-datafusion = { git = "https://github.com/apache/datafusion.git", rev="5bdaeaf", default-features = false , features = ["nested_expressions"]}
+datafusion = { version = "47", default-features = false , features = ["nested_expressions"]}
 codspeed-criterion-compat = "2.6"
 tokio = { version = "1.43", features = ["full"] }
+
+[patch.crates-io]
+datafusion = { git = "https://github.com/apache/datafusion.git", rev = "5bdaeaf" }
 
 [lints.clippy]
 dbg_macro = "deny"
