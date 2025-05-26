@@ -62,6 +62,7 @@ SELECT id, json_col->'a' as json_col_a FROM test_table
 * [x] `json_get_float(json: str, *keys: str | int) -> float` - Get a float value from a JSON string by its "path"
 * [x] `json_get_bool(json: str, *keys: str | int) -> bool` - Get a boolean value from a JSON string by its "path"
 * [x] `json_get_json(json: str, *keys: str | int) -> str` - Get a nested raw JSON string from a JSON string by its "path"
+* [x] `json_get_array(json: str, *keys: str | int) -> array` - Get an arrow array from a JSON string by its "path"
 * [x] `json_as_text(json: str, *keys: str | int) -> str` - Get any value from a JSON string by its "path", represented as a string (used for the `->>` operator)
 * [x] `json_length(json: str, *keys: str | int) -> int` - get the length of a JSON string or array
 
