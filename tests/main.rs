@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use datafusion::arrow::array::{Array, ArrayRef, DictionaryArray, RecordBatch};
@@ -509,7 +510,10 @@ fn test_json_get_utf8() {
                 Arc::new(Field::new("arg_3", DataType::LargeUtf8, false)),
             ],
             number_rows: 1,
-            return_field: Arc::new(Field::new("ret_field", DataType::Utf8, false)),
+            return_field: Arc::new(
+                Field::new("ret_field", DataType::Utf8, false)
+                    .with_metadata(HashMap::from_iter(vec![("is_json".to_string(), "true".to_string())])),
+            ),
         })
         .unwrap()
     else {
@@ -539,7 +543,10 @@ fn test_json_get_large_utf8() {
                 Arc::new(Field::new("arg_3", DataType::LargeUtf8, false)),
             ],
             number_rows: 1,
-            return_field: Arc::new(Field::new("ret_field", DataType::Utf8, false)),
+            return_field: Arc::new(
+                Field::new("ret_field", DataType::Utf8, false)
+                    .with_metadata(HashMap::from_iter(vec![("is_json".to_string(), "true".to_string())])),
+            ),
         })
         .unwrap()
     else {
