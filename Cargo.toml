@@ -12,7 +12,7 @@ rust-version = "1.82.0"
 
 [dependencies]
 datafusion = { version = "48", default-features = false }
-jiter = "0.9"
+jiter = "0.10"
 paste = "1"
 log = "0.4"
 
