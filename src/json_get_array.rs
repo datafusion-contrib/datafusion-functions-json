@@ -74,7 +74,7 @@ impl InvokeResult for BuildArrayList {
 
     type Builder = ListBuilder<StringBuilder>;
 
-    const ACCEPT_DICT_RETURN: bool = true;
+    const ACCEPT_DICT_RETURN: bool = false;
 
     fn builder(capacity: usize) -> Self::Builder {
         let values_builder = StringBuilder::new();
