@@ -84,12 +84,75 @@ async fn test_json_get_union() {
 }
 
 #[tokio::test]
-async fn test_json_get_array() {
+async fn test_json_get_array_elem() {
     let sql = "select json_get('[1, 2, 3]', 2)";
     let batches = run_query(sql).await.unwrap();
     let (value_type, value_repr) = display_val(batches).await;
     assert!(matches!(value_type, DataType::Union(_, _)));
     assert_eq!(value_repr, "{int=3}");
+}
+
+#[tokio::test]
+async fn test_json_get_array_basic_numbers() {
+    let sql = "select json_get_array('[1, 2, 3]')";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::List(_)));
+    assert_eq!(value_repr, "[1, 2, 3]");
+}
+
+#[tokio::test]
+async fn test_json_get_array_mixed_types() {
+    let sql = r#"select json_get_array('["hello", 42, true, null, 3.14]')"#;
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::List(_)));
+    assert_eq!(value_repr, r#"["hello", 42, true, null, 3.14]"#);
+}
+
+#[tokio::test]
+async fn test_json_get_array_nested_objects() {
+    let sql = r#"select json_get_array('[{"name": "John"}, {"age": 30}]')"#;
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::List(_)));
+    assert_eq!(value_repr, r#"[{"name": "John"}, {"age": 30}]"#);
+}
+
+#[tokio::test]
+async fn test_json_get_array_nested_arrays() {
+    let sql = r#"select json_get_array('[[1, 2], [3, 4]]')"#;
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::List(_)));
+    assert_eq!(value_repr, "[[1, 2], [3, 4]]");
+}
+
+#[tokio::test]
+async fn test_json_get_array_empty() {
+    let sql = "select json_get_array('[]')";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::List(_)));
+    assert_eq!(value_repr, "[]");
+}
+
+#[tokio::test]
+async fn test_json_get_array_invalid_json() {
+    let sql = "select json_get_array('')";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::List(_)));
+    assert_eq!(value_repr, "");
+}
+
+#[tokio::test]
+async fn test_json_get_array_with_path() {
+    let sql = r#"select json_get_array('{"items": [1, 2, 3]}', 'items')"#;
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::List(_)));
+    assert_eq!(value_repr, "[1, 2, 3]");
 }
 
 #[tokio::test]
