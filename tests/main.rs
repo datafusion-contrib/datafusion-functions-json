@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use datafusion::arrow::array::{Array, ArrayRef, DictionaryArray, RecordBatch};
@@ -105,12 +106,75 @@ async fn test_json_extract_union() {
 }
 
 #[tokio::test]
-async fn test_json_get_array() {
+async fn test_json_get_array_elem() {
     let sql = "select json_get('[1, 2, 3]', 2)";
     let batches = run_query(sql).await.unwrap();
     let (value_type, value_repr) = display_val(batches).await;
     assert!(matches!(value_type, DataType::Union(_, _)));
     assert_eq!(value_repr, "{int=3}");
+}
+
+#[tokio::test]
+async fn test_json_get_array_basic_numbers() {
+    let sql = "select json_get_array('[1, 2, 3]')";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::List(_)));
+    assert_eq!(value_repr, "[1, 2, 3]");
+}
+
+#[tokio::test]
+async fn test_json_get_array_mixed_types() {
+    let sql = r#"select json_get_array('["hello", 42, true, null, 3.14]')"#;
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::List(_)));
+    assert_eq!(value_repr, r#"["hello", 42, true, null, 3.14]"#);
+}
+
+#[tokio::test]
+async fn test_json_get_array_nested_objects() {
+    let sql = r#"select json_get_array('[{"name": "John"}, {"age": 30}]')"#;
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::List(_)));
+    assert_eq!(value_repr, r#"[{"name": "John"}, {"age": 30}]"#);
+}
+
+#[tokio::test]
+async fn test_json_get_array_nested_arrays() {
+    let sql = r#"select json_get_array('[[1, 2], [3, 4]]')"#;
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::List(_)));
+    assert_eq!(value_repr, "[[1, 2], [3, 4]]");
+}
+
+#[tokio::test]
+async fn test_json_get_array_empty() {
+    let sql = "select json_get_array('[]')";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::List(_)));
+    assert_eq!(value_repr, "[]");
+}
+
+#[tokio::test]
+async fn test_json_get_array_invalid_json() {
+    let sql = "select json_get_array('')";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::List(_)));
+    assert_eq!(value_repr, "");
+}
+
+#[tokio::test]
+async fn test_json_get_array_with_path() {
+    let sql = r#"select json_get_array('{"items": [1, 2, 3]}', 'items')"#;
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::List(_)));
+    assert_eq!(value_repr, "[1, 2, 3]");
 }
 
 #[tokio::test]
@@ -525,8 +589,16 @@ fn test_json_get_utf8() {
     let ColumnarValue::Scalar(sv) = json_get_str
         .invoke_with_args(ScalarFunctionArgs {
             args: args.to_vec(),
+            arg_fields: vec![
+                Arc::new(Field::new("arg_1", DataType::LargeUtf8, false)),
+                Arc::new(Field::new("arg_2", DataType::LargeUtf8, false)),
+                Arc::new(Field::new("arg_3", DataType::LargeUtf8, false)),
+            ],
             number_rows: 1,
-            return_type: &DataType::Utf8,
+            return_field: Arc::new(
+                Field::new("ret_field", DataType::Utf8, false)
+                    .with_metadata(HashMap::from_iter(vec![("is_json".to_string(), "true".to_string())])),
+            ),
         })
         .unwrap()
     else {
@@ -550,8 +622,16 @@ fn test_json_get_large_utf8() {
     let ColumnarValue::Scalar(sv) = json_get_str
         .invoke_with_args(ScalarFunctionArgs {
             args: args.to_vec(),
+            arg_fields: vec![
+                Arc::new(Field::new("arg_1", DataType::LargeUtf8, false)),
+                Arc::new(Field::new("arg_2", DataType::LargeUtf8, false)),
+                Arc::new(Field::new("arg_3", DataType::LargeUtf8, false)),
+            ],
             number_rows: 1,
-            return_type: &DataType::LargeUtf8,
+            return_field: Arc::new(
+                Field::new("ret_field", DataType::Utf8, false)
+                    .with_metadata(HashMap::from_iter(vec![("is_json".to_string(), "true".to_string())])),
+            ),
         })
         .unwrap()
     else {

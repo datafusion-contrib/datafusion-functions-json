@@ -1,6 +1,6 @@
 [package]
 name = "datafusion-functions-json"
-version = "0.47.0"
+version = "0.48.0"
 edition = "2021"
 description = "JSON functions for DataFusion"
 readme = "README.md"
@@ -11,17 +11,17 @@ repository = "https://github.com/datafusion-contrib/datafusion-functions-json/"
 rust-version = "1.82.0"
 
 [dependencies]
-datafusion = { version = "47", default-features = false }
-jiter = "0.9"
+datafusion = { version = "48", default-features = false }
+jiter = "0.10"
 paste = "1"
 log = "0.4"
 jsonpath-rust = "1.0.0"
 
 [dev-dependencies]
-datafusion = { version = "47", default-features = false, features = ["nested_expressions"] }
+datafusion = { version = "48", default-features = false, features = [
+    "nested_expressions",
+] }
 codspeed-criterion-compat = "2.6"
-criterion = "0.5.1"
-clap = "4"
 tokio = { version = "1.43", features = ["full"] }
 rstest = "0.25.0"
 
