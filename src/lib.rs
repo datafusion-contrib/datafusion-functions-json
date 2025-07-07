@@ -57,6 +57,7 @@ pub mod udfs {
     pub use crate::json_get_str::json_get_str_udf;
     pub use crate::json_length::json_length_udf;
     pub use crate::json_object_keys::json_object_keys_udf;
+    pub use crate::json_parse::json_parse_udf;
 }
 
 /// Register all JSON UDFs, and [`rewrite::JsonFunctionRewriter`] with the provided [`FunctionRegistry`].
