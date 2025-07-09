@@ -11,6 +11,7 @@ mod common_union;
 mod json_as_text;
 mod json_contains;
 mod json_get;
+mod json_get_array;
 mod json_get_bool;
 mod json_get_float;
 mod json_get_int;
@@ -26,6 +27,7 @@ pub mod functions {
     pub use crate::json_as_text::json_as_text;
     pub use crate::json_contains::json_contains;
     pub use crate::json_get::json_get;
+    pub use crate::json_get_array::json_get_array;
     pub use crate::json_get_bool::json_get_bool;
     pub use crate::json_get_float::json_get_float;
     pub use crate::json_get_int::json_get_int;
@@ -39,6 +41,7 @@ pub mod udfs {
     pub use crate::json_as_text::json_as_text_udf;
     pub use crate::json_contains::json_contains_udf;
     pub use crate::json_get::json_get_udf;
+    pub use crate::json_get_array::json_get_array_udf;
     pub use crate::json_get_bool::json_get_bool_udf;
     pub use crate::json_get_float::json_get_float_udf;
     pub use crate::json_get_int::json_get_int_udf;
@@ -64,6 +67,7 @@ pub fn register_all(registry: &mut dyn FunctionRegistry) -> Result<()> {
         json_get_float::json_get_float_udf(),
         json_get_int::json_get_int_udf(),
         json_get_json::json_get_json_udf(),
+        json_get_array::json_get_array_udf(),
         json_as_text::json_as_text_udf(),
         json_get_str::json_get_str_udf(),
         json_contains::json_contains_udf(),
