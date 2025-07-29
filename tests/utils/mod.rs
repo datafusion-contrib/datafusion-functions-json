@@ -63,7 +63,7 @@ async fn create_test_table(json_data_type: &DataType) -> Result<SessionContext> 
                 Arc::new(LargeStringArray::from_iter_values(json_values)),
             ))
         }
-        _ => panic!("Unsupported JSON data type: {}", json_data_type),
+        _ => panic!("Unsupported JSON data type: {json_data_type}"),
     };
 
     let test_batch = RecordBatch::try_new(
