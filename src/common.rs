@@ -113,14 +113,15 @@ impl<'s> JsonPathArgs<'s> {
             .iter()
             .enumerate()
             .map(|(pos, arg)| match arg {
-                ColumnarValue::Scalar(ScalarValue::Utf8(Some(s)) | ScalarValue::LargeUtf8(Some(s))) => {
-                    Ok(JsonPath::Key(s))
-                }
+                ColumnarValue::Scalar(
+                    ScalarValue::Utf8(Some(s)) | ScalarValue::Utf8View(Some(s)) | ScalarValue::LargeUtf8(Some(s)),
+                ) => Ok(JsonPath::Key(s)),
                 ColumnarValue::Scalar(ScalarValue::UInt64(Some(i))) => Ok((*i).into()),
                 ColumnarValue::Scalar(ScalarValue::Int64(Some(i))) => Ok((*i).into()),
                 ColumnarValue::Scalar(
                     ScalarValue::Null
                     | ScalarValue::Utf8(None)
+                    | ScalarValue::Utf8View(None)
                     | ScalarValue::LargeUtf8(None)
                     | ScalarValue::UInt64(None)
                     | ScalarValue::Int64(None),
