@@ -121,7 +121,7 @@ async fn test_json_get_array_nested_objects() {
 
 #[tokio::test]
 async fn test_json_get_array_nested_arrays() {
-    let sql = r#"select json_get_array('[[1, 2], [3, 4]]')"#;
+    let sql = r"select json_get_array('[[1, 2], [3, 4]]')";
     let batches = run_query(sql).await.unwrap();
     let (value_type, value_repr) = display_val(batches).await;
     assert!(matches!(value_type, DataType::List(_)));
