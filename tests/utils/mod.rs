@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use datafusion::arrow::array::{
     ArrayRef, DictionaryArray, Int32Array, Int64Array, StringViewArray, UInt32Array, UInt64Array, UInt8Array,
@@ -20,8 +20,13 @@ pub async fn create_context() -> Result<SessionContext> {
     Ok(ctx)
 }
 
+pub static DICT_TYPE: LazyLock<DataType> =
+    LazyLock::new(|| DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)));
+pub static LARGE_DICT_TYPE: LazyLock<DataType> =
+    LazyLock::new(|| DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::LargeUtf8)));
+
 #[expect(clippy::too_many_lines)]
-async fn create_test_table(large_utf8: bool, dict_encoded: bool) -> Result<SessionContext> {
+async fn create_test_table(json_data_type: &DataType) -> Result<SessionContext> {
     let ctx = create_context().await?;
 
     let test_data = [
@@ -33,28 +38,41 @@ async fn create_test_table(large_utf8: bool, dict_encoded: bool) -> Result<Sessi
         ("list_foo", r#" ["foo"] "#),
         ("invalid_json", "is not json"),
     ];
-    let json_values = test_data.iter().map(|(_, json)| *json).collect::<Vec<_>>();
-    let (mut json_data_type, mut json_array): (DataType, ArrayRef) = if large_utf8 {
-        (DataType::LargeUtf8, Arc::new(LargeStringArray::from(json_values)))
-    } else {
-        (DataType::Utf8, Arc::new(StringArray::from(json_values)))
-    };
+    let json_values = test_data.iter().map(|(_, json)| *json);
 
-    if dict_encoded {
-        json_data_type = DataType::Dictionary(DataType::Int32.into(), json_data_type.into());
-        json_array = Arc::new(DictionaryArray::<Int32Type>::new(
-            Int32Array::from_iter_values(0..(i32::try_from(json_array.len()).expect("fits in a i32"))),
-            json_array,
-        ));
-    }
+    let json_array = match json_data_type {
+        DataType::Utf8 => Arc::new(StringArray::from_iter_values(json_values)) as ArrayRef,
+        DataType::LargeUtf8 => Arc::new(LargeStringArray::from_iter_values(json_values)),
+        DataType::Utf8View => Arc::new(StringViewArray::from_iter_values(json_values)),
+        DataType::Dictionary(key_type, _) if key_type.as_ref() != &DataType::Int32 => {
+            panic!("Only Int32 dictionary encoding is supported for JSON data in these tests")
+        }
+        DataType::Dictionary(key_type, child)
+            if key_type.as_ref() == &DataType::Int32 && child.as_ref() == &DataType::Utf8 =>
+        {
+            Arc::new(DictionaryArray::<Int32Type>::new(
+                Int32Array::from_iter_values(0..(i32::try_from(json_values.len()).expect("fits in a i32"))),
+                Arc::new(StringArray::from_iter_values(json_values)),
+            ))
+        }
+        DataType::Dictionary(key_type, child)
+            if key_type.as_ref() == &DataType::Int32 && child.as_ref() == &DataType::LargeUtf8 =>
+        {
+            Arc::new(DictionaryArray::<Int32Type>::new(
+                Int32Array::from_iter_values(0..(i32::try_from(json_values.len()).expect("fits in a i32"))),
+                Arc::new(LargeStringArray::from_iter_values(json_values)),
+            ))
+        }
+        _ => panic!("Unsupported JSON data type: {}", json_data_type),
+    };
 
     let test_batch = RecordBatch::try_new(
         Arc::new(Schema::new(vec![
-            Field::new("name", DataType::Utf8, false),
-            Field::new("json_data", json_data_type, false),
+            Field::new("name", DataType::Utf8View, false),
+            Field::new("json_data", json_data_type.clone(), false),
         ])),
         vec![
-            Arc::new(StringArray::from(
+            Arc::new(StringViewArray::from(
                 test_data.iter().map(|(name, _)| *name).collect::<Vec<_>>(),
             )),
             json_array,
@@ -220,27 +238,33 @@ async fn create_test_table(large_utf8: bool, dict_encoded: bool) -> Result<Sessi
 }
 
 pub async fn run_query(sql: &str) -> Result<Vec<RecordBatch>> {
-    let ctx = create_test_table(false, false).await?;
-    ctx.sql(sql).await?.collect().await
+    run_query_datatype(sql, &DataType::Utf8View).await
 }
 
-pub async fn run_query_large(sql: &str) -> Result<Vec<RecordBatch>> {
-    let ctx = create_test_table(true, false).await?;
-    ctx.sql(sql).await?.collect().await
-}
-
-pub async fn run_query_dict(sql: &str) -> Result<Vec<RecordBatch>> {
-    let ctx = create_test_table(false, true).await?;
+pub async fn run_query_datatype(sql: &str, json_data_type: &DataType) -> Result<Vec<RecordBatch>> {
+    let ctx = create_test_table(json_data_type).await?;
     ctx.sql(sql).await?.collect().await
 }
 
 pub async fn run_query_params(
     sql: &str,
-    large_utf8: bool,
+    json_data_type: &DataType,
     query_values: impl Into<ParamValues>,
 ) -> Result<Vec<RecordBatch>> {
-    let ctx = create_test_table(large_utf8, false).await?;
+    let ctx = create_test_table(json_data_type).await?;
     ctx.sql(sql).await?.with_param_values(query_values)?.collect().await
+}
+
+pub async fn for_all_json_datatypes(f: impl AsyncFn(&DataType)) {
+    for dt in [
+        &DataType::Utf8,
+        &DataType::LargeUtf8,
+        &DataType::Utf8View,
+        &DICT_TYPE,
+        &LARGE_DICT_TYPE,
+    ] {
+        f(dt).await;
+    }
 }
 
 pub async fn display_val(batch: Vec<RecordBatch>) -> (DataType, String) {
