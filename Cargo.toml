@@ -10,9 +10,11 @@ categories = ["database-implementations", "parsing"]
 repository = "https://github.com/datafusion-contrib/datafusion-functions-json/"
 rust-version = "1.85.1"
 
+# Jitter has a dependency on pyo3, which needs to match the version used in Sail.
+# https://github.com/pydantic/jiter/blob/v0.9.1/Cargo.toml
 [dependencies]
 datafusion = { version = "49", default-features = false }
-jiter = "0.10"
+jiter = "0.9"
 log = "0.4"
 paste = "1"
 
