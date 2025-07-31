@@ -44,7 +44,7 @@ fn optimise_json_get_cast(cast: &Cast) -> Option<Transformed<Expr>> {
             crate::json_get_float::json_get_float_udf()
         }
         DataType::Int64 | DataType::Int32 => crate::json_get_int::json_get_int_udf(),
-        DataType::Utf8 => crate::json_get_str::json_get_str_udf(),
+        DataType::Utf8 | DataType::Utf8View | DataType::LargeUtf8 => crate::json_get_str::json_get_str_udf(),
         _ => return None,
     };
     Some(Transformed::yes(Expr::ScalarFunction(ScalarFunction {
