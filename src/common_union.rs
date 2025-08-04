@@ -40,7 +40,7 @@ pub(crate) fn json_from_union_scalar<'a>(
     if let Some((type_id, value)) = type_id_value {
         // we only want to take the ScalarValue string if the type_id indicates the value represents nested JSON
         if fields == &union_fields() && (*type_id == TYPE_ID_ARRAY || *type_id == TYPE_ID_OBJECT) {
-            if let ScalarValue::Utf8(s) = value.as_ref() {
+            if let ScalarValue::Utf8(s) | ScalarValue::Utf8View(s) | ScalarValue::LargeUtf8(s) = value.as_ref() {
                 return s.as_deref();
             }
         }
