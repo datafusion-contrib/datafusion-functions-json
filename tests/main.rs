@@ -9,7 +9,9 @@ use datafusion::common::ScalarValue;
 use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs};
 use datafusion::prelude::SessionContext;
 use datafusion_functions_json::udfs::json_get_str_udf;
-use utils::{create_context, display_val, logical_plan, run_query, run_query_dict, run_query_large, run_query_params};
+use utils::{create_context, display_val, logical_plan, run_query, run_query_params};
+
+use crate::utils::{for_all_json_datatypes, run_query_datatype};
 
 mod utils;
 
@@ -29,10 +31,13 @@ async fn test_json_contains() {
         "+------------------+-------------------------------------------+",
     ];
 
-    let batches = run_query("select name, json_contains(json_data, 'foo') from test")
-        .await
-        .unwrap();
-    assert_batches_eq!(expected, &batches);
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype("select name, json_contains(json_data, 'foo') from test", dt)
+            .await
+            .unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -143,7 +148,7 @@ async fn test_json_get_array_nested_objects() {
 
 #[tokio::test]
 async fn test_json_get_array_nested_arrays() {
-    let sql = r#"select json_get_array('[[1, 2], [3, 4]]')"#;
+    let sql = r"select json_get_array('[[1, 2], [3, 4]]')";
     let batches = run_query(sql).await.unwrap();
     let (value_type, value_repr) = display_val(batches).await;
     assert!(matches!(value_type, DataType::List(_)));
@@ -473,9 +478,12 @@ async fn test_json_contains_large() {
         "+----------+",
     ];
 
-    let batches = run_query_large("select count(*) from test where json_contains(json_data, 'foo')")
-        .await
-        .unwrap();
+    let batches = run_query_datatype(
+        "select count(*) from test where json_contains(json_data, 'foo')",
+        &DataType::LargeUtf8,
+    )
+    .await
+    .unwrap();
     assert_batches_eq!(expected, &batches);
 }
 
@@ -489,9 +497,12 @@ async fn test_json_contains_large_vec() {
         "+----------+",
     ];
 
-    let batches = run_query_large("select count(*) from test where json_contains(json_data, name)")
-        .await
-        .unwrap();
+    let batches = run_query_datatype(
+        "select count(*) from test where json_contains(json_data, name)",
+        &DataType::LargeUtf8,
+    )
+    .await
+    .unwrap();
     assert_batches_eq!(expected, &batches);
 }
 
@@ -505,9 +516,12 @@ async fn test_json_contains_large_both() {
         "+----------+",
     ];
 
-    let batches = run_query_large("select count(*) from test where json_contains(json_data, json_data)")
-        .await
-        .unwrap();
+    let batches = run_query_datatype(
+        "select count(*) from test where json_contains(json_data, json_data)",
+        &DataType::LargeUtf8,
+    )
+    .await
+    .unwrap();
     assert_batches_eq!(expected, &batches);
 }
 
@@ -523,8 +537,12 @@ async fn test_json_contains_large_params() {
 
     let sql = "select count(*) from test where json_contains(json_data, 'foo')";
     let params = vec![ScalarValue::LargeUtf8(Some("foo".to_string()))];
-    let batches = run_query_params(sql, false, params).await.unwrap();
-    assert_batches_eq!(expected, &batches);
+
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_params(sql, dt, params.clone()).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -539,14 +557,17 @@ async fn test_json_contains_large_both_params() {
 
     let sql = "select count(*) from test where json_contains(json_data, 'foo')";
     let params = vec![ScalarValue::LargeUtf8(Some("foo".to_string()))];
-    let batches = run_query_params(sql, true, params).await.unwrap();
-    assert_batches_eq!(expected, &batches);
+
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_params(sql, dt, params.clone()).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
 async fn test_json_length_vec() {
     let sql = r"select name, json_len(json_data) as len from test";
-    let batches = run_query(sql).await.unwrap();
 
     let expected = [
         "+------------------+-----+",
@@ -561,10 +582,12 @@ async fn test_json_length_vec() {
         "| invalid_json     |     |",
         "+------------------+-----+",
     ];
-    assert_batches_eq!(expected, &batches);
 
-    let batches = run_query_large(sql).await.unwrap();
-    assert_batches_eq!(expected, &batches);
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -643,6 +666,7 @@ fn test_json_get_large_utf8() {
 
 #[tokio::test]
 async fn test_json_get_union_scalar() {
+    let sql = r#"select json_get(json_get('{"x": {"y": 1}}', 'x'), 'y') as v"#;
     let expected = [
         "+---------+",
         "| v       |",
@@ -651,14 +675,16 @@ async fn test_json_get_union_scalar() {
         "+---------+",
     ];
 
-    let batches = run_query(r#"select json_get(json_get('{"x": {"y": 1}}', 'x'), 'y') as v"#)
-        .await
-        .unwrap();
-    assert_batches_eq!(expected, &batches);
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
 async fn test_json_get_nested_collapsed() {
+    let sql = "select name, json_get(json_get(json_data, 'foo'), 0) as v from test";
     let expected = [
         "+------------------+---------+",
         "| name             | v       |",
@@ -673,10 +699,30 @@ async fn test_json_get_nested_collapsed() {
         "+------------------+---------+",
     ];
 
-    let batches = run_query("select name, json_get(json_get(json_data, 'foo'), 0) v from test")
-        .await
-        .unwrap();
-    assert_batches_eq!(expected, &batches);
+    let expected_dict = [
+        "+------------------+---------+",
+        "| name             | v       |",
+        "+------------------+---------+",
+        "| object_foo       |         |",
+        "| object_foo_array | {int=1} |",
+        "| object_foo_obj   |         |",
+        "| object_foo_null  |         |",
+        "| object_bar       |         |",
+        "| list_foo         |         |",
+        "| invalid_json     |         |",
+        "+------------------+---------+",
+    ];
+
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+
+        if matches!(dt, DataType::Dictionary(_, _)) {
+            assert_batches_eq!(expected_dict, &batches);
+        } else {
+            assert_batches_eq!(expected, &batches);
+        }
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -700,8 +746,30 @@ async fn test_json_get_cte() {
         "+------------------+---------+",
     ];
 
-    let batches = run_query(sql).await.unwrap();
-    assert_batches_eq!(expected, &batches);
+    let expected_dict = [
+        "+------------------+---------+",
+        "| name             | v       |",
+        "+------------------+---------+",
+        "| object_foo       |         |",
+        "| object_foo_array | {int=1} |",
+        "| object_foo_obj   |         |",
+        "| object_foo_null  |         |",
+        "| object_bar       |         |",
+        "| list_foo         |         |",
+        "| invalid_json     |         |",
+        "+------------------+---------+",
+    ];
+
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+
+        if matches!(dt, DataType::Dictionary(_, _)) {
+            assert_batches_eq!(expected_dict, &batches);
+        } else {
+            assert_batches_eq!(expected, &batches);
+        }
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -741,8 +809,30 @@ async fn test_json_get_unnest() {
         "+------------------+---------+",
     ];
 
-    let batches = run_query(sql).await.unwrap();
-    assert_batches_eq!(expected, &batches);
+    let expected_dict = [
+        "+------------------+---------+",
+        "| name             | v       |",
+        "+------------------+---------+",
+        "| object_foo       |         |",
+        "| object_foo_array | {int=1} |",
+        "| object_foo_obj   |         |",
+        "| object_foo_null  |         |",
+        "| object_bar       |         |",
+        "| list_foo         |         |",
+        "| invalid_json     |         |",
+        "+------------------+---------+",
+    ];
+
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+
+        if matches!(dt, DataType::Dictionary(_, _)) {
+            assert_batches_eq!(expected_dict, &batches);
+        } else {
+            assert_batches_eq!(expected, &batches);
+        }
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -775,8 +865,11 @@ async fn test_json_get_int_unnest() {
         "+------------------+---+",
     ];
 
-    let batches = run_query(sql).await.unwrap();
-    assert_batches_eq!(expected, &batches);
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -814,8 +907,11 @@ async fn test_json_get_union_array_nested() {
         "+-------------+",
     ];
 
-    let batches = run_query(sql).await.unwrap();
-    assert_batches_eq!(expected, &batches);
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -845,13 +941,16 @@ async fn test_json_get_union_array_skip_double_nested() {
         "+--------------------------+---+",
     ];
 
-    let batches = run_query(sql).await.unwrap();
-    assert_batches_eq!(expected, &batches);
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
 async fn test_arrow() {
-    let batches = run_query("select name, json_data->'foo' from test").await.unwrap();
+    let sql = "select name, json_data->'foo' from test";
 
     let expected = [
         "+------------------+-------------------------+",
@@ -866,7 +965,30 @@ async fn test_arrow() {
         "| invalid_json     | {null=}                 |",
         "+------------------+-------------------------+",
     ];
-    assert_batches_eq!(expected, &batches);
+
+    let expected_dict = [
+        "+------------------+-------------------------+",
+        "| name             | test.json_data -> 'foo' |",
+        "+------------------+-------------------------+",
+        "| object_foo       | {str=abc}               |",
+        "| object_foo_array | {array=[1]}             |",
+        "| object_foo_obj   | {object={}}             |",
+        "| object_foo_null  |                         |",
+        "| object_bar       |                         |",
+        "| list_foo         |                         |",
+        "| invalid_json     |                         |",
+        "+------------------+-------------------------+",
+    ];
+
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        if matches!(dt, DataType::Dictionary(_, _)) {
+            assert_batches_eq!(expected_dict, &batches);
+        } else {
+            assert_batches_eq!(expected, &batches);
+        }
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -883,7 +1005,7 @@ async fn test_plan_arrow() {
 
 #[tokio::test]
 async fn test_long_arrow() {
-    let batches = run_query("select name, json_data->>'foo' from test").await.unwrap();
+    let sql = "select name, json_data->>'foo' from test";
 
     let expected = [
         "+------------------+--------------------------+",
@@ -898,7 +1020,12 @@ async fn test_long_arrow() {
         "| invalid_json     |                          |",
         "+------------------+--------------------------+",
     ];
-    assert_batches_eq!(expected, &batches);
+
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -915,9 +1042,7 @@ async fn test_plan_long_arrow() {
 
 #[tokio::test]
 async fn test_long_arrow_eq_str() {
-    let batches = run_query(r"select name, (json_data->>'foo')='abc' from test")
-        .await
-        .unwrap();
+    let sql = r"select name, (json_data->>'foo')='abc' from test";
 
     let expected = [
         "+------------------+----------------------------------------+",
@@ -932,14 +1057,18 @@ async fn test_long_arrow_eq_str() {
         "| invalid_json     |                                        |",
         "+------------------+----------------------------------------+",
     ];
-    assert_batches_eq!(expected, &batches);
+
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 /// Test column name / alias creation with a cast in the needle / key
 #[tokio::test]
 async fn test_arrow_cast_key_text() {
     let sql = r#"select ('{"foo": 42}'->>('foo'::text))"#;
-    let batches = run_query(sql).await.unwrap();
 
     let expected = [
         "+-------------------------+",
@@ -949,13 +1078,16 @@ async fn test_arrow_cast_key_text() {
         "+-------------------------+",
     ];
 
-    assert_batches_eq!(expected, &batches);
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
 async fn test_arrow_cast_int() {
     let sql = r#"select ('{"foo": 42}'->'foo')::int"#;
-    let batches = run_query(sql).await.unwrap();
 
     let expected = [
         "+------------------------+",
@@ -964,9 +1096,13 @@ async fn test_arrow_cast_int() {
         "| 42                     |",
         "+------------------------+",
     ];
-    assert_batches_eq!(expected, &batches);
 
-    assert_eq!(display_val(batches).await, (DataType::Int64, "42".to_string()));
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+        assert_eq!(display_val(batches).await, (DataType::Int64, "42".to_string()));
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -983,7 +1119,7 @@ async fn test_plan_arrow_cast_int() {
 
 #[tokio::test]
 async fn test_arrow_double_nested() {
-    let batches = run_query("select name, json_data->'foo'->0 from test").await.unwrap();
+    let sql = "select name, json_data->'foo'->0 from test";
 
     let expected = [
         "+------------------+------------------------------+",
@@ -998,7 +1134,30 @@ async fn test_arrow_double_nested() {
         "| invalid_json     | {null=}                      |",
         "+------------------+------------------------------+",
     ];
-    assert_batches_eq!(expected, &batches);
+
+    let expected_dict = [
+        "+------------------+------------------------------+",
+        "| name             | test.json_data -> 'foo' -> 0 |",
+        "+------------------+------------------------------+",
+        "| object_foo       |                              |",
+        "| object_foo_array | {int=1}                      |",
+        "| object_foo_obj   |                              |",
+        "| object_foo_null  |                              |",
+        "| object_bar       |                              |",
+        "| list_foo         |                              |",
+        "| invalid_json     |                              |",
+        "+------------------+------------------------------+",
+    ];
+
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        if matches!(dt, DataType::Dictionary(_, _)) {
+            assert_batches_eq!(expected_dict, &batches);
+        } else {
+            assert_batches_eq!(expected, &batches);
+        }
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -1015,8 +1174,7 @@ async fn test_plan_arrow_double_nested() {
 
 #[tokio::test]
 async fn test_double_arrow_double_nested() {
-    let batches = run_query("select name, json_data->>'foo'->>0 from test").await.unwrap();
-
+    let sql = "select name, json_data->>'foo'->>0 from test";
     let expected = [
         "+------------------+--------------------------------+",
         "| name             | test.json_data ->> 'foo' ->> 0 |",
@@ -1030,7 +1188,12 @@ async fn test_double_arrow_double_nested() {
         "| invalid_json     |                                |",
         "+------------------+--------------------------------+",
     ];
-    assert_batches_eq!(expected, &batches);
+
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -1047,10 +1210,7 @@ async fn test_plan_double_arrow_double_nested() {
 
 #[tokio::test]
 async fn test_arrow_double_nested_cast() {
-    let batches = run_query("select name, (json_data->'foo'->0)::int from test")
-        .await
-        .unwrap();
-
+    let sql = "select name, (json_data->'foo'->0)::int from test";
     let expected = [
         "+------------------+------------------------------+",
         "| name             | test.json_data -> 'foo' -> 0 |",
@@ -1064,7 +1224,12 @@ async fn test_arrow_double_nested_cast() {
         "| invalid_json     |                              |",
         "+------------------+------------------------------+",
     ];
-    assert_batches_eq!(expected, &batches);
+
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -1081,10 +1246,7 @@ async fn test_plan_arrow_double_nested_cast() {
 
 #[tokio::test]
 async fn test_double_arrow_double_nested_cast() {
-    let batches = run_query("select name, (json_data->>'foo'->>0)::int from test")
-        .await
-        .unwrap();
-
+    let sql = "select name, (json_data->>'foo'->>0)::int from test";
     let expected = [
         "+------------------+--------------------------------+",
         "| name             | test.json_data ->> 'foo' ->> 0 |",
@@ -1098,7 +1260,12 @@ async fn test_double_arrow_double_nested_cast() {
         "| invalid_json     |                                |",
         "+------------------+--------------------------------+",
     ];
-    assert_batches_eq!(expected, &batches);
+
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -1116,6 +1283,7 @@ async fn test_plan_double_arrow_double_nested_cast() {
 
 #[tokio::test]
 async fn test_arrow_nested_columns() {
+    let sql = "select json_data->str_key1->str_key2 v from more_nested";
     let expected = [
         "+-------------+",
         "| v           |",
@@ -1126,13 +1294,16 @@ async fn test_arrow_nested_columns() {
         "+-------------+",
     ];
 
-    let sql = "select json_data->str_key1->str_key2 v from more_nested";
-    let batches = run_query(sql).await.unwrap();
-    assert_batches_eq!(expected, &batches);
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
 async fn test_arrow_nested_double_columns() {
+    let sql = "select json_data->str_key1->str_key2->int_key v from more_nested";
     let expected = [
         "+---------+",
         "| v       |",
@@ -1143,9 +1314,11 @@ async fn test_arrow_nested_double_columns() {
         "+---------+",
     ];
 
-    let sql = "select json_data->str_key1->str_key2->int_key v from more_nested";
-    let batches = run_query(sql).await.unwrap();
-    assert_batches_eq!(expected, &batches);
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -1165,6 +1338,7 @@ async fn test_lexical_precedence_correct() {
 
 #[tokio::test]
 async fn test_question_mark_contains() {
+    let sql = "select name, json_data ? 'foo' from test";
     let expected = [
         "+------------------+------------------------+",
         "| name             | test.json_data ? 'foo' |",
@@ -1179,15 +1353,16 @@ async fn test_question_mark_contains() {
         "+------------------+------------------------+",
     ];
 
-    let batches = run_query("select name, json_data ? 'foo' from test").await.unwrap();
-    assert_batches_eq!(expected, &batches);
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
 async fn test_arrow_filter() {
-    let batches = run_query("select name from test where (json_data->>'foo') = 'abc'")
-        .await
-        .unwrap();
+    let sql = "select name from test where (json_data->>'foo') = 'abc'";
 
     let expected = [
         "+------------+",
@@ -1196,15 +1371,17 @@ async fn test_arrow_filter() {
         "| object_foo |",
         "+------------+",
     ];
-    assert_batches_eq!(expected, &batches);
+
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
 async fn test_question_filter() {
-    let batches = run_query("select name from test where json_data ? 'foo'")
-        .await
-        .unwrap();
-
+    let sql = "select name from test where json_data ? 'foo'";
     let expected = [
         "+------------------+",
         "| name             |",
@@ -1215,14 +1392,17 @@ async fn test_question_filter() {
         "| object_foo_null  |",
         "+------------------+",
     ];
-    assert_batches_eq!(expected, &batches);
+
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
 async fn test_json_get_union_is_null() {
-    let batches = run_query("select name, json_get(json_data, 'foo') is null from test")
-        .await
-        .unwrap();
+    let sql = "select name, json_get(json_data, 'foo') is null from test";
 
     let expected = [
         "+------------------+----------------------------------------------+",
@@ -1237,14 +1417,17 @@ async fn test_json_get_union_is_null() {
         "| invalid_json     | true                                         |",
         "+------------------+----------------------------------------------+",
     ];
-    assert_batches_eq!(expected, &batches);
+
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
 async fn test_json_get_union_is_not_null() {
-    let batches = run_query("select name, json_get(json_data, 'foo') is not null from test")
-        .await
-        .unwrap();
+    let sql = "select name, json_get(json_data, 'foo') is not null from test";
 
     let expected = [
         "+------------------+--------------------------------------------------+",
@@ -1259,15 +1442,17 @@ async fn test_json_get_union_is_not_null() {
         "| invalid_json     | false                                            |",
         "+------------------+--------------------------------------------------+",
     ];
-    assert_batches_eq!(expected, &batches);
+
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
 async fn test_arrow_union_is_null() {
-    let batches = run_query("select name, (json_data->'foo') is null from test")
-        .await
-        .unwrap();
-
+    let sql = "select name, (json_data->'foo') is null from test";
     let expected = [
         "+------------------+---------------------------------+",
         "| name             | test.json_data -> 'foo' IS NULL |",
@@ -1281,37 +1466,17 @@ async fn test_arrow_union_is_null() {
         "| invalid_json     | true                            |",
         "+------------------+---------------------------------+",
     ];
-    assert_batches_eq!(expected, &batches);
-}
 
-#[tokio::test]
-async fn test_arrow_union_is_null_dict_encoded() {
-    let batches = run_query_dict("select name, (json_data->'foo') is null from test")
-        .await
-        .unwrap();
-
-    let expected = [
-        "+------------------+---------------------------------+",
-        "| name             | test.json_data -> 'foo' IS NULL |",
-        "+------------------+---------------------------------+",
-        "| object_foo       | false                           |",
-        "| object_foo_array | false                           |",
-        "| object_foo_obj   | false                           |",
-        "| object_foo_null  | true                            |",
-        "| object_bar       | true                            |",
-        "| list_foo         | true                            |",
-        "| invalid_json     | true                            |",
-        "+------------------+---------------------------------+",
-    ];
-    assert_batches_eq!(expected, &batches);
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
 async fn test_arrow_union_is_not_null() {
-    let batches = run_query("select name, (json_data->'foo') is not null from test")
-        .await
-        .unwrap();
-
+    let sql = "select name, (json_data->'foo') is not null from test";
     let expected = [
         "+------------------+-------------------------------------+",
         "| name             | test.json_data -> 'foo' IS NOT NULL |",
@@ -1325,41 +1490,20 @@ async fn test_arrow_union_is_not_null() {
         "| invalid_json     | false                               |",
         "+------------------+-------------------------------------+",
     ];
-    assert_batches_eq!(expected, &batches);
-}
 
-#[tokio::test]
-async fn test_arrow_union_is_not_null_dict_encoded() {
-    let batches = run_query_dict("select name, (json_data->'foo') is not null from test")
-        .await
-        .unwrap();
-
-    let expected = [
-        "+------------------+-------------------------------------+",
-        "| name             | test.json_data -> 'foo' IS NOT NULL |",
-        "+------------------+-------------------------------------+",
-        "| object_foo       | true                                |",
-        "| object_foo_array | true                                |",
-        "| object_foo_obj   | true                                |",
-        "| object_foo_null  | false                               |",
-        "| object_bar       | false                               |",
-        "| list_foo         | false                               |",
-        "| invalid_json     | false                               |",
-        "+------------------+-------------------------------------+",
-    ];
-    assert_batches_eq!(expected, &batches);
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
 async fn test_arrow_scalar_union_is_null() {
-    let batches = run_query(
-        r#"
+    let sql = r#"
         select ('{"x": 1}'->'foo') is null as not_contains,
                ('{"foo": 1}'->'foo') is null as contains_num,
-               ('{"foo": null}'->'foo') is null as contains_null"#,
-    )
-    .await
-    .unwrap();
+               ('{"foo": null}'->'foo') is null as contains_null"#;
 
     let expected = [
         "+--------------+--------------+---------------+",
@@ -1368,12 +1512,17 @@ async fn test_arrow_scalar_union_is_null() {
         "| true         | false        | true          |",
         "+--------------+--------------+---------------+",
     ];
-    assert_batches_eq!(expected, &batches);
+
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
 async fn test_long_arrow_cast() {
-    let batches = run_query("select (json_data->>'foo')::int from other").await.unwrap();
+    let sql = "select (json_data->>'foo')::int from other";
 
     let expected = [
         "+---------------------------+",
@@ -1385,7 +1534,12 @@ async fn test_long_arrow_cast() {
         "|                           |",
         "+---------------------------+",
     ];
-    assert_batches_eq!(expected, &batches);
+
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -1409,8 +1563,11 @@ async fn test_dict_haystack() {
         "+-----------------------+",
     ];
 
-    let batches = run_query(sql).await.unwrap();
-    assert_batches_eq!(expected, &batches);
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 fn check_for_null_dictionary_values(array: &dyn Array) {
@@ -1489,8 +1646,11 @@ async fn test_dict_haystack_filter() {
         "+-------------------------+",
     ];
 
-    let batches = run_query(sql).await.unwrap();
-    assert_batches_eq!(expected, &batches);
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -1507,8 +1667,11 @@ async fn test_dict_haystack_needle() {
         "+-------------+",
     ];
 
-    let batches = run_query(sql).await.unwrap();
-    assert_batches_eq!(expected, &batches);
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -1526,8 +1689,11 @@ async fn test_dict_length() {
         "+---+",
     ];
 
-    let batches = run_query(sql).await.unwrap();
-    assert_batches_eq!(expected, &batches);
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -1544,8 +1710,11 @@ async fn test_dict_contains() {
         "+-------+",
     ];
 
-    let batches = run_query(sql).await.unwrap();
-    assert_batches_eq!(expected, &batches);
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -1560,8 +1729,11 @@ async fn test_dict_contains_where() {
         "+----------+",
     ];
 
-    let batches = run_query(sql).await.unwrap();
-    assert_batches_eq!(expected, &batches);
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -1579,8 +1751,11 @@ async fn test_dict_get_int() {
         "+---+",
     ];
 
-    let batches = run_query(sql).await.unwrap();
-    assert_batches_eq!(expected, &batches);
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 async fn build_dict_schema() -> SessionContext {
@@ -1715,16 +1890,11 @@ async fn test_json_object_keys() {
     ];
 
     let sql = "select json_object_keys(json_data) from test";
-    let batches = run_query(sql).await.unwrap();
-    assert_batches_eq!(expected, &batches);
-
-    let sql = "select json_object_keys(json_data) from test";
-    let batches = run_query_dict(sql).await.unwrap();
-    assert_batches_eq!(expected, &batches);
-
-    let sql = "select json_object_keys(json_data) from test";
-    let batches = run_query_large(sql).await.unwrap();
-    assert_batches_eq!(expected, &batches);
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
 }
 
 #[tokio::test]
