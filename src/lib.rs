@@ -21,7 +21,7 @@ mod json_length;
 mod json_object_keys;
 mod rewrite;
 
-pub use common_union::{JsonUnionEncoder, JsonUnionValue};
+pub use common_union::{JsonUnionEncoder, JsonUnionValue, JSON_UNION_DATA_TYPE};
 
 pub mod functions {
     pub use crate::json_as_text::json_as_text;
