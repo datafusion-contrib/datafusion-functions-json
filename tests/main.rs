@@ -1573,6 +1573,7 @@ fn check_for_null_dictionary_values(array: &dyn Array) {
 }
 
 /// Test that we don't output nulls in dictionary values.
+#[allow(clippy::doc_markdown)]
 /// This can cause issues with arrow-rs and DataFusion; they expect nulls to be in keys.
 #[tokio::test]
 async fn test_dict_get_no_null_values() {
