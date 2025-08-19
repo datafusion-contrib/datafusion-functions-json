@@ -17,7 +17,7 @@ make_udf_function!(
     r#"Get an arrow array from a JSON string by its "path""#
 );
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub(super) struct JsonGetArray {
     signature: Signature,
     aliases: [String; 1],

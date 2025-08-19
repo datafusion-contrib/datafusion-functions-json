@@ -15,7 +15,7 @@ make_udf_function!(
     r#"Get a nested raw JSON string from a JSON string by its "path""#
 );
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub(super) struct JsonGetJson {
     signature: Signature,
     aliases: [String; 1],

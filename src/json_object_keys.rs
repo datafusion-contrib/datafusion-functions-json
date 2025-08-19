@@ -17,7 +17,7 @@ make_udf_function!(
     r"Get the keys of a JSON object as an array."
 );
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub(super) struct JsonObjectKeys {
     signature: Signature,
     aliases: [String; 2],

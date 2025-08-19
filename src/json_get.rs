@@ -23,7 +23,7 @@ make_udf_function!(
 
 // build_typed_get!(JsonGet, "json_get", Union, Float64Array, jiter_json_get_float);
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub(super) struct JsonGet {
     signature: Signature,
     aliases: [String; 1],

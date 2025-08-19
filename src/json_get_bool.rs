@@ -16,7 +16,7 @@ make_udf_function!(
     r#"Get an boolean value from a JSON string by its "path""#
 );
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub(super) struct JsonGetBool {
     signature: Signature,
     aliases: [String; 1],
