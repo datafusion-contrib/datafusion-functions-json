@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, LazyLock, OnceLock};
 
 use datafusion::arrow::array::{
     Array, ArrayRef, AsArray, BooleanArray, Float64Array, Int64Array, NullArray, StringArray, UnionArray,
@@ -47,6 +47,8 @@ pub(crate) fn json_from_union_scalar<'a>(
     }
     None
 }
+
+pub static JSON_UNION_DATA_TYPE: LazyLock<DataType> = LazyLock::new(JsonUnion::data_type);
 
 #[derive(Debug)]
 pub(crate) struct JsonUnion {
