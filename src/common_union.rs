@@ -257,7 +257,7 @@ impl JsonUnionEncoder {
     ///
     /// Panics if the idx is outside the union values or an invalid type id exists in the union.
     #[must_use]
-    pub fn get_value(&self, idx: usize) -> JsonUnionValue {
+    pub fn get_value(&self, idx: usize) -> JsonUnionValue<'_> {
         let type_id = self.type_ids[idx];
         match type_id {
             TYPE_ID_NULL => JsonUnionValue::JsonNull,

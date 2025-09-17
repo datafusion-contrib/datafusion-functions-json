@@ -17,7 +17,7 @@ make_udf_function!(
     r#"Does the key/index exist within the JSON value as the specified "path"?"#
 );
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub(super) struct JsonContains {
     signature: Signature,
     aliases: [String; 1],
