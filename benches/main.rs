@@ -33,6 +33,7 @@ fn bench_json_contains(b: &mut Bencher) {
                 number_rows: 1,
                 arg_fields: arg_fields.clone(),
                 return_field: return_field.clone(),
+                config_options: Arc::new(datafusion::config::ConfigOptions::default()),
             })
             .unwrap()
     });
@@ -63,6 +64,7 @@ fn bench_json_get_str_scalar(b: &mut Bencher) {
                 arg_fields: arg_fields.clone(),
                 number_rows: 1,
                 return_field: return_field.clone(),
+                config_options: Arc::new(datafusion::config::ConfigOptions::default()),
             })
             .unwrap();
     });
@@ -94,6 +96,7 @@ fn bench_json_get_str_array(b: &mut Bencher) {
                 arg_fields: arg_fields.clone(),
                 number_rows: 1,
                 return_field: return_field.clone(),
+                config_options: Arc::new(datafusion::config::ConfigOptions::default()),
             })
             .unwrap();
     });
@@ -125,6 +128,7 @@ fn bench_json_get_str_view_array(b: &mut Bencher) {
                 arg_fields: arg_fields.clone(),
                 number_rows: 1,
                 return_field: return_field.clone(),
+                config_options: Arc::new(datafusion::config::ConfigOptions::default()),
             })
             .unwrap();
     });

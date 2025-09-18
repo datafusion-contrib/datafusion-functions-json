@@ -30,7 +30,7 @@ macro_rules! make_udf_function {
             static [< STATIC_ $expr_fn_name:upper >]: std::sync::OnceLock<std::sync::Arc<datafusion::logical_expr::ScalarUDF>> =
                 std::sync::OnceLock::new();
 
-            /// ScalarFunction that returns a [`ScalarUDF`] for [`$udf_impl`]
+            /// `ScalarFunction` that returns a [`ScalarUDF`] for [`$udf_impl`]
             ///
             /// [`ScalarUDF`]: datafusion::logical_expr::ScalarUDF
             pub fn [< $expr_fn_name _udf >]() -> std::sync::Arc<datafusion::logical_expr::ScalarUDF> {

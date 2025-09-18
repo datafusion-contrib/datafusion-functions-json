@@ -17,7 +17,7 @@ make_udf_function!(
     r"Get the length of the array or object at the given path."
 );
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub(super) struct JsonLength {
     signature: Signature,
     aliases: [String; 2],
