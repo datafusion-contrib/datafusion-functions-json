@@ -6,6 +6,7 @@ use datafusion::arrow::datatypes::{Field, Int64Type, Int8Type, Schema};
 use datafusion::arrow::{array::StringDictionaryBuilder, datatypes::DataType};
 use datafusion::assert_batches_eq;
 use datafusion::common::ScalarValue;
+use datafusion::config::ConfigOptions;
 use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs};
 use datafusion::prelude::SessionContext;
 use datafusion_functions_json::udfs::json_get_str_udf;
@@ -600,6 +601,7 @@ fn test_json_get_utf8() {
                 Field::new("ret_field", DataType::Utf8, false)
                     .with_metadata(HashMap::from_iter(vec![("is_json".to_string(), "true".to_string())])),
             ),
+            config_options: Arc::new(ConfigOptions::default()),
         })
         .unwrap()
     else {
@@ -633,6 +635,7 @@ fn test_json_get_large_utf8() {
                 Field::new("ret_field", DataType::Utf8, false)
                     .with_metadata(HashMap::from_iter(vec![("is_json".to_string(), "true".to_string())])),
             ),
+            config_options: Arc::new(ConfigOptions::default()),
         })
         .unwrap()
     else {
