@@ -16,7 +16,7 @@ make_udf_function!(
     r#"Get a string value from a JSON string by its "path""#
 );
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub(super) struct JsonGetStr {
     signature: Signature,
     aliases: [String; 1],
