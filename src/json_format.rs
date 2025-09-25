@@ -17,7 +17,7 @@ make_udf_function!(
     r#"Get any value from a JSON string by its "path", represented as a string"#
 );
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub(super) struct JsonFormat {
     signature: Signature,
     aliases: [String; 1],

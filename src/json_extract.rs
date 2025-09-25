@@ -14,7 +14,7 @@ make_udf_function!(
     r#"Get a value from a JSON string by its "path" in JSONPath format"#
 );
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub(super) struct JsonExtract {
     signature: Signature,
     aliases: [String; 1],

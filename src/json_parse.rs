@@ -17,7 +17,7 @@ make_udf_function!(
     r#"Parses the JSON string passed"#
 );
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub(super) struct JsonParse {
     signature: Signature,
     aliases: [String; 1],
