@@ -142,10 +142,10 @@ impl std::fmt::Display for JsonOperator {
 fn expr_to_sql_repr(expr: &Expr) -> String {
     match expr {
         Expr::Column(Column {
-                         name,
-                         relation,
-                         spans: _,
-                     }) => relation
+            name,
+            relation,
+            spans: _,
+        }) => relation
             .as_ref()
             .map_or_else(|| name.clone(), |r| format!("{r}.{name}")),
         Expr::Alias(alias) => alias.name.clone(),
