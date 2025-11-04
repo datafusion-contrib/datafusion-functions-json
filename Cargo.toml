@@ -8,19 +8,19 @@ license = "Apache-2.0"
 keywords = ["datafusion", "JSON", "SQL"]
 categories = ["database-implementations", "parsing"]
 repository = "https://github.com/datafusion-contrib/datafusion-functions-json/"
-rust-version = "1.86.0"
+rust-version = "1.88.0"
 
 # Jitter has a dependency on pyo3, which needs to match the version used in Sail.
 # https://github.com/pydantic/jiter/blob/v0.10.0/Cargo.toml
 [dependencies]
-datafusion = { version = "50", default-features = false }
+datafusion = { git = "https://github.com/apache/datafusion.git", rev = "9f0df748ef3018a363cee2f0946399f9ef9014f1", default-features = false }
 jiter = "0.10"
 log = "0.4"
 paste = "1"
 
 [dev-dependencies]
 codspeed-criterion-compat = "2.6"
-datafusion = { version = "50", default-features = false, features = [
+datafusion = { git = "https://github.com/apache/datafusion.git", rev = "9f0df748ef3018a363cee2f0946399f9ef9014f1", default-features = false, features = [
     "nested_expressions",
 ] }
 tokio = { version = "1.43", features = ["full"] }
