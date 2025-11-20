@@ -9,9 +9,9 @@ use datafusion::common::Result;
 use datafusion::logical_expr::expr::{Alias, Cast, Expr, ScalarFunction};
 use datafusion::logical_expr::expr_rewriter::FunctionRewrite;
 use datafusion::logical_expr::planner::{ExprPlanner, PlannerResult, RawBinaryExpr};
-use datafusion::logical_expr::sqlparser::ast::BinaryOperator;
 use datafusion::logical_expr::ScalarUDF;
 use datafusion::scalar::ScalarValue;
+use datafusion::sql::sqlparser::ast::BinaryOperator;
 
 #[derive(Debug)]
 pub(crate) struct JsonFunctionRewriter;
