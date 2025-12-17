@@ -48,15 +48,8 @@ impl ScalarUDFImpl for JsonFromScalar {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        if arg_types.len() != 1 {
-            return plan_err!(
-                "The '{}' function requires exactly one argument, got {}",
-                self.name(),
-                arg_types.len()
-            );
-        }
         // Check that the input type is a scalar type that we can convert to JSON
-        match arg_types[0] {
+        match arg_types[0] { // The signature check ensures we only get one argument
             DataType::Null
             | DataType::Boolean
             | DataType::Int8
@@ -80,14 +73,7 @@ impl ScalarUDFImpl for JsonFromScalar {
     }
 
     fn invoke_with_args(&self, mut args: ScalarFunctionArgs) -> DataFusionResult<ColumnarValue> {
-        if args.args.len() != 1 {
-            return exec_err!(
-                "The '{}' function requires exactly one argument, got {}",
-                self.name(),
-                args.args.len()
-            );
-        }
-
+        // The signature check ensures we only get one argument
         match args.args.pop().expect("Expected exactly one argument") {
             ColumnarValue::Scalar(scalar) => {
                 let field = scalar_to_json_union_field(scalar)?;
