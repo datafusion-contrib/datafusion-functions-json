@@ -2426,7 +2426,10 @@ async fn test_json_from_scalar_too_many_args() {
     let result = run_query(sql).await;
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
-    assert!(err.contains("requires exactly one argument"));
+    assert!(
+        err.contains("The function 'json_from_scalar' expected 1 arguments but received 2"),
+        "Err: {err}"
+    );
 }
 
 #[tokio::test]

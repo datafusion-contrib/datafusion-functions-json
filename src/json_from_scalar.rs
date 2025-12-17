@@ -150,101 +150,50 @@ fn scalar_to_json_union_field(scalar: ScalarValue) -> DataFusionResult<JsonUnion
     }
 }
 
-#[expect(clippy::too_many_lines)]
 fn array_to_json_union(array: &ArrayRef) -> DataFusionResult<JsonUnion> {
-    let mut union = JsonUnion::new(array.len());
-
-    match array.data_type() {
-        DataType::Null => {
-            for _ in 0..array.len() {
-                union.push(JsonUnionField::JsonNull);
-            }
-        }
-
-        DataType::Boolean => {
-            let arr = array.as_boolean();
-            for i in 0..arr.len() {
-                if arr.is_null(i) {
-                    union.push_none();
-                } else {
-                    union.push(JsonUnionField::Bool(arr.value(i)));
-                }
-            }
-        }
-
+    Ok(match array.data_type() {
+        DataType::Null => (0..array.len()).map(|_| Some(JsonUnionField::JsonNull)).collect(),
+        DataType::Boolean => array.as_boolean().iter().map(|v| v.map(JsonUnionField::Bool)).collect(),
         // Integer types - coerce to i64
-        DataType::Int8 => {
-            let arr = array.as_primitive::<Int8Type>();
-            for i in 0..arr.len() {
-                if arr.is_null(i) {
-                    union.push_none();
-                } else {
-                    union.push(JsonUnionField::Int(i64::from(arr.value(i))));
-                }
-            }
-        }
-        DataType::Int16 => {
-            let arr = array.as_primitive::<Int16Type>();
-            for i in 0..arr.len() {
-                if arr.is_null(i) {
-                    union.push_none();
-                } else {
-                    union.push(JsonUnionField::Int(i64::from(arr.value(i))));
-                }
-            }
-        }
-        DataType::Int32 => {
-            let arr = array.as_primitive::<Int32Type>();
-            for i in 0..arr.len() {
-                if arr.is_null(i) {
-                    union.push_none();
-                } else {
-                    union.push(JsonUnionField::Int(i64::from(arr.value(i))));
-                }
-            }
-        }
-        DataType::Int64 => {
-            let arr = array.as_primitive::<Int64Type>();
-            for i in 0..arr.len() {
-                if arr.is_null(i) {
-                    union.push_none();
-                } else {
-                    union.push(JsonUnionField::Int(arr.value(i)));
-                }
-            }
-        }
-        DataType::UInt8 => {
-            let arr = array.as_primitive::<UInt8Type>();
-            for i in 0..arr.len() {
-                if arr.is_null(i) {
-                    union.push_none();
-                } else {
-                    union.push(JsonUnionField::Int(i64::from(arr.value(i))));
-                }
-            }
-        }
-        DataType::UInt16 => {
-            let arr = array.as_primitive::<UInt16Type>();
-            for i in 0..arr.len() {
-                if arr.is_null(i) {
-                    union.push_none();
-                } else {
-                    union.push(JsonUnionField::Int(i64::from(arr.value(i))));
-                }
-            }
-        }
-        DataType::UInt32 => {
-            let arr = array.as_primitive::<UInt32Type>();
-            for i in 0..arr.len() {
-                if arr.is_null(i) {
-                    union.push_none();
-                } else {
-                    union.push(JsonUnionField::Int(i64::from(arr.value(i))));
-                }
-            }
-        }
+        DataType::Int8 => array
+            .as_primitive::<Int8Type>()
+            .iter()
+            .map(|v| v.map(|x| JsonUnionField::Int(i64::from(x))))
+            .collect(),
+        DataType::Int16 => array
+            .as_primitive::<Int16Type>()
+            .iter()
+            .map(|v| v.map(|x| JsonUnionField::Int(i64::from(x))))
+            .collect(),
+        DataType::Int32 => array
+            .as_primitive::<Int32Type>()
+            .iter()
+            .map(|v| v.map(|x| JsonUnionField::Int(i64::from(x))))
+            .collect(),
+        DataType::Int64 => array
+            .as_primitive::<Int64Type>()
+            .iter()
+            .map(|v| v.map(JsonUnionField::Int))
+            .collect(),
+        DataType::UInt8 => array
+            .as_primitive::<UInt8Type>()
+            .iter()
+            .map(|v| v.map(|x| JsonUnionField::Int(i64::from(x))))
+            .collect(),
+        DataType::UInt16 => array
+            .as_primitive::<UInt16Type>()
+            .iter()
+            .map(|v| v.map(|x| JsonUnionField::Int(i64::from(x))))
+            .collect(),
+        DataType::UInt32 => array
+            .as_primitive::<UInt32Type>()
+            .iter()
+            .map(|v| v.map(|x| JsonUnionField::Int(i64::from(x))))
+            .collect(),
         DataType::UInt64 => {
+            // UInt64 requires explicit loop for fallible conversion
             let arr = array.as_primitive::<UInt64Type>();
+            let mut union = JsonUnion::new(arr.len());
             for i in 0..arr.len() {
                 if arr.is_null(i) {
                     union.push_none();
@@ -254,66 +203,37 @@ fn array_to_json_union(array: &ArrayRef) -> DataFusionResult<JsonUnion> {
                     })?));
                 }
             }
+            return Ok(union);
         }
-
         // Float types - coerce to f64
-        DataType::Float32 => {
-            let arr = array.as_primitive::<Float32Type>();
-            for i in 0..arr.len() {
-                if arr.is_null(i) {
-                    union.push_none();
-                } else {
-                    union.push(JsonUnionField::Float(f64::from(arr.value(i))));
-                }
-            }
-        }
-        DataType::Float64 => {
-            let arr = array.as_primitive::<Float64Type>();
-            for i in 0..arr.len() {
-                if arr.is_null(i) {
-                    union.push_none();
-                } else {
-                    union.push(JsonUnionField::Float(arr.value(i)));
-                }
-            }
-        }
-
+        DataType::Float32 => array
+            .as_primitive::<Float32Type>()
+            .iter()
+            .map(|v| v.map(|x| JsonUnionField::Float(f64::from(x))))
+            .collect(),
+        DataType::Float64 => array
+            .as_primitive::<Float64Type>()
+            .iter()
+            .map(|v| v.map(JsonUnionField::Float))
+            .collect(),
         // String types
-        DataType::Utf8 => {
-            let arr = array.as_string::<i32>();
-            for i in 0..arr.len() {
-                if arr.is_null(i) {
-                    union.push_none();
-                } else {
-                    union.push(JsonUnionField::Str(arr.value(i).to_string()));
-                }
-            }
-        }
-        DataType::LargeUtf8 => {
-            let arr = array.as_string::<i64>();
-            for i in 0..arr.len() {
-                if arr.is_null(i) {
-                    union.push_none();
-                } else {
-                    union.push(JsonUnionField::Str(arr.value(i).to_string()));
-                }
-            }
-        }
-        DataType::Utf8View => {
-            let arr = array.as_string_view();
-            for i in 0..arr.len() {
-                if arr.is_null(i) {
-                    union.push_none();
-                } else {
-                    union.push(JsonUnionField::Str(arr.value(i).to_string()));
-                }
-            }
-        }
-
+        DataType::Utf8 => array
+            .as_string::<i32>()
+            .iter()
+            .map(|v| v.map(|s| JsonUnionField::Str(s.to_string())))
+            .collect(),
+        DataType::LargeUtf8 => array
+            .as_string::<i64>()
+            .iter()
+            .map(|v| v.map(|s| JsonUnionField::Str(s.to_string())))
+            .collect(),
+        DataType::Utf8View => array
+            .as_string_view()
+            .iter()
+            .map(|v| v.map(|s| JsonUnionField::Str(s.to_string())))
+            .collect(),
         dt => {
             return exec_err!("Unsupported array type for json_from_scalar: {:?}", dt);
         }
-    }
-
-    Ok(union)
+    })
 }
