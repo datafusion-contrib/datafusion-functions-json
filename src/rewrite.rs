@@ -143,11 +143,9 @@ fn expr_to_sql_repr(expr: &Expr) -> String {
     match expr {
         Expr::Column(Column {
             name,
-            relation,
+            relation: _,
             spans: _,
-        }) => relation
-            .as_ref()
-            .map_or_else(|| name.clone(), |r| format!("{r}.{name}")),
+        }) => name.clone(),
         Expr::Alias(alias) => alias.name.clone(),
         Expr::Literal(scalar, _) => match scalar {
             ScalarValue::Utf8(Some(v)) | ScalarValue::Utf8View(Some(v)) | ScalarValue::LargeUtf8(Some(v)) => {
