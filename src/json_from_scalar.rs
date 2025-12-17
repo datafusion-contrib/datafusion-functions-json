@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use datafusion::arrow::array::{Array, ArrayRef, AsArray, UnionArray};
 use datafusion::arrow::datatypes::{
-    DataType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, UInt16Type,
-    UInt32Type, UInt64Type, UInt8Type,
+    DataType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, UInt16Type, UInt32Type, UInt64Type,
+    UInt8Type,
 };
 use datafusion::common::{exec_err, plan_err, Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
@@ -73,10 +73,7 @@ impl ScalarUDFImpl for JsonFromScalar {
             | DataType::LargeUtf8
             | DataType::Utf8View => {}
             _ => {
-                return plan_err!(
-                    "Unsupported type for json_from_scalar: {:?}",
-                    arg_types[0]
-                );
+                return plan_err!("Unsupported type for json_from_scalar: {:?}", arg_types[0]);
             }
         }
         Ok(JsonUnion::data_type())
@@ -141,17 +138,14 @@ fn scalar_to_json_union_field(scalar: ScalarValue) -> DataFusionResult<Option<Js
         ScalarValue::Float32(None) | ScalarValue::Float64(None) => Ok(Some(JsonUnionField::JsonNull)),
 
         // String types
-        ScalarValue::Utf8(Some(s))
-        | ScalarValue::LargeUtf8(Some(s))
-        | ScalarValue::Utf8View(Some(s)) => Ok(Some(JsonUnionField::Str(s))),
+        ScalarValue::Utf8(Some(s)) | ScalarValue::LargeUtf8(Some(s)) | ScalarValue::Utf8View(Some(s)) => {
+            Ok(Some(JsonUnionField::Str(s)))
+        }
         ScalarValue::Utf8(None) | ScalarValue::LargeUtf8(None) | ScalarValue::Utf8View(None) => {
             Ok(Some(JsonUnionField::JsonNull))
         }
 
-        _ => exec_err!(
-            "Unsupported type for json_from_scalar: {:?}",
-            scalar.data_type()
-        ),
+        _ => exec_err!("Unsupported type for json_from_scalar: {:?}", scalar.data_type()),
     }
 }
 
