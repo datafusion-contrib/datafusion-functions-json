@@ -2133,12 +2133,12 @@ async fn test_json_from_scalar_alias() {
 #[tokio::test]
 async fn test_json_from_scalar_column() {
     // Test with a column of values
-    let sql = r#"
+    let sql = r"
         WITH data AS (
             SELECT unnest([1, 2, 3]) as val
         )
         SELECT json_from_scalar(val) FROM data
-    "#;
+    ";
     let batches = run_query(sql).await.unwrap();
     let expected = [
         "+----------------------------+",
@@ -2155,12 +2155,12 @@ async fn test_json_from_scalar_column() {
 #[tokio::test]
 async fn test_json_from_scalar_column_with_nulls() {
     // Test with a column that contains null values
-    let sql = r#"
+    let sql = r"
         WITH data AS (
             SELECT unnest([1, NULL, 3]) as val
         )
         SELECT json_from_scalar(val) FROM data
-    "#;
+    ";
     let batches = run_query(sql).await.unwrap();
     let expected = [
         "+----------------------------+",
@@ -2176,12 +2176,12 @@ async fn test_json_from_scalar_column_with_nulls() {
 
 #[tokio::test]
 async fn test_json_from_scalar_string_column() {
-    let sql = r#"
+    let sql = r"
         WITH data AS (
             SELECT unnest(['foo', 'bar', 'baz']) as val
         )
         SELECT json_from_scalar(val) FROM data
-    "#;
+    ";
     let batches = run_query(sql).await.unwrap();
     let expected = [
         "+----------------------------+",
@@ -2197,12 +2197,12 @@ async fn test_json_from_scalar_string_column() {
 
 #[tokio::test]
 async fn test_json_from_scalar_bool_column() {
-    let sql = r#"
+    let sql = r"
         WITH data AS (
             SELECT unnest([true, false, true]) as val
         )
         SELECT json_from_scalar(val) FROM data
-    "#;
+    ";
     let batches = run_query(sql).await.unwrap();
     let expected = [
         "+----------------------------+",
@@ -2214,4 +2214,253 @@ async fn test_json_from_scalar_bool_column() {
         "+----------------------------+",
     ];
     assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_uint64_overflow() {
+    // UInt64 value larger than i64::MAX should error
+    let sql = "select json_from_scalar(arrow_cast(18446744073709551615, 'UInt64'))";
+    let result = run_query(sql).await;
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("out of range"));
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_uint64_max_valid() {
+    // i64::MAX as UInt64 should work
+    let sql = "select json_from_scalar(arrow_cast(9223372036854775807, 'UInt64'))";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::Union(_, _)));
+    assert_eq!(value_repr, "{int=9223372036854775807}");
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_negative_int() {
+    let sql = "select json_from_scalar(-42)";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::Union(_, _)));
+    assert_eq!(value_repr, "{int=-42}");
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_int64_min() {
+    // i64::MIN = -9223372036854775808
+    let sql = "select json_from_scalar(-9223372036854775808)";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::Union(_, _)));
+    assert_eq!(value_repr, "{int=-9223372036854775808}");
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_int64_max() {
+    // i64::MAX = 9223372036854775807
+    let sql = "select json_from_scalar(9223372036854775807)";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::Union(_, _)));
+    assert_eq!(value_repr, "{int=9223372036854775807}");
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_int8() {
+    let sql = "select json_from_scalar(arrow_cast(127, 'Int8'))";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::Union(_, _)));
+    assert_eq!(value_repr, "{int=127}");
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_int8_negative() {
+    let sql = "select json_from_scalar(arrow_cast(-128, 'Int8'))";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::Union(_, _)));
+    assert_eq!(value_repr, "{int=-128}");
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_int16() {
+    let sql = "select json_from_scalar(arrow_cast(32767, 'Int16'))";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::Union(_, _)));
+    assert_eq!(value_repr, "{int=32767}");
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_uint8() {
+    let sql = "select json_from_scalar(arrow_cast(255, 'UInt8'))";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::Union(_, _)));
+    assert_eq!(value_repr, "{int=255}");
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_uint16() {
+    let sql = "select json_from_scalar(arrow_cast(65535, 'UInt16'))";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::Union(_, _)));
+    assert_eq!(value_repr, "{int=65535}");
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_uint32() {
+    let sql = "select json_from_scalar(arrow_cast(4294967295, 'UInt32'))";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::Union(_, _)));
+    assert_eq!(value_repr, "{int=4294967295}");
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_float_infinity() {
+    // Positive infinity
+    let sql = "select json_from_scalar(arrow_cast('Infinity', 'Float64'))";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::Union(_, _)));
+    assert_eq!(value_repr, "{float=inf}");
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_float_neg_infinity() {
+    // Negative infinity
+    let sql = "select json_from_scalar(arrow_cast('-Infinity', 'Float64'))";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::Union(_, _)));
+    assert_eq!(value_repr, "{float=-inf}");
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_float_nan() {
+    // NaN
+    let sql = "select json_from_scalar(arrow_cast('NaN', 'Float64'))";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::Union(_, _)));
+    assert_eq!(value_repr, "{float=NaN}");
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_null_boolean() {
+    let sql = "select json_from_scalar(NULL::boolean)";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::Union(_, _)));
+    assert_eq!(value_repr, "{null=}");
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_null_float() {
+    let sql = "select json_from_scalar(NULL::float)";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::Union(_, _)));
+    assert_eq!(value_repr, "{null=}");
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_null_varchar() {
+    let sql = "select json_from_scalar(NULL::varchar)";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::Union(_, _)));
+    assert_eq!(value_repr, "{null=}");
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_empty_string() {
+    let sql = "select json_from_scalar('')";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::Union(_, _)));
+    assert_eq!(value_repr, "{str=}");
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_large_utf8() {
+    let sql = "select json_from_scalar(arrow_cast('large string', 'LargeUtf8'))";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::Union(_, _)));
+    assert_eq!(value_repr, "{str=large string}");
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_utf8_view() {
+    let sql = "select json_from_scalar(arrow_cast('view string', 'Utf8View'))";
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::Union(_, _)));
+    assert_eq!(value_repr, "{str=view string}");
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_unsupported_type() {
+    // Date32 is not a supported type
+    let sql = "select json_from_scalar(arrow_cast('2021-01-01', 'Date32'))";
+    let result = run_query(sql).await;
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("Unsupported type"));
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_no_args() {
+    let sql = "select json_from_scalar()";
+    let result = run_query(sql).await;
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_too_many_args() {
+    let sql = "select json_from_scalar(1, 2)";
+    let result = run_query(sql).await;
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("requires exactly one argument"));
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_float_column_with_nulls() {
+    let sql = r"
+        WITH data AS (
+            SELECT unnest([1.5, NULL, 3.5]) as val
+        )
+        SELECT json_from_scalar(val) FROM data
+    ";
+    let batches = run_query(sql).await.unwrap();
+    let expected = [
+        "+----------------------------+",
+        "| json_from_scalar(data.val) |",
+        "+----------------------------+",
+        "| {float=1.5}                |",
+        "| {null=}                    |",
+        "| {float=3.5}                |",
+        "+----------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_uint64_column_overflow() {
+    // Array with a UInt64 value that overflows i64
+    let sql = r"
+        WITH data AS (
+            SELECT unnest(arrow_cast([1, 18446744073709551615], 'List(UInt64)')) as val
+        )
+        SELECT json_from_scalar(val) FROM data
+    ";
+    let result = run_query(sql).await;
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("out of range"));
 }

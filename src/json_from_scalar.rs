@@ -28,7 +28,7 @@ pub(super) struct JsonFromScalar {
 impl Default for JsonFromScalar {
     fn default() -> Self {
         Self {
-            signature: Signature::variadic_any(Volatility::Immutable),
+            signature: Signature::any(1, Volatility::Immutable),
             aliases: ["json_from_scalar".to_string(), "scalar_to_json".to_string()],
         }
     }
@@ -91,7 +91,7 @@ impl ScalarUDFImpl for JsonFromScalar {
         match args.args.pop().expect("Expected exactly one argument") {
             ColumnarValue::Scalar(scalar) => {
                 let field = scalar_to_json_union_field(scalar)?;
-                Ok(ColumnarValue::Scalar(JsonUnionField::scalar_value(field)))
+                Ok(ColumnarValue::Scalar(JsonUnionField::scalar_value(Some(field))))
             }
             ColumnarValue::Array(array) => {
                 let union = array_to_json_union(&array)?;
@@ -106,7 +106,7 @@ impl ScalarUDFImpl for JsonFromScalar {
     }
 }
 
-fn scalar_to_json_union_field(scalar: ScalarValue) -> DataFusionResult<Option<JsonUnionField>> {
+fn scalar_to_json_union_field(scalar: ScalarValue) -> DataFusionResult<JsonUnionField> {
     match scalar {
         // Null type / values
         ScalarValue::Null
@@ -123,28 +123,28 @@ fn scalar_to_json_union_field(scalar: ScalarValue) -> DataFusionResult<Option<Js
         | ScalarValue::Float64(None)
         | ScalarValue::Utf8(None)
         | ScalarValue::LargeUtf8(None)
-        | ScalarValue::Utf8View(None) => Ok(Some(JsonUnionField::JsonNull)),
+        | ScalarValue::Utf8View(None) => Ok(JsonUnionField::JsonNull),
         // Boolean type
-        ScalarValue::Boolean(Some(b)) => Ok(Some(JsonUnionField::Bool(b))),
+        ScalarValue::Boolean(Some(b)) => Ok(JsonUnionField::Bool(b)),
         // Integer types - coerce to i64
-        ScalarValue::Int8(Some(v)) => Ok(Some(JsonUnionField::Int(i64::from(v)))),
-        ScalarValue::Int16(Some(v)) => Ok(Some(JsonUnionField::Int(i64::from(v)))),
-        ScalarValue::Int32(Some(v)) => Ok(Some(JsonUnionField::Int(i64::from(v)))),
-        ScalarValue::Int64(Some(v)) => Ok(Some(JsonUnionField::Int(v))),
-        ScalarValue::UInt8(Some(v)) => Ok(Some(JsonUnionField::Int(i64::from(v)))),
-        ScalarValue::UInt16(Some(v)) => Ok(Some(JsonUnionField::Int(i64::from(v)))),
-        ScalarValue::UInt32(Some(v)) => Ok(Some(JsonUnionField::Int(i64::from(v)))),
+        ScalarValue::Int8(Some(v)) => Ok(JsonUnionField::Int(i64::from(v))),
+        ScalarValue::Int16(Some(v)) => Ok(JsonUnionField::Int(i64::from(v))),
+        ScalarValue::Int32(Some(v)) => Ok(JsonUnionField::Int(i64::from(v))),
+        ScalarValue::Int64(Some(v)) => Ok(JsonUnionField::Int(v)),
+        ScalarValue::UInt8(Some(v)) => Ok(JsonUnionField::Int(i64::from(v))),
+        ScalarValue::UInt16(Some(v)) => Ok(JsonUnionField::Int(i64::from(v))),
+        ScalarValue::UInt32(Some(v)) => Ok(JsonUnionField::Int(i64::from(v))),
         ScalarValue::UInt64(Some(v)) => {
-            Ok(Some(JsonUnionField::Int(i64::try_from(v).map_err(|_| {
+            Ok(JsonUnionField::Int(i64::try_from(v).map_err(|_| {
                 exec_datafusion_err!("UInt64 value {} is out of range for i64", v)
-            })?)))
+            })?))
         }
         // Float types - coerce to f64
-        ScalarValue::Float32(Some(v)) => Ok(Some(JsonUnionField::Float(f64::from(v)))),
-        ScalarValue::Float64(Some(v)) => Ok(Some(JsonUnionField::Float(v))),
+        ScalarValue::Float32(Some(v)) => Ok(JsonUnionField::Float(f64::from(v))),
+        ScalarValue::Float64(Some(v)) => Ok(JsonUnionField::Float(v)),
         // String types
         ScalarValue::Utf8(Some(s)) | ScalarValue::LargeUtf8(Some(s)) | ScalarValue::Utf8View(Some(s)) => {
-            Ok(Some(JsonUnionField::Str(s)))
+            Ok(JsonUnionField::Str(s))
         }
         _ => exec_err!("Unsupported type for json_from_scalar: {:?}", scalar.data_type()),
     }
