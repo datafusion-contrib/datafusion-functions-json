@@ -49,7 +49,8 @@ impl ScalarUDFImpl for JsonFromScalar {
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
         // Check that the input type is a scalar type that we can convert to JSON
-        match arg_types[0] { // The signature check ensures we only get one argument
+        // The signature check ensures we only get one argument, index access is safe
+        match arg_types[0] {
             DataType::Null
             | DataType::Boolean
             | DataType::Int8
