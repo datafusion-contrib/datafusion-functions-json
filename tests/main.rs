@@ -934,31 +934,31 @@ async fn test_arrow() {
     let sql = "select name, json_data->'foo' from test";
 
     let expected = [
-        "+------------------+-------------------------+",
-        "| name             | test.json_data -> 'foo' |",
-        "+------------------+-------------------------+",
-        "| object_foo       | {str=abc}               |",
-        "| object_foo_array | {array=[1]}             |",
-        "| object_foo_obj   | {object={}}             |",
-        "| object_foo_null  | {null=}                 |",
-        "| object_bar       | {null=}                 |",
-        "| list_foo         | {null=}                 |",
-        "| invalid_json     | {null=}                 |",
-        "+------------------+-------------------------+",
+        "+------------------+--------------------+",
+        "| name             | json_data -> 'foo' |",
+        "+------------------+--------------------+",
+        "| object_foo       | {str=abc}          |",
+        "| object_foo_array | {array=[1]}        |",
+        "| object_foo_obj   | {object={}}        |",
+        "| object_foo_null  | {null=}            |",
+        "| object_bar       | {null=}            |",
+        "| list_foo         | {null=}            |",
+        "| invalid_json     | {null=}            |",
+        "+------------------+--------------------+",
     ];
 
     let expected_dict = [
-        "+------------------+-------------------------+",
-        "| name             | test.json_data -> 'foo' |",
-        "+------------------+-------------------------+",
-        "| object_foo       | {str=abc}               |",
-        "| object_foo_array | {array=[1]}             |",
-        "| object_foo_obj   | {object={}}             |",
-        "| object_foo_null  |                         |",
-        "| object_bar       |                         |",
-        "| list_foo         |                         |",
-        "| invalid_json     |                         |",
-        "+------------------+-------------------------+",
+        "+------------------+--------------------+",
+        "| name             | json_data -> 'foo' |",
+        "+------------------+--------------------+",
+        "| object_foo       | {str=abc}          |",
+        "| object_foo_array | {array=[1]}        |",
+        "| object_foo_obj   | {object={}}        |",
+        "| object_foo_null  |                    |",
+        "| object_bar       |                    |",
+        "| list_foo         |                    |",
+        "| invalid_json     |                    |",
+        "+------------------+--------------------+",
     ];
 
     for_all_json_datatypes(async |dt| {
@@ -977,7 +977,7 @@ async fn test_plan_arrow() {
     let lines = logical_plan(r"explain select json_data->'foo' from test").await;
 
     let expected = [
-        "Projection: json_get(test.json_data, Utf8(\"foo\")) AS test.json_data -> 'foo'",
+        "Projection: json_get(test.json_data, Utf8(\"foo\")) AS json_data -> 'foo'",
         "  TableScan: test projection=[json_data]",
     ];
 
@@ -989,17 +989,17 @@ async fn test_long_arrow() {
     let sql = "select name, json_data->>'foo' from test";
 
     let expected = [
-        "+------------------+--------------------------+",
-        "| name             | test.json_data ->> 'foo' |",
-        "+------------------+--------------------------+",
-        "| object_foo       | abc                      |",
-        "| object_foo_array | [1]                      |",
-        "| object_foo_obj   | {}                       |",
-        "| object_foo_null  |                          |",
-        "| object_bar       |                          |",
-        "| list_foo         |                          |",
-        "| invalid_json     |                          |",
-        "+------------------+--------------------------+",
+        "+------------------+---------------------+",
+        "| name             | json_data ->> 'foo' |",
+        "+------------------+---------------------+",
+        "| object_foo       | abc                 |",
+        "| object_foo_array | [1]                 |",
+        "| object_foo_obj   | {}                  |",
+        "| object_foo_null  |                     |",
+        "| object_bar       |                     |",
+        "| list_foo         |                     |",
+        "| invalid_json     |                     |",
+        "+------------------+---------------------+",
     ];
 
     for_all_json_datatypes(async |dt| {
@@ -1014,7 +1014,7 @@ async fn test_plan_long_arrow() {
     let lines = logical_plan(r"explain select json_data->>'foo' from test").await;
 
     let expected = [
-        "Projection: json_as_text(test.json_data, Utf8(\"foo\")) AS test.json_data ->> 'foo'",
+        "Projection: json_as_text(test.json_data, Utf8(\"foo\")) AS json_data ->> 'foo'",
         "  TableScan: test projection=[json_data]",
     ];
 
@@ -1026,17 +1026,17 @@ async fn test_long_arrow_eq_str() {
     let sql = r"select name, (json_data->>'foo')='abc' from test";
 
     let expected = [
-        "+------------------+----------------------------------------+",
-        "| name             | test.json_data ->> 'foo' = Utf8(\"abc\") |",
-        "+------------------+----------------------------------------+",
-        "| object_foo       | true                                   |",
-        "| object_foo_array | false                                  |",
-        "| object_foo_obj   | false                                  |",
-        "| object_foo_null  |                                        |",
-        "| object_bar       |                                        |",
-        "| list_foo         |                                        |",
-        "| invalid_json     |                                        |",
-        "+------------------+----------------------------------------+",
+        "+------------------+-----------------------------------+",
+        "| name             | json_data ->> 'foo' = Utf8(\"abc\") |",
+        "+------------------+-----------------------------------+",
+        "| object_foo       | true                              |",
+        "| object_foo_array | false                             |",
+        "| object_foo_obj   | false                             |",
+        "| object_foo_null  |                                   |",
+        "| object_bar       |                                   |",
+        "| list_foo         |                                   |",
+        "| invalid_json     |                                   |",
+        "+------------------+-----------------------------------+",
     ];
 
     for_all_json_datatypes(async |dt| {
@@ -1091,7 +1091,7 @@ async fn test_plan_arrow_cast_int() {
     let lines = logical_plan(r"explain select (json_data->'foo')::int from test").await;
 
     let expected = [
-        "Projection: json_get_int(test.json_data, Utf8(\"foo\")) AS test.json_data -> 'foo'",
+        "Projection: json_get_int(test.json_data, Utf8(\"foo\")) AS json_data -> 'foo'",
         "  TableScan: test projection=[json_data]",
     ];
 
@@ -1103,31 +1103,31 @@ async fn test_arrow_double_nested() {
     let sql = "select name, json_data->'foo'->0 from test";
 
     let expected = [
-        "+------------------+------------------------------+",
-        "| name             | test.json_data -> 'foo' -> 0 |",
-        "+------------------+------------------------------+",
-        "| object_foo       | {null=}                      |",
-        "| object_foo_array | {int=1}                      |",
-        "| object_foo_obj   | {null=}                      |",
-        "| object_foo_null  | {null=}                      |",
-        "| object_bar       | {null=}                      |",
-        "| list_foo         | {null=}                      |",
-        "| invalid_json     | {null=}                      |",
-        "+------------------+------------------------------+",
+        "+------------------+-------------------------+",
+        "| name             | json_data -> 'foo' -> 0 |",
+        "+------------------+-------------------------+",
+        "| object_foo       | {null=}                 |",
+        "| object_foo_array | {int=1}                 |",
+        "| object_foo_obj   | {null=}                 |",
+        "| object_foo_null  | {null=}                 |",
+        "| object_bar       | {null=}                 |",
+        "| list_foo         | {null=}                 |",
+        "| invalid_json     | {null=}                 |",
+        "+------------------+-------------------------+",
     ];
 
     let expected_dict = [
-        "+------------------+------------------------------+",
-        "| name             | test.json_data -> 'foo' -> 0 |",
-        "+------------------+------------------------------+",
-        "| object_foo       |                              |",
-        "| object_foo_array | {int=1}                      |",
-        "| object_foo_obj   |                              |",
-        "| object_foo_null  |                              |",
-        "| object_bar       |                              |",
-        "| list_foo         |                              |",
-        "| invalid_json     |                              |",
-        "+------------------+------------------------------+",
+        "+------------------+-------------------------+",
+        "| name             | json_data -> 'foo' -> 0 |",
+        "+------------------+-------------------------+",
+        "| object_foo       |                         |",
+        "| object_foo_array | {int=1}                 |",
+        "| object_foo_obj   |                         |",
+        "| object_foo_null  |                         |",
+        "| object_bar       |                         |",
+        "| list_foo         |                         |",
+        "| invalid_json     |                         |",
+        "+------------------+-------------------------+",
     ];
 
     for_all_json_datatypes(async |dt| {
@@ -1146,7 +1146,7 @@ async fn test_plan_arrow_double_nested() {
     let lines = logical_plan(r"explain select json_data->'foo'->0 from test").await;
 
     let expected = [
-        "Projection: json_get(test.json_data, Utf8(\"foo\"), Int64(0)) AS test.json_data -> 'foo' -> 0",
+        "Projection: json_get(test.json_data, Utf8(\"foo\"), Int64(0)) AS json_data -> 'foo' -> 0",
         "  TableScan: test projection=[json_data]",
     ];
 
@@ -1157,17 +1157,17 @@ async fn test_plan_arrow_double_nested() {
 async fn test_double_arrow_double_nested() {
     let sql = "select name, json_data->>'foo'->>0 from test";
     let expected = [
-        "+------------------+--------------------------------+",
-        "| name             | test.json_data ->> 'foo' ->> 0 |",
-        "+------------------+--------------------------------+",
-        "| object_foo       |                                |",
-        "| object_foo_array | 1                              |",
-        "| object_foo_obj   |                                |",
-        "| object_foo_null  |                                |",
-        "| object_bar       |                                |",
-        "| list_foo         |                                |",
-        "| invalid_json     |                                |",
-        "+------------------+--------------------------------+",
+        "+------------------+---------------------------+",
+        "| name             | json_data ->> 'foo' ->> 0 |",
+        "+------------------+---------------------------+",
+        "| object_foo       |                           |",
+        "| object_foo_array | 1                         |",
+        "| object_foo_obj   |                           |",
+        "| object_foo_null  |                           |",
+        "| object_bar       |                           |",
+        "| list_foo         |                           |",
+        "| invalid_json     |                           |",
+        "+------------------+---------------------------+",
     ];
 
     for_all_json_datatypes(async |dt| {
@@ -1182,7 +1182,7 @@ async fn test_plan_double_arrow_double_nested() {
     let lines = logical_plan(r"explain select json_data->>'foo'->>0 from test").await;
 
     let expected = [
-        "Projection: json_as_text(test.json_data, Utf8(\"foo\"), Int64(0)) AS test.json_data ->> 'foo' ->> 0",
+        "Projection: json_as_text(test.json_data, Utf8(\"foo\"), Int64(0)) AS json_data ->> 'foo' ->> 0",
         "  TableScan: test projection=[json_data]",
     ];
 
@@ -1193,17 +1193,17 @@ async fn test_plan_double_arrow_double_nested() {
 async fn test_arrow_double_nested_cast() {
     let sql = "select name, (json_data->'foo'->0)::int from test";
     let expected = [
-        "+------------------+------------------------------+",
-        "| name             | test.json_data -> 'foo' -> 0 |",
-        "+------------------+------------------------------+",
-        "| object_foo       |                              |",
-        "| object_foo_array | 1                            |",
-        "| object_foo_obj   |                              |",
-        "| object_foo_null  |                              |",
-        "| object_bar       |                              |",
-        "| list_foo         |                              |",
-        "| invalid_json     |                              |",
-        "+------------------+------------------------------+",
+        "+------------------+-------------------------+",
+        "| name             | json_data -> 'foo' -> 0 |",
+        "+------------------+-------------------------+",
+        "| object_foo       |                         |",
+        "| object_foo_array | 1                       |",
+        "| object_foo_obj   |                         |",
+        "| object_foo_null  |                         |",
+        "| object_bar       |                         |",
+        "| list_foo         |                         |",
+        "| invalid_json     |                         |",
+        "+------------------+-------------------------+",
     ];
 
     for_all_json_datatypes(async |dt| {
@@ -1218,7 +1218,7 @@ async fn test_plan_arrow_double_nested_cast() {
     let lines = logical_plan(r"explain select (json_data->'foo'->0)::int from test").await;
 
     let expected = [
-        "Projection: json_get_int(test.json_data, Utf8(\"foo\"), Int64(0)) AS test.json_data -> 'foo' -> 0",
+        "Projection: json_get_int(test.json_data, Utf8(\"foo\"), Int64(0)) AS json_data -> 'foo' -> 0",
         "  TableScan: test projection=[json_data]",
     ];
 
@@ -1229,17 +1229,17 @@ async fn test_plan_arrow_double_nested_cast() {
 async fn test_double_arrow_double_nested_cast() {
     let sql = "select name, (json_data->>'foo'->>0)::int from test";
     let expected = [
-        "+------------------+--------------------------------+",
-        "| name             | test.json_data ->> 'foo' ->> 0 |",
-        "+------------------+--------------------------------+",
-        "| object_foo       |                                |",
-        "| object_foo_array | 1                              |",
-        "| object_foo_obj   |                                |",
-        "| object_foo_null  |                                |",
-        "| object_bar       |                                |",
-        "| list_foo         |                                |",
-        "| invalid_json     |                                |",
-        "+------------------+--------------------------------+",
+        "+------------------+---------------------------+",
+        "| name             | json_data ->> 'foo' ->> 0 |",
+        "+------------------+---------------------------+",
+        "| object_foo       |                           |",
+        "| object_foo_array | 1                         |",
+        "| object_foo_obj   |                           |",
+        "| object_foo_null  |                           |",
+        "| object_bar       |                           |",
+        "| list_foo         |                           |",
+        "| invalid_json     |                           |",
+        "+------------------+---------------------------+",
     ];
 
     for_all_json_datatypes(async |dt| {
@@ -1255,7 +1255,7 @@ async fn test_plan_double_arrow_double_nested_cast() {
 
     // NB: json_as_text(..)::int is NOT the same as `json_get_int(..)`, hence the cast is not rewritten
     let expected = [
-        "Projection: CAST(json_as_text(test.json_data, Utf8(\"foo\"), Int64(0)) AS test.json_data ->> 'foo' ->> 0 AS Int32)",
+        "Projection: CAST(json_as_text(test.json_data, Utf8(\"foo\"), Int64(0)) AS json_data ->> 'foo' ->> 0 AS Int32)",
         "  TableScan: test projection=[json_data]",
     ];
 
@@ -1321,17 +1321,17 @@ async fn test_lexical_precedence_correct() {
 async fn test_question_mark_contains() {
     let sql = "select name, json_data ? 'foo' from test";
     let expected = [
-        "+------------------+------------------------+",
-        "| name             | test.json_data ? 'foo' |",
-        "+------------------+------------------------+",
-        "| object_foo       | true                   |",
-        "| object_foo_array | true                   |",
-        "| object_foo_obj   | true                   |",
-        "| object_foo_null  | true                   |",
-        "| object_bar       | false                  |",
-        "| list_foo         | false                  |",
-        "| invalid_json     | false                  |",
-        "+------------------+------------------------+",
+        "+------------------+-------------------+",
+        "| name             | json_data ? 'foo' |",
+        "+------------------+-------------------+",
+        "| object_foo       | true              |",
+        "| object_foo_array | true              |",
+        "| object_foo_obj   | true              |",
+        "| object_foo_null  | true              |",
+        "| object_bar       | false             |",
+        "| list_foo         | false             |",
+        "| invalid_json     | false             |",
+        "+------------------+-------------------+",
     ];
 
     for_all_json_datatypes(async |dt| {
@@ -1435,17 +1435,17 @@ async fn test_json_get_union_is_not_null() {
 async fn test_arrow_union_is_null() {
     let sql = "select name, (json_data->'foo') is null from test";
     let expected = [
-        "+------------------+---------------------------------+",
-        "| name             | test.json_data -> 'foo' IS NULL |",
-        "+------------------+---------------------------------+",
-        "| object_foo       | false                           |",
-        "| object_foo_array | false                           |",
-        "| object_foo_obj   | false                           |",
-        "| object_foo_null  | true                            |",
-        "| object_bar       | true                            |",
-        "| list_foo         | true                            |",
-        "| invalid_json     | true                            |",
-        "+------------------+---------------------------------+",
+        "+------------------+----------------------------+",
+        "| name             | json_data -> 'foo' IS NULL |",
+        "+------------------+----------------------------+",
+        "| object_foo       | false                      |",
+        "| object_foo_array | false                      |",
+        "| object_foo_obj   | false                      |",
+        "| object_foo_null  | true                       |",
+        "| object_bar       | true                       |",
+        "| list_foo         | true                       |",
+        "| invalid_json     | true                       |",
+        "+------------------+----------------------------+",
     ];
 
     for_all_json_datatypes(async |dt| {
@@ -1459,17 +1459,17 @@ async fn test_arrow_union_is_null() {
 async fn test_arrow_union_is_not_null() {
     let sql = "select name, (json_data->'foo') is not null from test";
     let expected = [
-        "+------------------+-------------------------------------+",
-        "| name             | test.json_data -> 'foo' IS NOT NULL |",
-        "+------------------+-------------------------------------+",
-        "| object_foo       | true                                |",
-        "| object_foo_array | true                                |",
-        "| object_foo_obj   | true                                |",
-        "| object_foo_null  | false                               |",
-        "| object_bar       | false                               |",
-        "| list_foo         | false                               |",
-        "| invalid_json     | false                               |",
-        "+------------------+-------------------------------------+",
+        "+------------------+--------------------------------+",
+        "| name             | json_data -> 'foo' IS NOT NULL |",
+        "+------------------+--------------------------------+",
+        "| object_foo       | true                           |",
+        "| object_foo_array | true                           |",
+        "| object_foo_obj   | true                           |",
+        "| object_foo_null  | false                          |",
+        "| object_bar       | false                          |",
+        "| list_foo         | false                          |",
+        "| invalid_json     | false                          |",
+        "+------------------+--------------------------------+",
     ];
 
     for_all_json_datatypes(async |dt| {
@@ -1506,14 +1506,14 @@ async fn test_long_arrow_cast() {
     let sql = "select (json_data->>'foo')::int from other";
 
     let expected = [
-        "+---------------------------+",
-        "| other.json_data ->> 'foo' |",
-        "+---------------------------+",
-        "| 42                        |",
-        "| 42                        |",
-        "|                           |",
-        "|                           |",
-        "+---------------------------+",
+        "+---------------------+",
+        "| json_data ->> 'foo' |",
+        "+---------------------+",
+        "| 42                  |",
+        "| 42                  |",
+        "|                     |",
+        "|                     |",
+        "+---------------------+",
     ];
 
     for_all_json_datatypes(async |dt| {
