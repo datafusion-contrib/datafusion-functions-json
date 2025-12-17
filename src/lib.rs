@@ -10,6 +10,7 @@ mod common_macros;
 mod common_union;
 mod json_as_text;
 mod json_contains;
+mod json_from_scalar;
 mod json_get;
 mod json_get_array;
 mod json_get_bool;
@@ -26,6 +27,7 @@ pub use common_union::{JsonUnionEncoder, JsonUnionValue, JSON_UNION_DATA_TYPE};
 pub mod functions {
     pub use crate::json_as_text::json_as_text;
     pub use crate::json_contains::json_contains;
+    pub use crate::json_from_scalar::json_from_scalar;
     pub use crate::json_get::json_get;
     pub use crate::json_get_array::json_get_array;
     pub use crate::json_get_bool::json_get_bool;
@@ -40,6 +42,7 @@ pub mod functions {
 pub mod udfs {
     pub use crate::json_as_text::json_as_text_udf;
     pub use crate::json_contains::json_contains_udf;
+    pub use crate::json_from_scalar::json_from_scalar_udf;
     pub use crate::json_get::json_get_udf;
     pub use crate::json_get_array::json_get_array_udf;
     pub use crate::json_get_bool::json_get_bool_udf;
@@ -73,6 +76,7 @@ pub fn register_all(registry: &mut dyn FunctionRegistry) -> Result<()> {
         json_contains::json_contains_udf(),
         json_length::json_length_udf(),
         json_object_keys::json_object_keys_udf(),
+        json_from_scalar::json_from_scalar_udf(),
     ];
     functions.into_iter().try_for_each(|udf| {
         let existing_udf = registry.register_udf(udf)?;
