@@ -2467,3 +2467,213 @@ async fn test_json_from_scalar_uint64_column_overflow() {
     let err = result.unwrap_err().to_string();
     assert!(err.contains("out of range"));
 }
+
+#[tokio::test]
+async fn test_json_from_scalar_int8_column() {
+    let sql = r"
+        WITH data AS (
+            SELECT unnest(arrow_cast([1, 2, 3], 'List(Int8)')) as val
+        )
+        SELECT json_from_scalar(val) FROM data
+    ";
+    let batches = run_query(sql).await.unwrap();
+    let expected = [
+        "+----------------------------+",
+        "| json_from_scalar(data.val) |",
+        "+----------------------------+",
+        "| {int=1}                    |",
+        "| {int=2}                    |",
+        "| {int=3}                    |",
+        "+----------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_int16_column() {
+    let sql = r"
+        WITH data AS (
+            SELECT unnest(arrow_cast([1, 2, 3], 'List(Int16)')) as val
+        )
+        SELECT json_from_scalar(val) FROM data
+    ";
+    let batches = run_query(sql).await.unwrap();
+    let expected = [
+        "+----------------------------+",
+        "| json_from_scalar(data.val) |",
+        "+----------------------------+",
+        "| {int=1}                    |",
+        "| {int=2}                    |",
+        "| {int=3}                    |",
+        "+----------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_int32_column() {
+    let sql = r"
+        WITH data AS (
+            SELECT unnest(arrow_cast([1, 2, 3], 'List(Int32)')) as val
+        )
+        SELECT json_from_scalar(val) FROM data
+    ";
+    let batches = run_query(sql).await.unwrap();
+    let expected = [
+        "+----------------------------+",
+        "| json_from_scalar(data.val) |",
+        "+----------------------------+",
+        "| {int=1}                    |",
+        "| {int=2}                    |",
+        "| {int=3}                    |",
+        "+----------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_uint8_column() {
+    let sql = r"
+        WITH data AS (
+            SELECT unnest(arrow_cast([1, 2, 3], 'List(UInt8)')) as val
+        )
+        SELECT json_from_scalar(val) FROM data
+    ";
+    let batches = run_query(sql).await.unwrap();
+    let expected = [
+        "+----------------------------+",
+        "| json_from_scalar(data.val) |",
+        "+----------------------------+",
+        "| {int=1}                    |",
+        "| {int=2}                    |",
+        "| {int=3}                    |",
+        "+----------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_uint16_column() {
+    let sql = r"
+        WITH data AS (
+            SELECT unnest(arrow_cast([1, 2, 3], 'List(UInt16)')) as val
+        )
+        SELECT json_from_scalar(val) FROM data
+    ";
+    let batches = run_query(sql).await.unwrap();
+    let expected = [
+        "+----------------------------+",
+        "| json_from_scalar(data.val) |",
+        "+----------------------------+",
+        "| {int=1}                    |",
+        "| {int=2}                    |",
+        "| {int=3}                    |",
+        "+----------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_uint32_column() {
+    let sql = r"
+        WITH data AS (
+            SELECT unnest(arrow_cast([1, 2, 3], 'List(UInt32)')) as val
+        )
+        SELECT json_from_scalar(val) FROM data
+    ";
+    let batches = run_query(sql).await.unwrap();
+    let expected = [
+        "+----------------------------+",
+        "| json_from_scalar(data.val) |",
+        "+----------------------------+",
+        "| {int=1}                    |",
+        "| {int=2}                    |",
+        "| {int=3}                    |",
+        "+----------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_float32_column() {
+    let sql = r"
+        WITH data AS (
+            SELECT unnest(arrow_cast([1.0, 2.0, 3.0], 'List(Float32)')) as val
+        )
+        SELECT json_from_scalar(val) FROM data
+    ";
+    let batches = run_query(sql).await.unwrap();
+    let expected = [
+        "+----------------------------+",
+        "| json_from_scalar(data.val) |",
+        "+----------------------------+",
+        "| {float=1.0}                |",
+        "| {float=2.0}                |",
+        "| {float=3.0}                |",
+        "+----------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_large_utf8_column() {
+    let sql = r"
+        WITH data AS (
+            SELECT unnest(arrow_cast(['foo', 'bar', 'baz'], 'List(LargeUtf8)')) as val
+        )
+        SELECT json_from_scalar(val) FROM data
+    ";
+    let batches = run_query(sql).await.unwrap();
+    let expected = [
+        "+----------------------------+",
+        "| json_from_scalar(data.val) |",
+        "+----------------------------+",
+        "| {str=foo}                  |",
+        "| {str=bar}                  |",
+        "| {str=baz}                  |",
+        "+----------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_utf8_view_column() {
+    let sql = r"
+        WITH data AS (
+            SELECT unnest(arrow_cast(['foo', 'bar', 'baz'], 'List(Utf8View)')) as val
+        )
+        SELECT json_from_scalar(val) FROM data
+    ";
+    let batches = run_query(sql).await.unwrap();
+    let expected = [
+        "+----------------------------+",
+        "| json_from_scalar(data.val) |",
+        "+----------------------------+",
+        "| {str=foo}                  |",
+        "| {str=bar}                  |",
+        "| {str=baz}                  |",
+        "+----------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_from_scalar_null_column() {
+    let sql = r"
+        WITH data AS (
+            SELECT unnest(arrow_cast([NULL, NULL, NULL], 'List(Null)')) as val
+        )
+        SELECT json_from_scalar(val) FROM data
+    ";
+    let batches = run_query(sql).await.unwrap();
+    let expected = [
+        "+----------------------------+",
+        "| json_from_scalar(data.val) |",
+        "+----------------------------+",
+        "| {null=}                    |",
+        "| {null=}                    |",
+        "| {null=}                    |",
+        "+----------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
