@@ -2677,3 +2677,67 @@ async fn test_json_from_scalar_null_column() {
     ];
     assert_batches_eq!(expected, &batches);
 }
+
+#[tokio::test]
+async fn test_json_str_contains_simple() {
+    let sql = r#"select json_str_contains('{"name": "Norm Macdonald"}', 'name', 'Norm')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Boolean, "true".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_str_contains_not_found() {
+    let sql = r#"select json_str_contains('{"name": "Norm Macdonald"}', 'name', 'Norma')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Boolean, "false".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_str_contains_nested() {
+    let sql = r#"select json_str_contains('{"user": {"profile": {"name": "Norm Macdonald"}}}', 'user.profile.name', 'Macdonald')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Boolean, "true".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_str_contains_case_sensitive() {
+    let sql = r#"select json_str_contains('{"title": "Software Engineer"}', 'title', 'engineer')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Boolean, "false".to_string()));
+
+    let sql = r#"select json_str_contains('{"title": "Software Engineer"}', 'title', 'Engineer')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Boolean, "true".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_str_contains_partial_match() {
+    let sql = r#"select json_str_contains('{"email": "jose.aldo@example.com"}', 'email', '@example')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Boolean, "true".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_str_contains_table() {
+    let expected = [
+        "+------------------+----------------------------------------------------------+",
+        "| name             | json_str_contains(test.json_data,Utf8(\"foo\"),Utf8(\"ab\")) |",
+        "+------------------+----------------------------------------------------------+",
+        "| object_foo       | true                                                     |",
+        "| object_foo_array | false                                                    |",
+        "| object_foo_obj   | false                                                    |",
+        "| object_foo_null  | false                                                    |",
+        "| object_bar       | false                                                    |",
+        "| list_foo         | false                                                    |",
+        "| invalid_json     | false                                                    |",
+        "+------------------+----------------------------------------------------------+",
+    ];
+
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype("select name, json_str_contains(json_data, 'foo', 'ab') from test", dt)
+            .await
+            .unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
+}
