@@ -65,7 +65,9 @@ impl ScalarUDFImpl for JsonAsText {
         // then we can push this UDF down to the leaf nodes.
         if args.len() >= 2
             && matches!(args[0], datafusion::logical_expr::ExpressionPlacement::Column)
-            && args[1..].iter().all(|arg| matches!(arg, datafusion::logical_expr::ExpressionPlacement::Literal))
+            && args[1..]
+                .iter()
+                .all(|arg| matches!(arg, datafusion::logical_expr::ExpressionPlacement::Literal))
         {
             datafusion::logical_expr::ExpressionPlacement::MoveTowardsLeafNodes
         } else {
