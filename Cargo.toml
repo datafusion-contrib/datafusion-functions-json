@@ -11,7 +11,7 @@ repository = "https://github.com/datafusion-contrib/datafusion-functions-json/"
 rust-version = "1.88.0"
 
 [dependencies]
-datafusion = { git = "https://github.com/apache/datafusion.git", rev = "d47bd599ee911eb4be018595b860341ff437ccb1", default-features = false, features = [
+datafusion = { version = "52.0.0", default-features = false, features = [
     "sql",
 ] }
 jiter = "0.12.0"
@@ -20,7 +20,7 @@ paste = "1"
 
 [dev-dependencies]
 codspeed-criterion-compat = "2.6"
-datafusion = { git = "https://github.com/apache/datafusion.git", rev = "d47bd599ee911eb4be018595b860341ff437ccb1", default-features = false, features = [
+datafusion = { version = "52.0.0", default-features = false, features = [
     "nested_expressions",
     "sql",
 ] }
@@ -37,3 +37,14 @@ pedantic = { level = "deny", priority = -1 }
 [[bench]]
 name = "main"
 harness = false
+
+
+[patch.crates-io]
+datafusion = { git = "https://github.com/apache/datafusion.git", rev = "d47bd599ee911eb4be018595b860341ff437ccb1" }
+datafusion-common = { git = "https://github.com/apache/datafusion.git", rev = "d47bd599ee911eb4be018595b860341ff437ccb1" }
+datafusion-expr = { git = "https://github.com/apache/datafusion.git", rev = "d47bd599ee911eb4be018595b860341ff437ccb1" }
+datafusion-execution = { git = "https://github.com/apache/datafusion.git", rev = "d47bd599ee911eb4be018595b860341ff437ccb1" }
+datafusion-sql = { git = "https://github.com/apache/datafusion.git", rev = "d47bd599ee911eb4be018595b860341ff437ccb1" }
+datafusion-proto = { git = "https://github.com/apache/datafusion.git", rev = "d47bd599ee911eb4be018595b860341ff437ccb1" }
+datafusion-datasource = { git = "https://github.com/apache/datafusion.git", rev = "d47bd599ee911eb4be018595b860341ff437ccb1" }
+datafusion-physical-expr-adapter = { git = "https://github.com/apache/datafusion.git", rev = "d47bd599ee911eb4be018595b860341ff437ccb1" }
