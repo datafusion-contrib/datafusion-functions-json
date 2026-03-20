@@ -163,14 +163,27 @@ async fn test_json_get_array_with_path() {
 
 #[tokio::test]
 async fn test_json_get_equals() {
-    let e = run_query(r"select name, json_get(json_data, 'foo')='abc' from test")
-        .await
-        .unwrap_err();
-
+    // union comparison now works thanks to the union coercions upport in datafusion
+    // (previously failed with "Cannot infer common argument type for comparison operation Union")
     // see https://github.com/apache/datafusion/issues/10180
-    assert!(e
-        .to_string()
-        .starts_with("Error during planning: Cannot infer common argument type for comparison operation Union"));
+    let batches = run_query(r"select name, json_get(json_data, 'foo')='abc' from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+----------------------------------------------------+",
+        r#"| name             | json_get(test.json_data,Utf8("foo")) = Utf8("abc") |"#,
+        "+------------------+----------------------------------------------------+",
+        "| object_foo       | true                                               |",
+        "| object_foo_array |                                                    |",
+        "| object_foo_obj   |                                                    |",
+        "| object_foo_null  |                                                    |",
+        "| object_bar       |                                                    |",
+        "| list_foo         |                                                    |",
+        "| invalid_json     |                                                    |",
+        "+------------------+----------------------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
 }
 
 #[tokio::test]
