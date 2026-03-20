@@ -54,6 +54,24 @@ impl ScalarUDFImpl for JsonGetJson {
     fn aliases(&self) -> &[String] {
         &self.aliases
     }
+
+    fn placement(
+        &self,
+        args: &[datafusion::logical_expr::ExpressionPlacement],
+    ) -> datafusion::logical_expr::ExpressionPlacement {
+        // If the first argument is a column and the remaining arguments are literals (a path)
+        // then we can push this UDF down to the leaf nodes.
+        if args.len() >= 2
+            && matches!(args[0], datafusion::logical_expr::ExpressionPlacement::Column)
+            && args[1..]
+                .iter()
+                .all(|arg| matches!(arg, datafusion::logical_expr::ExpressionPlacement::Literal))
+        {
+            datafusion::logical_expr::ExpressionPlacement::MoveTowardsLeafNodes
+        } else {
+            datafusion::logical_expr::ExpressionPlacement::KeepInPlace
+        }
+    }
 }
 
 fn jiter_json_get_json(opt_json: Option<&str>, path: &[JsonPath]) -> Result<String, GetError> {
