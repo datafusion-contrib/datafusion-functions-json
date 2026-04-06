@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::sync::Arc;
 
 use datafusion::arrow::array::{ArrayRef, Float64Array, Float64Builder};
@@ -33,10 +32,6 @@ impl Default for JsonGetFloat {
 }
 
 impl ScalarUDFImpl for JsonGetFloat {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn name(&self) -> &str {
         self.aliases[0].as_str()
     }

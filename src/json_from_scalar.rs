@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::sync::Arc;
 
 use datafusion::arrow::array::{Array, ArrayRef, AsArray, UnionArray};
@@ -35,10 +34,6 @@ impl Default for JsonFromScalar {
 }
 
 impl ScalarUDFImpl for JsonFromScalar {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn name(&self) -> &str {
         self.aliases[0].as_str()
     }

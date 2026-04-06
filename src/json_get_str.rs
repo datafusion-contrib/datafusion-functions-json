@@ -1,5 +1,3 @@
-use std::any::Any;
-
 use datafusion::arrow::array::StringArray;
 use datafusion::arrow::datatypes::DataType;
 use datafusion::common::Result as DataFusionResult;
@@ -32,10 +30,6 @@ impl Default for JsonGetStr {
 }
 
 impl ScalarUDFImpl for JsonGetStr {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn name(&self) -> &str {
         self.aliases[0].as_str()
     }
