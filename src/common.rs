@@ -21,7 +21,7 @@ use crate::common_union::{
 /// Downstream consumers (e.g. the rewrite layer, other UDFs) use this to
 /// recognize JSON-bearing string columns.
 pub fn is_json_metadata() -> HashMap<String, String> {
-    HashMap::from_iter(vec![("is_json".to_string(), "true".to_string())])
+    HashMap::from([("is_json".to_string(), "true".to_string())])
 }
 
 /// General implementation of `ScalarUDFImpl::return_type`.
