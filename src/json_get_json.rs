@@ -8,8 +8,9 @@ use datafusion::logical_expr::{
     ColumnarValue, ReturnFieldArgs, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility,
 };
 
-use crate::common::{get_err, invoke, is_json_metadata, jiter_json_find, return_type_check, GetError, JsonPath};
+use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
+use crate::common_union::json_field_metadata;
 
 make_udf_function!(
     JsonGetJson,
@@ -54,7 +55,7 @@ impl ScalarUDFImpl for JsonGetJson {
         let arg_types: Vec<DataType> = args.arg_fields.iter().map(|f| f.data_type().clone()).collect();
         let return_type = self.return_type(&arg_types)?;
         Ok(Arc::new(
-            Field::new(self.name(), return_type, true).with_metadata(is_json_metadata()),
+            Field::new(self.name(), return_type, true).with_metadata(json_field_metadata()),
         ))
     }
 

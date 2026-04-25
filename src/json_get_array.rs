@@ -7,13 +7,12 @@ use datafusion::common::{Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
 use jiter::Peek;
 
-use crate::common::{
-    get_err, invoke, is_json_metadata, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath,
-};
+use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath};
 use crate::common_macros::make_udf_function;
+use crate::common_union::json_field_metadata;
 
 fn list_item_field() -> Field {
-    Field::new("item", DataType::Utf8, true).with_metadata(is_json_metadata())
+    Field::new("item", DataType::Utf8, true).with_metadata(json_field_metadata())
 }
 
 make_udf_function!(

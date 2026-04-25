@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, OnceLock};
 
 use datafusion::arrow::array::{
@@ -8,7 +9,13 @@ use datafusion::arrow::datatypes::{DataType, Field, UnionFields, UnionMode};
 use datafusion::arrow::error::ArrowError;
 use datafusion::common::ScalarValue;
 
-use crate::common::is_json_metadata;
+/// Field metadata used to mark a `Utf8` field as containing raw JSON.
+///
+/// Attach this to any Arrow `Field` whose values are JSON-encoded strings so
+/// downstream consumers can recognize them as JSON rather than opaque text.
+pub fn json_field_metadata() -> HashMap<String, String> {
+    HashMap::from([("is_json".to_string(), "true".to_string())])
+}
 
 pub fn is_json_union(data_type: &DataType) -> bool {
     match data_type {
@@ -170,11 +177,11 @@ fn union_fields() -> UnionFields {
                 (TYPE_ID_STR, Arc::new(Field::new("str", DataType::Utf8, false))),
                 (
                     TYPE_ID_ARRAY,
-                    Arc::new(Field::new("array", DataType::Utf8, false).with_metadata(is_json_metadata())),
+                    Arc::new(Field::new("array", DataType::Utf8, false).with_metadata(json_field_metadata())),
                 ),
                 (
                     TYPE_ID_OBJECT,
-                    Arc::new(Field::new("object", DataType::Utf8, false).with_metadata(is_json_metadata())),
+                    Arc::new(Field::new("object", DataType::Utf8, false).with_metadata(json_field_metadata())),
                 ),
             ])
         })
