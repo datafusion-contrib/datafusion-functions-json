@@ -189,10 +189,7 @@ fn assert_json_field_metadata(metadata: &HashMap<String, String>) {
         metadata.get("ARROW:extension:name").map(String::as_str),
         Some("arrow.json")
     );
-    assert_eq!(
-        metadata.get("ARROW:extension:metadata").map(String::as_str),
-        Some("{}")
-    );
+    assert_eq!(metadata.get("ARROW:extension:metadata").map(String::as_str), Some("{}"));
 }
 
 #[tokio::test]
@@ -640,9 +637,7 @@ fn test_json_get_utf8() {
                 Arc::new(Field::new("arg_3", DataType::LargeUtf8, false)),
             ],
             number_rows: 1,
-            return_field: Arc::new(
-                Field::new("ret_field", DataType::Utf8, false).with_metadata(json_field_metadata()),
-            ),
+            return_field: Arc::new(Field::new("ret_field", DataType::Utf8, false).with_metadata(json_field_metadata())),
             config_options: Arc::new(ConfigOptions::default()),
         })
         .unwrap()
@@ -673,9 +668,7 @@ fn test_json_get_large_utf8() {
                 Arc::new(Field::new("arg_3", DataType::LargeUtf8, false)),
             ],
             number_rows: 1,
-            return_field: Arc::new(
-                Field::new("ret_field", DataType::Utf8, false).with_metadata(json_field_metadata()),
-            ),
+            return_field: Arc::new(Field::new("ret_field", DataType::Utf8, false).with_metadata(json_field_metadata())),
             config_options: Arc::new(ConfigOptions::default()),
         })
         .unwrap()
