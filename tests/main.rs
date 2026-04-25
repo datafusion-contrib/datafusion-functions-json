@@ -162,6 +162,24 @@ async fn test_json_get_array_with_path() {
 }
 
 #[tokio::test]
+async fn test_json_get_array_inner_field_is_json_metadata() {
+    let sql = r#"select json_get_array('[{"a": 1}, {"b": 2}]') as v"#;
+    let batches = run_query(sql).await.unwrap();
+    let schema = batches[0].schema();
+    let field = schema.field(0);
+    let DataType::List(inner_field) = field.data_type() else {
+        panic!("expected List, got {:?}", field.data_type());
+    };
+    assert_eq!(inner_field.metadata().get("is_json").map(String::as_str), Some("true"));
+
+    let array_field = batches[0].column(0).as_any().downcast_ref::<datafusion::arrow::array::ListArray>().unwrap();
+    let DataType::List(produced_inner) = array_field.data_type() else {
+        panic!("expected List in produced array");
+    };
+    assert_eq!(produced_inner.metadata().get("is_json").map(String::as_str), Some("true"));
+}
+
+#[tokio::test]
 async fn test_json_get_equals() {
     let e = run_query(r"select name, json_get(json_data, 'foo')='abc' from test")
         .await
@@ -409,6 +427,15 @@ async fn test_json_get_json_float() {
     let sql = r#"select json_get_json('{"x": 4.2e-1}', 'x')"#;
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Utf8, "4.2e-1".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_get_json_is_json_metadata() {
+    let sql = r#"select json_get_json('{"x": [1, 2]}', 'x') as v"#;
+    let batches = run_query(sql).await.unwrap();
+    let schema = batches[0].schema();
+    let field = schema.field(0);
+    assert_eq!(field.metadata().get("is_json").map(String::as_str), Some("true"));
 }
 
 #[tokio::test]
