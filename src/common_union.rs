@@ -13,8 +13,18 @@ use datafusion::common::ScalarValue;
 ///
 /// Attach this to any Arrow `Field` whose values are JSON-encoded strings so
 /// downstream consumers can recognize them as JSON rather than opaque text.
+///
+/// Emits both the legacy `is_json` key (for back-compat with existing
+/// consumers of this crate) and Arrow's canonical JSON extension type keys
+/// (`ARROW:extension:name` = `arrow.json`, `ARROW:extension:metadata` = `{}`),
+/// see <https://arrow.apache.org/docs/format/CanonicalExtensions.html#json>.
+#[must_use]
 pub fn json_field_metadata() -> HashMap<String, String> {
-    HashMap::from([("is_json".to_string(), "true".to_string())])
+    HashMap::from([
+        ("is_json".to_string(), "true".to_string()),
+        ("ARROW:extension:name".to_string(), "arrow.json".to_string()),
+        ("ARROW:extension:metadata".to_string(), "{}".to_string()),
+    ])
 }
 
 pub fn is_json_union(data_type: &DataType) -> bool {

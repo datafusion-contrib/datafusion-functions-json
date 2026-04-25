@@ -9,6 +9,7 @@ use datafusion::common::ScalarValue;
 use datafusion::config::ConfigOptions;
 use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs};
 use datafusion::prelude::SessionContext;
+use datafusion_functions_json::json_field_metadata;
 use datafusion_functions_json::udfs::json_get_str_udf;
 use utils::{create_context, display_val, logical_plan, run_query, run_query_params};
 
@@ -162,7 +163,7 @@ async fn test_json_get_array_with_path() {
 }
 
 #[tokio::test]
-async fn test_json_get_array_inner_field_is_json_metadata() {
+async fn test_json_get_array_inner_field_json_metadata() {
     let sql = r#"select json_get_array('[{"a": 1}, {"b": 2}]') as v"#;
     let batches = run_query(sql).await.unwrap();
     let schema = batches[0].schema();
@@ -170,7 +171,7 @@ async fn test_json_get_array_inner_field_is_json_metadata() {
     let DataType::List(inner_field) = field.data_type() else {
         panic!("expected List, got {:?}", field.data_type());
     };
-    assert_eq!(inner_field.metadata().get("is_json").map(String::as_str), Some("true"));
+    assert_json_field_metadata(inner_field.metadata());
 
     let array_field = batches[0]
         .column(0)
@@ -180,9 +181,18 @@ async fn test_json_get_array_inner_field_is_json_metadata() {
     let DataType::List(produced_inner) = array_field.data_type() else {
         panic!("expected List in produced array");
     };
+    assert_json_field_metadata(produced_inner.metadata());
+}
+
+fn assert_json_field_metadata(metadata: &HashMap<String, String>) {
+    assert_eq!(metadata.get("is_json").map(String::as_str), Some("true"));
     assert_eq!(
-        produced_inner.metadata().get("is_json").map(String::as_str),
-        Some("true")
+        metadata.get("ARROW:extension:name").map(String::as_str),
+        Some("arrow.json")
+    );
+    assert_eq!(
+        metadata.get("ARROW:extension:metadata").map(String::as_str),
+        Some("{}")
     );
 }
 
@@ -437,12 +447,12 @@ async fn test_json_get_json_float() {
 }
 
 #[tokio::test]
-async fn test_json_get_json_is_json_metadata() {
+async fn test_json_get_json_json_metadata() {
     let sql = r#"select json_get_json('{"x": [1, 2]}', 'x') as v"#;
     let batches = run_query(sql).await.unwrap();
     let schema = batches[0].schema();
     let field = schema.field(0);
-    assert_eq!(field.metadata().get("is_json").map(String::as_str), Some("true"));
+    assert_json_field_metadata(field.metadata());
 }
 
 #[tokio::test]
@@ -632,8 +642,7 @@ fn test_json_get_utf8() {
             ],
             number_rows: 1,
             return_field: Arc::new(
-                Field::new("ret_field", DataType::Utf8, false)
-                    .with_metadata(HashMap::from_iter(vec![("is_json".to_string(), "true".to_string())])),
+                Field::new("ret_field", DataType::Utf8, false).with_metadata(json_field_metadata()),
             ),
             config_options: Arc::new(ConfigOptions::default()),
         })
@@ -666,8 +675,7 @@ fn test_json_get_large_utf8() {
             ],
             number_rows: 1,
             return_field: Arc::new(
-                Field::new("ret_field", DataType::Utf8, false)
-                    .with_metadata(HashMap::from_iter(vec![("is_json".to_string(), "true".to_string())])),
+                Field::new("ret_field", DataType::Utf8, false).with_metadata(json_field_metadata()),
             ),
             config_options: Arc::new(ConfigOptions::default()),
         })
