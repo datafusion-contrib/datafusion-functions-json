@@ -172,11 +172,18 @@ async fn test_json_get_array_inner_field_is_json_metadata() {
     };
     assert_eq!(inner_field.metadata().get("is_json").map(String::as_str), Some("true"));
 
-    let array_field = batches[0].column(0).as_any().downcast_ref::<datafusion::arrow::array::ListArray>().unwrap();
+    let array_field = batches[0]
+        .column(0)
+        .as_any()
+        .downcast_ref::<datafusion::arrow::array::ListArray>()
+        .unwrap();
     let DataType::List(produced_inner) = array_field.data_type() else {
         panic!("expected List in produced array");
     };
-    assert_eq!(produced_inner.metadata().get("is_json").map(String::as_str), Some("true"));
+    assert_eq!(
+        produced_inner.metadata().get("is_json").map(String::as_str),
+        Some("true")
+    );
 }
 
 #[tokio::test]
