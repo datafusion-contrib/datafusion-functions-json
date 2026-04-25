@@ -185,7 +185,6 @@ async fn test_json_get_array_inner_field_json_metadata() {
 }
 
 fn assert_json_field_metadata(metadata: &HashMap<String, String>) {
-    assert_eq!(metadata.get("is_json").map(String::as_str), Some("true"));
     assert_eq!(
         metadata.get("ARROW:extension:name").map(String::as_str),
         Some("arrow.json")

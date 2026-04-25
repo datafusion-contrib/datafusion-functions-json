@@ -14,16 +14,22 @@ use datafusion::common::ScalarValue;
 /// Attach this to any Arrow `Field` whose values are JSON-encoded strings so
 /// downstream consumers can recognize them as JSON rather than opaque text.
 ///
-/// Emits both the legacy `is_json` key (for back-compat with existing
-/// consumers of this crate) and Arrow's canonical JSON extension type keys
+/// Emits Arrow's canonical JSON extension type keys
 /// (`ARROW:extension:name` = `arrow.json`, `ARROW:extension:metadata` = `{}`),
 /// see <https://arrow.apache.org/docs/format/CanonicalExtensions.html#json>.
+///
+/// Also emits a legacy `is_json` = `true` key. This key predates this crate's
+/// adoption of the canonical extension and is non-standard — no other Arrow
+/// tool recognizes it. It is kept only for back-compat with existing
+/// downstream consumers of this crate and will be removed in a future
+/// release; new consumers should key off `ARROW:extension:name` instead.
 #[must_use]
 pub fn json_field_metadata() -> HashMap<String, String> {
     HashMap::from([
-        ("is_json".to_string(), "true".to_string()),
         ("ARROW:extension:name".to_string(), "arrow.json".to_string()),
         ("ARROW:extension:metadata".to_string(), "{}".to_string()),
+        // Legacy, non-standard. Remove in a future release — see doc comment above.
+        ("is_json".to_string(), "true".to_string()),
     ])
 }
 
