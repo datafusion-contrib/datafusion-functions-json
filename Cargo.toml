@@ -17,6 +17,7 @@ datafusion = { version = "53.0.0", default-features = false, features = [
 jiter = "0.13.0"
 log = "0.4"
 paste = "1"
+serde_json = "1"
 
 [dev-dependencies]
 codspeed-criterion-compat = "2.6"
