@@ -2711,3 +2711,75 @@ async fn test_json_from_scalar_null_column() {
     ];
     assert_batches_eq!(expected, &batches);
 }
+
+#[tokio::test]
+async fn test_json_union_to_text() {
+    // Flatten the heterogeneous union from `json_get` to JSON text, exercising the
+    // str / array (list member) / object / null arms in a single batch.
+    let batches = run_query("select name, json_union_to_text(json_get(json_data, 'foo')) as foo from test")
+        .await
+        .unwrap();
+
+    let expected = [
+        "+------------------+-------+",
+        "| name             | foo   |",
+        "+------------------+-------+",
+        "| object_foo       | \"abc\" |",
+        "| object_foo_array | [1]   |",
+        "| object_foo_obj   | {}    |",
+        "| object_foo_null  |       |",
+        "| object_bar       |       |",
+        "| list_foo         |       |",
+        "| invalid_json     |       |",
+        "+------------------+-------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+
+    // The output column is tagged with the canonical Arrow JSON extension type.
+    let field = batches[0].schema().field_with_name("foo").unwrap().clone();
+    assert_eq!(field.data_type(), &DataType::Utf8View);
+    assert_eq!(
+        field.metadata().get("ARROW:extension:name").map(String::as_str),
+        Some("arrow.json")
+    );
+    assert_eq!(field.metadata(), &json_field_metadata());
+}
+
+#[tokio::test]
+async fn test_json_union_to_text_arms() {
+    // array and object arms already hold raw JSON text and pass through verbatim,
+    // including nested structures.
+    let (dt, repr) = display_val(
+        run_query(r#"select json_union_to_text(json_get('{"a": [1, {"b": 2}]}', 'a'))"#)
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(dt, DataType::Utf8View);
+    assert_eq!(repr, r#"[1, {"b": 2}]"#);
+
+    // string scalars are JSON-quoted and escaped (here: embedded quote + newline)
+    let (_, repr) = display_val(
+        run_query(r#"select json_union_to_text(json_get('{"s": "a\"b\n"}', 's'))"#)
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(repr, r#""a\"b\n""#);
+
+    // numbers and booleans render as bare JSON literals
+    let (_, repr) = display_val(
+        run_query(r#"select json_union_to_text(json_get('{"n": 42}', 'n'))"#)
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(repr, "42");
+    let (_, repr) = display_val(
+        run_query(r#"select json_union_to_text(json_get('{"b": true}', 'b'))"#)
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(repr, "true");
+}
