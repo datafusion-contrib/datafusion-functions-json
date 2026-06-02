@@ -2,12 +2,14 @@ use std::any::Any;
 use std::sync::Arc;
 
 use datafusion::arrow::array::{Array, ArrayRef, StringViewBuilder, UnionArray};
-use datafusion::arrow::datatypes::DataType;
+use datafusion::arrow::datatypes::{DataType, Field, FieldRef};
 use datafusion::common::{exec_datafusion_err, exec_err, plan_err, Result as DataFusionResult};
-use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
+use datafusion::logical_expr::{
+    ColumnarValue, ReturnFieldArgs, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility,
+};
 
 use crate::common_macros::make_udf_function;
-use crate::common_union::{is_json_union, JsonUnionEncoder, JsonUnionValue, JSON_UNION_DATA_TYPE};
+use crate::common_union::{is_json_union, json_field_metadata, JsonUnionEncoder, JsonUnionValue, JSON_UNION_DATA_TYPE};
 
 make_udf_function!(
     JsonUnionToText,
@@ -58,6 +60,14 @@ impl ScalarUDFImpl for JsonUnionToText {
             [t] if is_json_union(t) => Ok(DataType::Utf8View),
             _ => plan_err!("json_union_to_text expects a single JSON-union argument, got {arg_types:?}"),
         }
+    }
+
+    fn return_field_from_args(&self, args: ReturnFieldArgs) -> DataFusionResult<FieldRef> {
+        let arg_types: Vec<DataType> = args.arg_fields.iter().map(|f| f.data_type().clone()).collect();
+        let return_type = self.return_type(&arg_types)?;
+        Ok(Arc::new(
+            Field::new(self.name(), return_type, true).with_metadata(json_field_metadata()),
+        ))
     }
 
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DataFusionResult<ColumnarValue> {
@@ -149,6 +159,23 @@ mod tests {
                 Some(r#"{"a":1}"#),               // Object (passthrough)
                 None,                             // None
             ]
+        );
+    }
+
+    #[test]
+    fn output_field_is_marked_as_json() {
+        let udf = JsonUnionToText::default();
+        let arg = Arc::new(Field::new("j", JSON_UNION_DATA_TYPE.clone(), true));
+        let field = udf
+            .return_field_from_args(ReturnFieldArgs {
+                arg_fields: std::slice::from_ref(&arg),
+                scalar_arguments: &[],
+            })
+            .unwrap();
+        assert_eq!(field.data_type(), &DataType::Utf8View);
+        assert_eq!(
+            field.metadata().get("ARROW:extension:name").map(String::as_str),
+            Some("arrow.json")
         );
     }
 }
