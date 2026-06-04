@@ -2,13 +2,18 @@ use std::any::Any;
 use std::sync::Arc;
 
 use datafusion::arrow::array::{ArrayRef, ListBuilder, StringBuilder};
-use datafusion::arrow::datatypes::DataType;
+use datafusion::arrow::datatypes::{DataType, Field};
 use datafusion::common::{Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
 use jiter::Peek;
 
 use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath};
 use crate::common_macros::make_udf_function;
+use crate::common_union::json_field_metadata;
+
+fn list_item_field() -> Field {
+    Field::new("item", DataType::Utf8, true).with_metadata(json_field_metadata())
+}
 
 make_udf_function!(
     JsonGetArray,
@@ -46,15 +51,7 @@ impl ScalarUDFImpl for JsonGetArray {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        return_type_check(
-            arg_types,
-            self.name(),
-            DataType::List(Arc::new(datafusion::arrow::datatypes::Field::new(
-                "item",
-                DataType::Utf8,
-                true,
-            ))),
-        )
+        return_type_check(arg_types, self.name(), DataType::List(Arc::new(list_item_field())))
     }
 
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DataFusionResult<ColumnarValue> {
@@ -96,7 +93,7 @@ impl InvokeResult for BuildArrayList {
 
     fn builder(capacity: usize) -> Self::Builder {
         let values_builder = StringBuilder::new();
-        ListBuilder::with_capacity(values_builder, capacity)
+        ListBuilder::with_capacity(values_builder, capacity).with_field(list_item_field())
     }
 
     fn append_value(builder: &mut Self::Builder, value: Option<Self::Item>) {
@@ -108,7 +105,7 @@ impl InvokeResult for BuildArrayList {
     }
 
     fn scalar(value: Option<Self::Item>) -> ScalarValue {
-        let mut builder = ListBuilder::new(StringBuilder::new());
+        let mut builder = ListBuilder::new(StringBuilder::new()).with_field(list_item_field());
 
         if let Some(array_items) = value {
             for item in array_items {

@@ -1,12 +1,16 @@
 use std::any::Any;
+use std::sync::Arc;
 
 use datafusion::arrow::array::StringArray;
-use datafusion::arrow::datatypes::DataType;
+use datafusion::arrow::datatypes::{DataType, Field, FieldRef};
 use datafusion::common::Result as DataFusionResult;
-use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
+use datafusion::logical_expr::{
+    ColumnarValue, ReturnFieldArgs, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility,
+};
 
 use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
+use crate::common_union::json_field_metadata;
 
 make_udf_function!(
     JsonGetJson,
@@ -45,6 +49,14 @@ impl ScalarUDFImpl for JsonGetJson {
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
         return_type_check(arg_types, self.name(), DataType::Utf8)
+    }
+
+    fn return_field_from_args(&self, args: ReturnFieldArgs) -> DataFusionResult<FieldRef> {
+        let arg_types: Vec<DataType> = args.arg_fields.iter().map(|f| f.data_type().clone()).collect();
+        let return_type = self.return_type(&arg_types)?;
+        Ok(Arc::new(
+            Field::new(self.name(), return_type, true).with_metadata(json_field_metadata()),
+        ))
     }
 
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DataFusionResult<ColumnarValue> {
