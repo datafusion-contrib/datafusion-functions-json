@@ -79,6 +79,10 @@ fn jiter_json_get_bool(json_data: Option<&str>, path: &[JsonPath]) -> Result<boo
     if let Some((mut jiter, peek)) = jiter_json_find(json_data, path) {
         match peek {
             Peek::True | Peek::False => Ok(jiter.known_bool(peek)?),
+            Peek::String => {
+                let s = jiter.known_str()?;
+                s.parse::<bool>().map_err(|_| GetError)
+            }
             _ => get_err!(),
         }
     } else {

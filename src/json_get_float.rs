@@ -104,6 +104,10 @@ impl InvokeResult for Float64Array {
 fn jiter_json_get_float(json_data: Option<&str>, path: &[JsonPath]) -> Result<f64, GetError> {
     if let Some((mut jiter, peek)) = jiter_json_find(json_data, path) {
         match peek {
+            Peek::String => {
+                let s = jiter.known_str()?;
+                s.parse::<f64>().map_err(|_| GetError)
+            }
             // numbers are represented by everything else in peek, hence doing it this way
             Peek::Null
             | Peek::True
@@ -111,7 +115,6 @@ fn jiter_json_get_float(json_data: Option<&str>, path: &[JsonPath]) -> Result<f6
             | Peek::Minus
             | Peek::Infinity
             | Peek::NaN
-            | Peek::String
             | Peek::Array
             | Peek::Object => get_err!(),
             _ => match jiter.known_number(peek)? {

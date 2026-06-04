@@ -104,14 +104,16 @@ impl InvokeResult for Int64Array {
 fn jiter_json_get_int(json_data: Option<&str>, path: &[JsonPath]) -> Result<i64, GetError> {
     if let Some((mut jiter, peek)) = jiter_json_find(json_data, path) {
         match peek {
-            // numbers are represented by everything else in peek, hence doing it this way
+            Peek::String => {
+                let s = jiter.known_str()?;
+                s.parse::<i64>().map_err(|_| GetError)
+            }
             Peek::Null
             | Peek::True
             | Peek::False
             | Peek::Minus
             | Peek::Infinity
             | Peek::NaN
-            | Peek::String
             | Peek::Array
             | Peek::Object => get_err!(),
             _ => match jiter.known_int(peek)? {
