@@ -38,7 +38,7 @@ fn optimise_json_get_cast(cast: &Cast) -> Option<Transformed<Expr>> {
     if scalar_func.func.name() != "json_get" {
         return None;
     }
-    let func = match &cast.data_type {
+    let func = match cast.field.data_type() {
         DataType::Boolean => crate::json_get_bool::json_get_bool_udf(),
         DataType::Float64 | DataType::Float32 | DataType::Decimal128(_, _) | DataType::Decimal256(_, _) => {
             crate::json_get_float::json_get_float_udf()
