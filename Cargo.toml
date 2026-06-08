@@ -48,8 +48,3 @@ harness = false
 # datafusion-proto = { git = "https://github.com/apache/datafusion.git", rev = "d47bd599ee911eb4be018595b860341ff437ccb1" }
 # datafusion-datasource = { git = "https://github.com/apache/datafusion.git", rev = "d47bd599ee911eb4be018595b860341ff437ccb1" }
 # datafusion-physical-expr-adapter = { git = "https://github.com/apache/datafusion.git", rev = "d47bd599ee911eb4be018595b860341ff437ccb1" }
-
-# TEMP — remove before merging. DataFusion 54 is not yet published to crates.io,
-# so build/test against the release-candidate branch to confirm the upgrade works.
-[patch.crates-io]
-datafusion = { git = "https://github.com/apache/datafusion.git", branch = "branch-54" }
