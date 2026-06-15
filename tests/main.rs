@@ -748,6 +748,114 @@ fn test_json_get_large_utf8() {
     assert_eq!(sv, ScalarValue::Utf8(Some("x".to_string())));
 }
 
+/// A `NullArray` input (Arrow `DataType::Null`, as opposed to a string array containing null
+/// values) must yield an all-null result rather than erroring with "unexpected json array type
+/// Null". This mirrors the runtime condition where a column declared as a string type
+/// materialises as a `NullArray` for a given batch.
+#[test]
+fn test_json_as_text_null_array_scalar_path() {
+    use datafusion::arrow::array::NullArray;
+    use datafusion_functions_json::udfs::json_as_text_udf;
+
+    let udf = json_as_text_udf();
+    let attributes: ArrayRef = Arc::new(NullArray::new(3)); // DataType::Null
+
+    let ColumnarValue::Array(result) = udf
+        .invoke_with_args(ScalarFunctionArgs {
+            args: vec![
+                ColumnarValue::Array(attributes),
+                ColumnarValue::Scalar(ScalarValue::Utf8(Some("client_name".into()))),
+            ],
+            arg_fields: vec![
+                Arc::new(Field::new("attributes", DataType::Null, true)),
+                Arc::new(Field::new("path", DataType::Utf8, true)),
+            ],
+            number_rows: 3,
+            return_field: Arc::new(Field::new("result", DataType::Utf8, true)),
+            config_options: Arc::new(ConfigOptions::default()),
+        })
+        .unwrap()
+    else {
+        panic!("expected array")
+    };
+
+    assert_eq!(result.len(), 3);
+    assert_eq!(result.null_count(), 3);
+    assert_eq!(result.data_type(), &DataType::Utf8);
+}
+
+/// As above but exercising the array/array-path kernel (`invoke_array_array`): both the JSON
+/// argument and the path argument are arrays, with the JSON argument being a `NullArray`.
+#[test]
+fn test_json_get_int_null_array_array_path() {
+    use datafusion::arrow::array::{Int64Array, NullArray, StringArray};
+    use datafusion_functions_json::udfs::json_get_int_udf;
+
+    let udf = json_get_int_udf();
+    let attributes: ArrayRef = Arc::new(NullArray::new(2)); // DataType::Null
+    let paths: ArrayRef = Arc::new(StringArray::from(vec!["a", "b"]));
+
+    let ColumnarValue::Array(result) = udf
+        .invoke_with_args(ScalarFunctionArgs {
+            args: vec![ColumnarValue::Array(attributes), ColumnarValue::Array(paths)],
+            arg_fields: vec![
+                Arc::new(Field::new("attributes", DataType::Null, true)),
+                Arc::new(Field::new("path", DataType::Utf8, true)),
+            ],
+            number_rows: 2,
+            return_field: Arc::new(Field::new("result", DataType::Int64, true)),
+            config_options: Arc::new(ConfigOptions::default()),
+        })
+        .unwrap()
+    else {
+        panic!("expected array")
+    };
+
+    assert_eq!(result.len(), 2);
+    assert_eq!(result.null_count(), 2);
+    assert_eq!(result.as_any().downcast_ref::<Int64Array>().unwrap().len(), 2);
+}
+
+/// `json_get` returns the JSON union type; a `NullArray` input must round-trip to an all-null
+/// union result.
+#[test]
+fn test_json_get_null_array_union_return() {
+    use datafusion::arrow::array::{NullArray, UnionArray};
+    use datafusion_functions_json::udfs::json_get_udf;
+
+    let udf = json_get_udf();
+    let attributes: ArrayRef = Arc::new(NullArray::new(4)); // DataType::Null
+
+    // json_get returns the JSON union type; derive it from the udf rather than hard-coding it.
+    // The declared (plan-time) type is a string even though the runtime array is a NullArray.
+    let return_type = udf.return_type(&[DataType::Utf8, DataType::Utf8]).unwrap();
+
+    let ColumnarValue::Array(result) = udf
+        .invoke_with_args(ScalarFunctionArgs {
+            args: vec![
+                ColumnarValue::Array(attributes),
+                ColumnarValue::Scalar(ScalarValue::Utf8(Some("a".into()))),
+            ],
+            arg_fields: vec![
+                Arc::new(Field::new("attributes", DataType::Null, true)),
+                Arc::new(Field::new("path", DataType::Utf8, true)),
+            ],
+            number_rows: 4,
+            return_field: Arc::new(Field::new("result", return_type, true).with_metadata(json_field_metadata())),
+            config_options: Arc::new(ConfigOptions::default()),
+        })
+        .unwrap()
+    else {
+        panic!("expected array")
+    };
+
+    // A union array encodes nulls via the "null" union member (type id 0), not a null buffer,
+    // so check that every row points at the null member rather than relying on null_count().
+    assert_eq!(result.len(), 4);
+    let union = result.as_any().downcast_ref::<UnionArray>().unwrap();
+    assert!(union.type_ids().iter().all(|&id| id == 0), "expected all-null union");
+}
+
 #[tokio::test]
 async fn test_json_get_union_scalar() {
     let sql = r#"select json_get(json_get('{"x": {"y": 1}}', 'x'), 'y') as v"#;
