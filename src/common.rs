@@ -181,6 +181,14 @@ pub fn invoke<R: InvokeResult>(
     }
 }
 
+fn null_result<R: InvokeResult>(len: usize) -> DataFusionResult<ArrayRef> {
+    let mut builder = R::builder(len);
+    for _ in 0..len {
+        R::append_value(&mut builder, None);
+    }
+    R::finish(builder)
+}
+
 fn invoke_array_array<R: InvokeResult>(
     json_array: &ArrayRef,
     path_array: &ArrayRef,
@@ -236,6 +244,7 @@ fn invoke_array_array<R: InvokeResult>(
         DataType::Utf8 => zip_apply::<R>(json_array.as_string::<i32>(), path_array, jiter_find),
         DataType::LargeUtf8 => zip_apply::<R>(json_array.as_string::<i64>(), path_array, jiter_find),
         DataType::Utf8View => zip_apply::<R>(json_array.as_string_view(), path_array, jiter_find),
+        DataType::Null => null_result::<R>(json_array.len()),
         other => {
             if let Some(string_array) = nested_json_array(json_array, is_object_lookup_array(path_array.data_type())) {
                 zip_apply::<R>(string_array, path_array, jiter_find)
@@ -319,6 +328,7 @@ fn invoke_array_scalars<R: InvokeResult>(
         DataType::Utf8 => inner::<R>(json_array.as_string::<i32>(), path, jiter_find),
         DataType::LargeUtf8 => inner::<R>(json_array.as_string::<i64>(), path, jiter_find),
         DataType::Utf8View => inner::<R>(json_array.as_string_view(), path, jiter_find),
+        DataType::Null => null_result::<R>(json_array.len()),
         other => {
             if let Some(string_array) = nested_json_array(json_array, is_object_lookup(path)) {
                 inner::<R>(string_array, path, jiter_find)
