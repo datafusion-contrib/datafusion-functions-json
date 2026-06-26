@@ -35,7 +35,7 @@ impl FunctionRewrite for JsonFunctionRewriter {
 /// extracting the right value type from JSON without the need to materialize the JSON union.
 fn optimise_json_get_cast(cast: &Cast) -> Option<Transformed<Expr>> {
     let scalar_func = extract_scalar_function(&cast.expr)?;
-    if scalar_func.func.name() != "json_get" {
+    if !is_json_get(scalar_func) {
         return None;
     }
     let func = match cast.field.data_type() {
@@ -71,9 +71,9 @@ fn unnest_json_calls(func: &ScalarFunction) -> Option<Transformed<Expr>> {
     let first_arg = outer_args_iter.next()?;
     let inner_func = extract_scalar_function(first_arg)?;
 
-    // both json_get and json_as_text would produce new JSON to be processed by the outer
-    // function so can be inlined
-    if !matches!(inner_func.func.name(), "json_get" | "json_as_text") {
+    // only json_get preserves a JSON value for the outer function. json_as_text returns SQL text,
+    // so flattening through it changes semantics for JSON strings that contain JSON.
+    if !is_json_get(inner_func) {
         return None;
     }
 
@@ -88,6 +88,10 @@ fn unnest_json_calls(func: &ScalarFunction) -> Option<Transformed<Expr>> {
     } else {
         None
     }
+}
+
+fn is_json_get(func: &ScalarFunction) -> bool {
+    func.func.inner().is::<crate::json_get::JsonGet>()
 }
 
 fn extract_scalar_function(expr: &Expr) -> Option<&ScalarFunction> {
