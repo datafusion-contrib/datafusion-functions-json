@@ -875,6 +875,22 @@ async fn test_json_get_union_scalar() {
 }
 
 #[tokio::test]
+async fn test_json_as_text_nested_json_string() {
+    let sql = r#"select json_as_text(json_as_text('{"user_id":"{\"device_id\":\"abc\"}"}', 'user_id'), 'device_id')"#;
+    let batches = run_query(sql).await.unwrap();
+
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "abc".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_get_str_nested_json_string() {
+    let sql = r#"select json_get_str(json_as_text('{"user_id":"{\"device_id\":\"abc\"}"}', 'user_id'), 'device_id')"#;
+    let batches = run_query(sql).await.unwrap();
+
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "abc".to_string()));
+}
+
+#[tokio::test]
 async fn test_json_get_nested_collapsed() {
     let sql = "select name, json_get(json_get(json_data, 'foo'), 0) as v from test";
     let expected = [
@@ -1393,7 +1409,7 @@ async fn test_plan_double_arrow_double_nested() {
     let lines = logical_plan(r"explain select json_data->>'foo'->>0 from test").await;
 
     let expected = [
-        "Projection: json_as_text(test.json_data, Utf8(\"foo\"), Int64(0)) AS json_data ->> 'foo' ->> 0",
+        "Projection: json_as_text(json_as_text(test.json_data, Utf8(\"foo\")), Int64(0)) AS json_data ->> 'foo' ->> 0",
         "  TableScan: test projection=[json_data]",
     ];
 
@@ -1466,7 +1482,7 @@ async fn test_plan_double_arrow_double_nested_cast() {
 
     // NB: json_as_text(..)::int is NOT the same as `json_get_int(..)`, hence the cast is not rewritten
     let expected = [
-        "Projection: CAST(json_as_text(test.json_data, Utf8(\"foo\"), Int64(0)) AS Int32) AS json_data ->> 'foo' ->> 0",
+        "Projection: CAST(json_as_text(json_as_text(test.json_data, Utf8(\"foo\")), Int64(0)) AS Int32) AS json_data ->> 'foo' ->> 0",
         "  TableScan: test projection=[json_data]",
     ];
 
