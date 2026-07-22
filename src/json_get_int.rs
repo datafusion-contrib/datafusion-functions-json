@@ -103,14 +103,11 @@ fn jiter_json_get_int(json_data: Option<&str>, path: &[JsonPath]) -> Result<i64,
                 let s = jiter.known_str()?;
                 s.parse::<i64>().map_err(|_| GetError)
             }
-            Peek::Null
-            | Peek::True
-            | Peek::False
-            | Peek::Minus
-            | Peek::Infinity
-            | Peek::NaN
-            | Peek::Array
-            | Peek::Object => get_err!(),
+            // numbers are represented by everything else in peek (including `Minus`), hence doing
+            // it this way
+            Peek::Null | Peek::True | Peek::False | Peek::Infinity | Peek::NaN | Peek::Array | Peek::Object => {
+                get_err!()
+            }
             _ => match jiter.known_int(peek)? {
                 NumberInt::Int(i) => Ok(i),
                 // jiter returns `BigInt` for any integer its fast path couldn't decode, which

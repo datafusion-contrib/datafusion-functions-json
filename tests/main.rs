@@ -456,6 +456,32 @@ async fn test_json_get_float_string_parse() {
 }
 
 #[tokio::test]
+async fn test_json_get_negative_number() {
+    let sql = r#"select json_get_int('{"foo": -42}', 'foo')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Int64, "-42".to_string()));
+
+    let sql = r#"select json_get_float('{"foo": -4.2}', 'foo')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Float64, "-4.2".to_string()));
+
+    // negative int read as a float
+    let sql = r#"select json_get_float('{"foo": -42}', 'foo')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Float64, "-42.0".to_string()));
+
+    // a negative float is still not an int
+    let sql = r#"select json_get_int('{"foo": -4.2}', 'foo')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Int64, String::new()));
+
+    // negative numbers nested behind a path
+    let sql = r#"select json_get_int('{"foo": [1, {"bar": -7}]}', 'foo', 1, 'bar')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Int64, "-7".to_string()));
+}
+
+#[tokio::test]
 async fn test_json_get_bool_string_parse() {
     // string "true"
     let batches = run_query(r#"select json_get_bool('{"foo": "true"}', 'foo')"#)
