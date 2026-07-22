@@ -113,7 +113,9 @@ fn jiter_json_get_int(json_data: Option<&str>, path: &[JsonPath]) -> Result<i64,
             | Peek::Object => get_err!(),
             _ => match jiter.known_int(peek)? {
                 NumberInt::Int(i) => Ok(i),
-                NumberInt::BigInt(_) => get_err!(),
+                // jiter returns `BigInt` for any integer its fast path couldn't decode, which
+                // includes values that do fit in `i64`, hence the conversion attempt
+                NumberInt::BigInt(b) => i64::try_from(b).map_err(|_| GetError),
             },
         }
     } else {
