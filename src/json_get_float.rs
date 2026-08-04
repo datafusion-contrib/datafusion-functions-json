@@ -103,8 +103,8 @@ fn jiter_json_get_float(json_data: Option<&str>, path: &[JsonPath]) -> Result<f6
                 let s = jiter.known_str()?;
                 s.parse::<f64>().map_err(|_| GetError)
             }
-            // numbers are represented by everything else in peek (including `Minus`), hence doing
-            // it this way
+            // Valid JSON numbers are represented by all other `Peek` variants (including `Minus`),
+            // so we only need to explicitly reject non-numeric values (and non-standard `Infinity`/`NaN`).
             Peek::Null | Peek::True | Peek::False | Peek::Infinity | Peek::NaN | Peek::Array | Peek::Object => {
                 get_err!()
             }
