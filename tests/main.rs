@@ -194,14 +194,26 @@ fn assert_json_field_metadata(metadata: &HashMap<String, String>) {
 
 #[tokio::test]
 async fn test_json_get_equals() {
-    let e = run_query(r"select name, json_get(json_data, 'foo')='abc' from test")
+    // DataFusion 55 coerces the JSON union against the literal, so this plans and runs without an
+    // explicit cast, see https://github.com/apache/datafusion/issues/10180
+    let batches = run_query(r"select name, json_get(json_data, 'foo')='abc' from test")
         .await
-        .unwrap_err();
+        .unwrap();
 
-    // see https://github.com/apache/datafusion/issues/10180
-    assert!(e
-        .to_string()
-        .starts_with("Error during planning: Cannot infer common argument type for comparison operation Union"));
+    let expected = [
+        "+------------------+----------------------------------------------------+",
+        "| name             | json_get(test.json_data,Utf8(\"foo\")) = Utf8(\"abc\") |",
+        "+------------------+----------------------------------------------------+",
+        "| object_foo       | true                                               |",
+        "| object_foo_array |                                                    |",
+        "| object_foo_obj   |                                                    |",
+        "| object_foo_null  |                                                    |",
+        "| object_bar       |                                                    |",
+        "| list_foo         |                                                    |",
+        "| invalid_json     |                                                    |",
+        "+------------------+----------------------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
 }
 
 #[tokio::test]
