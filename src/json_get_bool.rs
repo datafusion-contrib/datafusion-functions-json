@@ -39,7 +39,7 @@ impl ScalarUDFImpl for JsonGetBool {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        return_type_check(arg_types, self.name(), DataType::Boolean).map(|_| DataType::Boolean)
+        return_type_check::<BooleanArray>(arg_types, self.name(), DataType::Boolean).map(|_| DataType::Boolean)
     }
 
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DataFusionResult<ColumnarValue> {

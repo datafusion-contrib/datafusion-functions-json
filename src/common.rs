@@ -18,13 +18,23 @@ use crate::common_union::{
 
 /// General implementation of `ScalarUDFImpl::return_type`.
 ///
+/// # Type parameters
+///
+/// * `R` - the `InvokeResult` implementation the function passes to [`invoke`]; its
+///   `ACCEPT_DICT_RETURN` decides whether a dictionary input produces a dictionary output, so reading
+///   it here keeps the declared return type in step with what `invoke` actually builds
+///
 /// # Arguments
 ///
 /// * `args` - The arguments to the function
 /// * `fn_name` - The name of the function
 /// * `value_type` - The general return type of the function, might be wrapped in a dictionary depending
 ///   on the first argument
-pub fn return_type_check(args: &[DataType], fn_name: &str, value_type: DataType) -> DataFusionResult<DataType> {
+pub fn return_type_check<R: InvokeResult>(
+    args: &[DataType],
+    fn_name: &str,
+    value_type: DataType,
+) -> DataFusionResult<DataType> {
     let Some(first) = args.first() else {
         return plan_err!("The '{fn_name}' function requires one or more arguments.");
     };
@@ -43,7 +53,9 @@ pub fn return_type_check(args: &[DataType], fn_name: &str, value_type: DataType)
             )
         }
     })?;
-    if first_dict_key_type.is_some() && !value_type.is_primitive() {
+    // this must mirror the dictionary handling in `invoke_array_array` and `invoke_array_scalars`,
+    // which wrap the result back into a dictionary if and only if `R::ACCEPT_DICT_RETURN` is set
+    if first_dict_key_type.is_some() && R::ACCEPT_DICT_RETURN {
         Ok(DataType::Dictionary(Box::new(DataType::Int64), Box::new(value_type)))
     } else {
         Ok(value_type)

@@ -41,7 +41,7 @@ impl ScalarUDFImpl for JsonObjectKeys {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        return_type_check(
+        return_type_check::<BuildListArray>(
             arg_types,
             self.name(),
             DataType::List(Arc::new(Field::new("item", DataType::Utf8, true))),

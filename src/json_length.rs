@@ -41,7 +41,7 @@ impl ScalarUDFImpl for JsonLength {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        return_type_check(arg_types, self.name(), DataType::UInt64)
+        return_type_check::<UInt64Array>(arg_types, self.name(), DataType::UInt64)
     }
 
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DataFusionResult<ColumnarValue> {

@@ -46,7 +46,7 @@ impl ScalarUDFImpl for JsonGetArray {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        return_type_check(arg_types, self.name(), DataType::List(Arc::new(list_item_field())))
+        return_type_check::<BuildArrayList>(arg_types, self.name(), DataType::List(Arc::new(list_item_field())))
     }
 
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DataFusionResult<ColumnarValue> {

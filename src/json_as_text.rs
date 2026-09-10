@@ -41,7 +41,7 @@ impl ScalarUDFImpl for JsonAsText {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        return_type_check(arg_types, self.name(), DataType::Utf8)
+        return_type_check::<StringArray>(arg_types, self.name(), DataType::Utf8)
     }
 
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DataFusionResult<ColumnarValue> {
