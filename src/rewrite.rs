@@ -61,10 +61,11 @@ fn optimise_json_get(cast_to: &DataType, cast_expr: &Expr) -> Option<Folded> {
         return None;
     }
     let (func, returns) = typed_accessor(cast_to)?;
-    let accessor = Expr::ScalarFunction(ScalarFunction {
-        func,
-        args: scalar_func.args.clone(),
-    });
+    let mut args = scalar_func.args.clone();
+    if matches!(cast_to, DataType::Decimal128(_, _) | DataType::Decimal256(_, _)) {
+        args.push(Expr::Literal(ScalarValue::Utf8(Some(cast_to.to_string())), None));
+    }
+    let accessor = Expr::ScalarFunction(ScalarFunction { func, args });
     Some(if returns == *cast_to {
         Folded::Exact(accessor)
     } else {
@@ -76,8 +77,9 @@ fn optimise_json_get(cast_to: &DataType, cast_expr: &Expr) -> Option<Folded> {
 fn typed_accessor(cast_to: &DataType) -> Option<(Arc<ScalarUDF>, DataType)> {
     Some(match cast_to {
         DataType::Boolean => (crate::json_get_bool::json_get_bool_udf(), DataType::Boolean),
-        DataType::Float64 | DataType::Float32 | DataType::Decimal128(_, _) | DataType::Decimal256(_, _) => {
-            (crate::json_get_float::json_get_float_udf(), DataType::Float64)
+        DataType::Float64 | DataType::Float32 => (crate::json_get_float::json_get_float_udf(), DataType::Float64),
+        DataType::Decimal128(_, _) | DataType::Decimal256(_, _) => {
+            (crate::json_get_decimal::json_get_decimal_udf(), cast_to.clone())
         }
         DataType::Int64 | DataType::Int32 => (crate::json_get_int::json_get_int_udf(), DataType::Int64),
         DataType::Utf8 | DataType::Utf8View | DataType::LargeUtf8 => {

@@ -14,6 +14,7 @@ mod json_from_scalar;
 mod json_get;
 mod json_get_array;
 mod json_get_bool;
+mod json_get_decimal;
 mod json_get_float;
 mod json_get_int;
 mod json_get_json;
@@ -70,6 +71,7 @@ pub fn register_all(registry: &mut dyn FunctionRegistry) -> Result<()> {
     let functions: Vec<Arc<ScalarUDF>> = vec![
         json_get::json_get_udf(),
         json_get_bool::json_get_bool_udf(),
+        json_get_decimal::json_get_decimal_udf(),
         json_get_float::json_get_float_udf(),
         json_get_int::json_get_int_udf(),
         json_get_json::json_get_json_udf(),

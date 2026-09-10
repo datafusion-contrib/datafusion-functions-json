@@ -69,6 +69,7 @@ enum Fold {
 struct Target {
     sql: &'static str,
     accessor: &'static str,
+    accessor_type: Option<&'static str>,
     sql_cast: Fold,
 }
 
@@ -76,22 +77,26 @@ const TARGETS: &[Target] = &[
     Target {
         sql: "bigint",
         accessor: "json_get_int",
+        accessor_type: None,
         sql_cast: Fold::Exact,
     },
     Target {
         sql: "double",
         accessor: "json_get_float",
+        accessor_type: None,
         sql_cast: Fold::Exact,
     },
     Target {
         sql: "boolean",
         accessor: "json_get_bool",
+        accessor_type: None,
         sql_cast: Fold::Exact,
     },
     // SQL `VARCHAR` is `Utf8View` in DataFusion, but `json_get_str` returns `Utf8`.
     Target {
         sql: "varchar",
         accessor: "json_get_str",
+        accessor_type: None,
         sql_cast: Fold::Narrowing,
     },
     // Narrowing targets: the type asked for is narrower than what the accessor returns, so the
@@ -99,22 +104,38 @@ const TARGETS: &[Target] = &[
     Target {
         sql: "int",
         accessor: "json_get_int",
+        accessor_type: None,
         sql_cast: Fold::Narrowing,
     },
     Target {
         sql: "real",
         accessor: "json_get_float",
+        accessor_type: None,
         sql_cast: Fold::Narrowing,
     },
     Target {
         sql: "decimal(10,2)",
-        accessor: "json_get_float",
-        sql_cast: Fold::Narrowing,
+        accessor: "json_get_decimal",
+        accessor_type: Some("Decimal128(10, 2)"),
+        sql_cast: Fold::Exact,
+    },
+    Target {
+        sql: "decimal(20,0)",
+        accessor: "json_get_decimal",
+        accessor_type: Some("Decimal128(20, 0)"),
+        sql_cast: Fold::Exact,
+    },
+    Target {
+        sql: "decimal(50,0)",
+        accessor: "json_get_decimal",
+        accessor_type: Some("Decimal256(50, 0)"),
+        sql_cast: Fold::Exact,
     },
     // A type with no accessor, so it is not folded.
     Target {
         sql: "smallint",
         accessor: "json_get_int",
+        accessor_type: None,
         sql_cast: Fold::None,
     },
 ];
@@ -163,8 +184,14 @@ impl Doc {
     }
 
     /// The same lookup through a typed accessor, which the rewriter leaves alone.
-    fn accessor(&self, name: &str) -> String {
-        self.call(name)
+    fn accessor(&self, target: Target) -> String {
+        let mut args = std::iter::once(JSON_COLUMN.to_string())
+            .chain(self.path.iter().map(|p| path_arg(p)))
+            .collect::<Vec<_>>();
+        if let Some(accessor_type) = target.accessor_type {
+            args.push(sql_str(accessor_type));
+        }
+        format!("{}({})", target.accessor, args.join(", "))
     }
 
     fn call(&self, func: &str) -> String {
@@ -371,7 +398,7 @@ fn prop_fold_is_invisible() {
     proptest!(|(doc in doc(), (spelling, target) in folding_cast())| {
         set_doc(&ctx, &doc.json);
         let folded = select(&spelling.apply(&doc.json_get(), target));
-        let reference = select(&spelling.apply(&doc.accessor(target.accessor), target));
+        let reference = select(&spelling.apply(&doc.accessor(target), target));
 
         let got = rt.block_on(outcome(&ctx, &folded));
         let want = rt.block_on(outcome(&ctx, &reference));
@@ -493,6 +520,16 @@ fn narrowing_cast_preserves_type_and_narrows() {
         ("3000000000", "int", "ERROR"),
         ("9223372036854775807", "int", "ERROR"),
         ("3000000000", "decimal(10,2)", "ERROR"),
+        (
+            "9007199254740993",
+            "decimal(20,0)",
+            "Decimal128(20, 0)=9007199254740993",
+        ),
+        (
+            "123456789012345678901234567890",
+            "decimal(50,0)",
+            "Decimal256(50, 0)=123456789012345678901234567890",
+        ),
     ];
 
     for (value, sql_type, want_cast) in cases {

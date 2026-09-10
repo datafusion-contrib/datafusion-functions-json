@@ -11,6 +11,7 @@ repository = "https://github.com/datafusion-contrib/datafusion-functions-json/"
 rust-version = "1.94.0"
 
 [dependencies]
+bigdecimal = "0.4.10"
 datafusion = { version = "55", default-features = false, features = [
     "sql",
 ] }
