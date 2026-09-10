@@ -144,7 +144,14 @@ fn build_union(jiter: &mut Jiter, peek: Peek) -> Result<JsonUnionField, GetError
         }
         _ => match jiter.known_number(peek)? {
             NumberAny::Int(NumberInt::Int(value)) => Ok(JsonUnionField::Int(value)),
-            NumberAny::Int(NumberInt::BigInt(_)) => todo!("BigInt not supported yet"),
+            // jiter returns `BigInt` for any integer its fast path couldn't decode, which includes
+            // values that do fit in `i64`, hence the conversion attempt. Values genuinely outside
+            // `i64` range have no representation in the union, so they're returned as null rather
+            // than silently losing precision as a `Float`.
+            NumberAny::Int(NumberInt::BigInt(value)) => match i64::try_from(value) {
+                Ok(value) => Ok(JsonUnionField::Int(value)),
+                Err(_) => get_err!(),
+            },
             NumberAny::Float(value) => Ok(JsonUnionField::Float(value)),
         },
     }

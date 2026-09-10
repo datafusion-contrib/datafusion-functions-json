@@ -1,6 +1,6 @@
 [package]
 name = "datafusion-functions-json"
-version = "0.54.2"
+version = "0.55.0"
 edition = "2021"
 description = "JSON functions for DataFusion"
 readme = "README.md"
@@ -8,10 +8,10 @@ license = "Apache-2.0"
 keywords = ["datafusion", "JSON", "SQL"]
 categories = ["database-implementations", "parsing"]
 repository = "https://github.com/datafusion-contrib/datafusion-functions-json/"
-rust-version = "1.88.0"
+rust-version = "1.94.0"
 
 [dependencies]
-datafusion = { version = "54", default-features = false, features = [
+datafusion = { version = "55", default-features = false, features = [
     "sql",
 ] }
 jiter = "0.16.0"
@@ -21,7 +21,7 @@ serde_json = "1"
 
 [dev-dependencies]
 codspeed-criterion-compat = "2.6"
-datafusion = { version = "54", default-features = false, features = [
+datafusion = { version = "55", default-features = false, features = [
     "nested_expressions",
     "sql",
 ] }

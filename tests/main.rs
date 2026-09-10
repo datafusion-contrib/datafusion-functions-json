@@ -194,14 +194,26 @@ fn assert_json_field_metadata(metadata: &HashMap<String, String>) {
 
 #[tokio::test]
 async fn test_json_get_equals() {
-    let e = run_query(r"select name, json_get(json_data, 'foo')='abc' from test")
+    // DataFusion 55 coerces the JSON union against the literal, so this plans and runs without an
+    // explicit cast, see https://github.com/apache/datafusion/issues/10180
+    let batches = run_query(r"select name, json_get(json_data, 'foo')='abc' from test")
         .await
-        .unwrap_err();
+        .unwrap();
 
-    // see https://github.com/apache/datafusion/issues/10180
-    assert!(e
-        .to_string()
-        .starts_with("Error during planning: Cannot infer common argument type for comparison operation Union"));
+    let expected = [
+        "+------------------+----------------------------------------------------+",
+        "| name             | json_get(test.json_data,Utf8(\"foo\")) = Utf8(\"abc\") |",
+        "+------------------+----------------------------------------------------+",
+        "| object_foo       | true                                               |",
+        "| object_foo_array |                                                    |",
+        "| object_foo_obj   |                                                    |",
+        "| object_foo_null  |                                                    |",
+        "| object_bar       |                                                    |",
+        "| list_foo         |                                                    |",
+        "| invalid_json     |                                                    |",
+        "+------------------+----------------------------------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
 }
 
 #[tokio::test]
@@ -343,6 +355,98 @@ async fn test_json_get_int_string_parse() {
 }
 
 #[tokio::test]
+async fn test_json_get_large_int() {
+    // jiter returns these as `BigInt` even though they fit in i64, they must not be lost
+    let sql = r#"select json_get('{"foo": 1753200000000000000}', 'foo')"#;
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::Union(_, _)));
+    assert_eq!(value_repr, "{int=1753200000000000000}");
+
+    // the i64 bounds themselves
+    let sql = r#"select json_get('{"foo": 9223372036854775807}', 'foo')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await.1, "{int=9223372036854775807}");
+
+    let sql = r#"select json_get('{"foo": -9223372036854775808}', 'foo')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await.1, "{int=-9223372036854775808}");
+
+    let sql = r#"select json_get_int('{"foo": 9223372036854775807}', 'foo')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(
+        display_val(batches).await,
+        (DataType::Int64, "9223372036854775807".to_string())
+    );
+}
+
+#[tokio::test]
+async fn test_json_get_out_of_range_int() {
+    // integers outside i64 range have no representation in the JSON union, they're returned as
+    // null rather than panicking (or silently losing precision as a float)
+    let sql = r#"select json_get('{"foo": 18446744073709551615}', 'foo')"#;
+    let batches = run_query(sql).await.unwrap();
+    let (value_type, value_repr) = display_val(batches).await;
+    assert!(matches!(value_type, DataType::Union(_, _)));
+    assert_eq!(value_repr, "{null=}");
+
+    // below i64::MIN
+    let sql = r#"select json_get('{"foo": -9223372036854775809}', 'foo')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await.1, "{null=}");
+
+    // casts of the null union stay null rather than erroring
+    let sql = r#"select json_get('{"foo": 18446744073709551615}', 'foo')::int"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Int64, String::new()));
+
+    let sql = r#"select json_get('{"foo": 18446744073709551615}', 'foo')::string"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, String::new()));
+}
+
+#[tokio::test]
+async fn test_json_get_out_of_range_int_neighbours() {
+    // an out-of-range int must only null out its own row, not poison the rest of the batch
+    let sql = "select json_get(v, 0) from (values ('[1]'), ('[18446744073709551615]'), ('[3]')) t(v)";
+    let batches = run_query(sql).await.unwrap();
+    let expected = [
+        "+------------------------+",
+        "| json_get(t.v,Int64(0)) |",
+        "+------------------------+",
+        "| {int=1}                |",
+        "| {null=}                |",
+        "| {int=3}                |",
+        "+------------------------+",
+    ];
+    assert_batches_eq!(expected, &batches);
+}
+
+#[tokio::test]
+async fn test_json_get_out_of_range_int_typed() {
+    // json_get_int can't represent it either
+    let sql = r#"select json_get_int('{"foo": 18446744073709551615}', 'foo')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Int64, String::new()));
+
+    // json_get_float is lossy but returns a value
+    let sql = r#"select json_get_float('{"foo": 18446744073709551615}', 'foo')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(
+        display_val(batches).await,
+        (DataType::Float64, "1.8446744073709552e19".to_string())
+    );
+
+    // json_as_text reads the raw slice, so it stays exact
+    let sql = r#"select json_as_text('{"foo": 18446744073709551615}', 'foo')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(
+        display_val(batches).await,
+        (DataType::Utf8, "18446744073709551615".to_string())
+    );
+}
+
+#[tokio::test]
 async fn test_json_get_float_string_parse() {
     // string containing float
     let batches = run_query(r#"select json_get_float('{"foo": "1.5"}', 'foo')"#)
@@ -361,6 +465,32 @@ async fn test_json_get_float_string_parse() {
         .await
         .unwrap();
     assert_eq!(display_val(batches).await, (DataType::Float64, String::new()));
+}
+
+#[tokio::test]
+async fn test_json_get_negative_number() {
+    let sql = r#"select json_get_int('{"foo": -42}', 'foo')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Int64, "-42".to_string()));
+
+    let sql = r#"select json_get_float('{"foo": -4.2}', 'foo')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Float64, "-4.2".to_string()));
+
+    // negative int read as a float
+    let sql = r#"select json_get_float('{"foo": -42}', 'foo')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Float64, "-42.0".to_string()));
+
+    // a negative float is still not an int
+    let sql = r#"select json_get_int('{"foo": -4.2}', 'foo')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Int64, String::new()));
+
+    // negative numbers nested behind a path
+    let sql = r#"select json_get_int('{"foo": [1, {"bar": -7}]}', 'foo', 1, 'bar')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Int64, "-7".to_string()));
 }
 
 #[tokio::test]

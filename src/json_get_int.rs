@@ -103,17 +103,16 @@ fn jiter_json_get_int(json_data: Option<&str>, path: &[JsonPath]) -> Result<i64,
                 let s = jiter.known_str()?;
                 s.parse::<i64>().map_err(|_| GetError)
             }
-            Peek::Null
-            | Peek::True
-            | Peek::False
-            | Peek::Minus
-            | Peek::Infinity
-            | Peek::NaN
-            | Peek::Array
-            | Peek::Object => get_err!(),
+            // Valid JSON numbers are represented by all other `Peek` variants (including `Minus`),
+            // so we only need to explicitly reject non-numeric values (and non-standard `Infinity`/`NaN`).
+            Peek::Null | Peek::True | Peek::False | Peek::Infinity | Peek::NaN | Peek::Array | Peek::Object => {
+                get_err!()
+            }
             _ => match jiter.known_int(peek)? {
                 NumberInt::Int(i) => Ok(i),
-                NumberInt::BigInt(_) => get_err!(),
+                // jiter returns `BigInt` for any integer its fast path couldn't decode, which
+                // includes values that do fit in `i64`, hence the conversion attempt
+                NumberInt::BigInt(b) => i64::try_from(b).map_err(|_| GetError),
             },
         }
     } else {
