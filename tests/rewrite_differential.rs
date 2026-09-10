@@ -98,8 +98,8 @@ const TARGETS: &[Target] = &[
     // fold keeps the cast on top of the accessor.
     Target {
         sql: "int",
-        accessor: "json_get_int",
-        sql_cast: Fold::Narrowing,
+        accessor: "json_get_int32",
+        sql_cast: Fold::Exact,
     },
     Target {
         sql: "real",
@@ -508,6 +508,20 @@ fn narrowing_cast_preserves_type_and_narrows() {
     }
 }
 
+/// A cast in a comparison must still reject values outside its target type. `DataFusion` can
+/// unwrap a regular narrowing cast around `json_get_int`, so the rewriter uses the exact-width
+/// accessor and performs the range check while extracting the JSON value.
+#[test]
+fn narrowing_cast_in_comparison_still_narrows() {
+    let rt = runtime();
+    let ctx = create_context().unwrap();
+    set_doc(&ctx, r#"{"a": 3000000000}"#);
+
+    let sql = format!("select {JSON_COLUMN} from {JSON_TABLE} where cast(json_get({JSON_COLUMN}, 'a') as int) > 0");
+
+    assert_eq!(rt.block_on(outcome(&ctx, &sql)), Outcome::Error, "{sql}");
+}
+
 /// The narrowing fold is not just correct, it is the whole point: the JSON union never gets
 /// materialized, the plan reads the value straight out with the typed accessor and casts that.
 #[test]
@@ -526,7 +540,7 @@ fn narrowing_cast_still_avoids_the_union() {
         &select(&Spelling::Cast.apply(&doc.json_get(), *target)),
     ));
     assert!(
-        plan.contains("CAST(json_get_int(t.j, Utf8(\"a\")) AS Int32)"),
+        plan.contains("json_get_int32(t.j, Utf8(\"a\"))"),
         "unexpected plan:\n{plan}"
     );
 }

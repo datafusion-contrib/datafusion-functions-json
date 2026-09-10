@@ -16,6 +16,7 @@ mod json_get_array;
 mod json_get_bool;
 mod json_get_float;
 mod json_get_int;
+mod json_get_int32;
 mod json_get_json;
 mod json_get_str;
 mod json_length;
@@ -72,6 +73,7 @@ pub fn register_all(registry: &mut dyn FunctionRegistry) -> Result<()> {
         json_get_bool::json_get_bool_udf(),
         json_get_float::json_get_float_udf(),
         json_get_int::json_get_int_udf(),
+        json_get_int32::json_get_int32_udf(),
         json_get_json::json_get_json_udf(),
         json_get_array::json_get_array_udf(),
         json_as_text::json_as_text_udf(),

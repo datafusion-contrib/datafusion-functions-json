@@ -79,7 +79,8 @@ fn typed_accessor(cast_to: &DataType) -> Option<(Arc<ScalarUDF>, DataType)> {
         DataType::Float64 | DataType::Float32 | DataType::Decimal128(_, _) | DataType::Decimal256(_, _) => {
             (crate::json_get_float::json_get_float_udf(), DataType::Float64)
         }
-        DataType::Int64 | DataType::Int32 => (crate::json_get_int::json_get_int_udf(), DataType::Int64),
+        DataType::Int64 => (crate::json_get_int::json_get_int_udf(), DataType::Int64),
+        DataType::Int32 => (crate::json_get_int32::json_get_int32_udf(), DataType::Int32),
         DataType::Utf8 | DataType::Utf8View | DataType::LargeUtf8 => {
             (crate::json_get_str::json_get_str_udf(), DataType::Utf8)
         }

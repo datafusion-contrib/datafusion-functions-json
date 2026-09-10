@@ -1217,7 +1217,7 @@ async fn test_json_get_int_unnest() {
 async fn test_plan_json_get_int_unnest() {
     let sql = "explain select json_get(json_get(json_data, 'foo'), 0)::int v from test";
     let expected = [
-        "Projection: CAST(json_get_int(test.json_data, Utf8(\"foo\"), Int64(0)) AS Int32) AS v",
+        "Projection: json_get_int32(test.json_data, Utf8(\"foo\"), Int64(0)) AS v",
         "  TableScan: test projection=[json_data]",
     ];
 
@@ -1451,7 +1451,7 @@ async fn test_plan_arrow_cast_int() {
     let lines = logical_plan(r"explain select (json_data->'foo')::int from test").await;
 
     let expected = [
-        "Projection: CAST(json_get_int(test.json_data, Utf8(\"foo\")) AS Int32) AS json_data -> 'foo'",
+        "Projection: json_get_int32(test.json_data, Utf8(\"foo\")) AS json_data -> 'foo'",
         "  TableScan: test projection=[json_data]",
     ];
 
@@ -1578,7 +1578,7 @@ async fn test_plan_arrow_double_nested_cast() {
     let lines = logical_plan(r"explain select (json_data->'foo'->0)::int from test").await;
 
     let expected = [
-        "Projection: CAST(json_get_int(test.json_data, Utf8(\"foo\"), Int64(0)) AS Int32) AS json_data -> 'foo' -> 0",
+        "Projection: json_get_int32(test.json_data, Utf8(\"foo\"), Int64(0)) AS json_data -> 'foo' -> 0",
         "  TableScan: test projection=[json_data]",
     ];
 
