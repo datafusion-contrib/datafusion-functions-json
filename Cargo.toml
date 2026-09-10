@@ -25,6 +25,7 @@ datafusion = { version = "55", default-features = false, features = [
     "nested_expressions",
     "sql",
 ] }
+proptest = "1.11.0"
 tokio = { version = "1.43", features = ["full"] }
 
 [lints.clippy]
