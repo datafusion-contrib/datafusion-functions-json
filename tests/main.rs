@@ -1459,6 +1459,86 @@ async fn test_plan_arrow_cast_int() {
 }
 
 #[tokio::test]
+async fn test_plan_try_cast_int() {
+    let lines = logical_plan(r"explain select try_cast((json_data->'foo') as bigint) from test").await;
+
+    let expected = [
+        "Projection: json_get_int(test.json_data, Utf8(\"foo\")) AS json_data -> 'foo'",
+        "  TableScan: test projection=[json_data]",
+    ];
+
+    assert_eq!(lines, expected);
+}
+
+#[tokio::test]
+async fn test_try_cast_int() {
+    let sql = r#"select try_cast(('{"foo": 42}'->'foo') as bigint)"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Int64, "42".to_string()));
+}
+
+#[tokio::test]
+async fn test_try_cast_wrong_type_is_null() {
+    // json_get_int yields NULL for a value that is not an integer, which is what TRY_CAST asks for
+    let sql = r#"select try_cast(('{"foo": "not an int"}'->'foo') as bigint)"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Int64, String::new()));
+}
+
+#[tokio::test]
+async fn test_plan_arrow_cast_fn_int() {
+    let lines = logical_plan(r"explain select arrow_cast((json_data->'foo'), 'Int64') from test").await;
+
+    let expected = [
+        "Projection: json_get_int(test.json_data, Utf8(\"foo\")) AS arrow_cast(json_data -> 'foo',Utf8(\"Int64\"))",
+        "  TableScan: test projection=[json_data]",
+    ];
+
+    assert_eq!(lines, expected);
+}
+
+#[tokio::test]
+async fn test_plan_arrow_try_cast_fn_int() {
+    let lines = logical_plan(r"explain select arrow_try_cast((json_data->'foo'), 'Int64') from test").await;
+
+    let expected = [
+        "Projection: json_get_int(test.json_data, Utf8(\"foo\")) AS arrow_try_cast(json_data -> 'foo',Utf8(\"Int64\"))",
+        "  TableScan: test projection=[json_data]",
+    ];
+
+    assert_eq!(lines, expected);
+}
+
+#[tokio::test]
+async fn test_arrow_cast_fn_int() {
+    let sql = r#"select arrow_cast(('{"foo": 42}'->'foo'), 'Int64')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Int64, "42".to_string()));
+}
+
+#[tokio::test]
+async fn test_arrow_try_cast_fn_str() {
+    let sql = r#"select arrow_try_cast(('{"foo": "bar"}'->'foo'), 'Utf8')"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "bar".to_string()));
+}
+
+/// `arrow_cast` names an exact Arrow type. A type no accessor returns exactly is still folded, so
+/// the union is not materialized, but the cast to that type is kept so the output type is the one
+/// that was named.
+#[tokio::test]
+async fn test_plan_arrow_cast_fn_narrowing_type_keeps_cast() {
+    let lines = logical_plan(r"explain select arrow_cast((json_data->'foo'), 'Int32') from test").await;
+
+    let expected = [
+        "Projection: CAST(json_get_int(test.json_data, Utf8(\"foo\")) AS Int32) AS arrow_cast(json_data -> 'foo',Utf8(\"Int32\"))",
+        "  TableScan: test projection=[json_data]",
+    ];
+
+    assert_eq!(lines, expected);
+}
+
+#[tokio::test]
 async fn test_arrow_double_nested() {
     let sql = "select name, json_data->'foo'->0 from test";
 

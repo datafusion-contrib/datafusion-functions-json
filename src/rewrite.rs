@@ -6,7 +6,7 @@ use datafusion::common::tree_node::Transformed;
 use datafusion::common::Column;
 use datafusion::common::DFSchema;
 use datafusion::common::Result;
-use datafusion::logical_expr::expr::{Alias, Cast, Expr, ScalarFunction};
+use datafusion::logical_expr::expr::{Alias, Cast, Expr, ScalarFunction, TryCast};
 use datafusion::logical_expr::expr_rewriter::FunctionRewrite;
 use datafusion::logical_expr::planner::{ExprPlanner, PlannerResult, RawBinaryExpr};
 use datafusion::logical_expr::sqlparser::ast::BinaryOperator;
@@ -30,7 +30,16 @@ impl FunctionRewrite for JsonFunctionRewriter {
                     field: cast.field.clone(),
                 }),
             }),
-            Expr::ScalarFunction(func) => unnest_json_calls(func),
+            Expr::TryCast(try_cast) => {
+                optimise_json_get(try_cast.field.data_type(), &try_cast.expr).map(|folded| match folded {
+                    Folded::Exact(accessor) => accessor,
+                    Folded::Narrowing(accessor) => Expr::TryCast(TryCast {
+                        expr: Box::new(accessor),
+                        field: try_cast.field.clone(),
+                    }),
+                })
+            }
+            Expr::ScalarFunction(func) => optimise_json_get_arrow_cast(func).or_else(|| unnest_json_calls(func)),
             _ => None,
         };
         Ok(transform.map_or_else(|| Transformed::no(expr), Transformed::yes))
@@ -55,6 +64,9 @@ enum Folded {
 /// dropping the cast there would silently change the type of the expression, and for a narrowing
 /// cast its value too, while keeping it costs one primitive-to-primitive cast and still never
 /// materializes the union.
+///
+/// `TRY_CAST` gets the same treatment, so a value outside the target type's range still becomes
+/// NULL rather than being handed back as the accessor's wider type.
 fn optimise_json_get(cast_to: &DataType, cast_expr: &Expr) -> Option<Folded> {
     let scalar_func = extract_scalar_function(cast_expr)?;
     if !is_json_get(scalar_func) {
@@ -85,6 +97,39 @@ fn typed_accessor(cast_to: &DataType) -> Option<(Arc<ScalarUDF>, DataType)> {
         }
         _ => return None,
     })
+}
+
+/// The same rewrite for `arrow_cast(json_get(foo, bar), 'Int64')` and its `arrow_try_cast` sibling.
+///
+/// These two are still scalar function calls when this rewriter runs. `DataFusion` lowers them to
+/// `Expr::Cast` / `Expr::TryCast` in `SimplifyExpressions`, an optimizer rule, whereas function
+/// rewrites are applied by `ApplyFunctionRewrites` at the start of the analyzer. The analyzer never
+/// runs again afterwards, so without this the JSON union is materialized only to be cast away.
+///
+/// Only the call's first argument is replaced, so the named type is still what comes out. That
+/// lowering then drops the cast by itself when the accessor already returns the named type.
+fn optimise_json_get_arrow_cast(func: &ScalarFunction) -> Option<Expr> {
+    if !matches!(func.func.name(), "arrow_cast" | "arrow_try_cast") {
+        return None;
+    }
+    let [cast_expr, type_arg] = func.args.as_slice() else {
+        return None;
+    };
+    let Expr::Literal(ScalarValue::Utf8(Some(type_name)), _) = type_arg else {
+        return None;
+    };
+    // `arrow_cast` names its target as an Arrow type string, which is how DataFusion itself reads
+    // it back in `ArrowCastFunc::return_field_from_args`.
+    let cast_to = type_name.parse::<DataType>().ok()?;
+    // the call keeps its type argument either way, and `ArrowCastFunc::simplify` drops the cast
+    // itself when the accessor already returns that type
+    let accessor = match optimise_json_get(&cast_to, cast_expr)? {
+        Folded::Exact(accessor) | Folded::Narrowing(accessor) => accessor,
+    };
+    Some(Expr::ScalarFunction(ScalarFunction {
+        func: func.func.clone(),
+        args: vec![accessor, type_arg.clone()],
+    }))
 }
 
 // Replace nested JSON functions e.g. `json_get(json_get(col, 'foo'), 'bar')` with `json_get(col, 'foo', 'bar')`
