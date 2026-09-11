@@ -41,7 +41,7 @@ impl ScalarUDFImpl for JsonGetFloat {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        return_type_check(arg_types, self.name(), DataType::Float64)
+        return_type_check::<Float64Array>(arg_types, self.name(), DataType::Float64)
     }
 
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DataFusionResult<ColumnarValue> {

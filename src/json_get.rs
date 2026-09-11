@@ -47,7 +47,7 @@ impl ScalarUDFImpl for JsonGet {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        return_type_check(arg_types, self.name(), JsonUnion::data_type())
+        return_type_check::<JsonUnion>(arg_types, self.name(), JsonUnion::data_type())
     }
 
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DataFusionResult<ColumnarValue> {

@@ -163,6 +163,56 @@ async fn test_json_get_array_with_path() {
 }
 
 #[tokio::test]
+async fn test_json_get_array_all_datatypes() {
+    for_all_json_datatypes(async |dt| {
+        // no path argument: the whole document is the array
+        let batches = run_query_datatype("select json_get_array(json_data) from test where name='list_foo'", dt)
+            .await
+            .unwrap();
+        let (value_type, value_repr) = display_val(batches).await;
+        assert!(
+            matches!(value_type, DataType::List(_)),
+            "unexpected type {value_type} for {dt}"
+        );
+        assert_eq!(value_repr, r#"["foo"]"#, "unexpected value for {dt}");
+
+        // with a path argument
+        let batches = run_query_datatype(
+            "select json_get_array(json_data, 'foo') from test where name='object_foo_array'",
+            dt,
+        )
+        .await
+        .unwrap();
+        let (value_type, value_repr) = display_val(batches).await;
+        assert!(
+            matches!(value_type, DataType::List(_)),
+            "unexpected type {value_type} for {dt}"
+        );
+        assert_eq!(value_repr, "[1]", "unexpected value for {dt}");
+
+        // documents which are not arrays (or not JSON at all) come back as null
+        let expected = [
+            "+------------------+--------------------------------------------+",
+            "| name             | json_get_array(test.json_data,Utf8(\"foo\")) |",
+            "+------------------+--------------------------------------------+",
+            "| object_foo       |                                            |",
+            "| object_foo_array | [1]                                        |",
+            "| object_foo_obj   |                                            |",
+            "| object_foo_null  |                                            |",
+            "| object_bar       |                                            |",
+            "| list_foo         |                                            |",
+            "| invalid_json     |                                            |",
+            "+------------------+--------------------------------------------+",
+        ];
+        let batches = run_query_datatype("select name, json_get_array(json_data, 'foo') from test", dt)
+            .await
+            .unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
+}
+
+#[tokio::test]
 async fn test_json_get_array_inner_field_json_metadata() {
     let sql = r#"select json_get_array('[{"a": 1}, {"b": 2}]') as v"#;
     let batches = run_query(sql).await.unwrap();
@@ -2095,6 +2145,35 @@ async fn test_dict_get_int() {
 
     for_all_json_datatypes(async |dt| {
         let batches = run_query_datatype(sql, dt).await.unwrap();
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn test_dict_get_array() {
+    // both calls take a column path, so both go through `invoke_array_array` with a dictionary
+    // JSON argument; `json_get_array` does not re-wrap its result, so the output is a plain list
+    let sql = "select json_get_array(json_get_json(json_data, str_key1), str_key2) v from dicts";
+    #[rustfmt::skip]
+    let expected = [
+        "+-----+",
+        "| v   |",
+        "+-----+",
+        "| [0] |",
+        "|     |",
+        "|     |",
+        "|     |",
+        "+-----+",
+    ];
+
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        let value_type = batches[0].schema().field(0).data_type().clone();
+        assert!(
+            matches!(value_type, DataType::List(_)),
+            "unexpected type {value_type} for {dt}"
+        );
         assert_batches_eq!(expected, &batches);
     })
     .await;
