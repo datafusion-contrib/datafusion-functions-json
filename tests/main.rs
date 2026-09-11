@@ -312,13 +312,13 @@ async fn test_json_get_str_null() {
 #[tokio::test]
 async fn test_json_get_no_path() {
     let batches = run_query(r#"select json_get('"foo"')::string"#).await.unwrap();
-    assert_eq!(display_val(batches).await, (DataType::Utf8, "foo".to_string()));
+    assert_eq!(display_val(batches).await, (DataType::Utf8View, "foo".to_string()));
 
     let batches = run_query(r"select json_get('123')::int").await.unwrap();
-    assert_eq!(display_val(batches).await, (DataType::Int64, "123".to_string()));
+    assert_eq!(display_val(batches).await, (DataType::Int32, "123".to_string()));
 
     let batches = run_query(r"select json_get('true')::int").await.unwrap();
-    assert_eq!(display_val(batches).await, (DataType::Int64, String::new()));
+    assert_eq!(display_val(batches).await, (DataType::Int32, String::new()));
 }
 
 #[tokio::test]
@@ -398,11 +398,11 @@ async fn test_json_get_out_of_range_int() {
     // casts of the null union stay null rather than erroring
     let sql = r#"select json_get('{"foo": 18446744073709551615}', 'foo')::int"#;
     let batches = run_query(sql).await.unwrap();
-    assert_eq!(display_val(batches).await, (DataType::Int64, String::new()));
+    assert_eq!(display_val(batches).await, (DataType::Int32, String::new()));
 
     let sql = r#"select json_get('{"foo": 18446744073709551615}', 'foo')::string"#;
     let batches = run_query(sql).await.unwrap();
-    assert_eq!(display_val(batches).await, (DataType::Utf8, String::new()));
+    assert_eq!(display_val(batches).await, (DataType::Utf8View, String::new()));
 }
 
 #[tokio::test]
@@ -524,19 +524,19 @@ async fn test_json_get_path() {
 async fn test_json_get_cast_int() {
     let sql = r#"select json_get('{"foo": 42}', 'foo')::int"#;
     let batches = run_query(sql).await.unwrap();
-    assert_eq!(display_val(batches).await, (DataType::Int64, "42".to_string()));
+    assert_eq!(display_val(batches).await, (DataType::Int32, "42".to_string()));
 
     // floats not allowed
     let sql = r#"select json_get('{"foo": 4.2}', 'foo')::int"#;
     let batches = run_query(sql).await.unwrap();
-    assert_eq!(display_val(batches).await, (DataType::Int64, String::new()));
+    assert_eq!(display_val(batches).await, (DataType::Int32, String::new()));
 }
 
 #[tokio::test]
 async fn test_json_get_cast_int_path() {
     let sql = r#"select json_get('{"foo": [null, {"x": false, "bar": 73}}', 'foo', 1, 'bar')::int"#;
     let batches = run_query(sql).await.unwrap();
-    assert_eq!(display_val(batches).await, (DataType::Int64, "73".to_string()));
+    assert_eq!(display_val(batches).await, (DataType::Int32, "73".to_string()));
 }
 
 #[tokio::test]
@@ -579,14 +579,17 @@ async fn test_json_get_float() {
 async fn test_json_get_cast_float() {
     let sql = r#"select json_get('{"foo": 4.2e2}', 'foo')::float"#;
     let batches = run_query(sql).await.unwrap();
-    assert_eq!(display_val(batches).await, (DataType::Float64, "420.0".to_string()));
+    assert_eq!(display_val(batches).await, (DataType::Float32, "420.0".to_string()));
 }
 
 #[tokio::test]
 async fn test_json_get_cast_numeric() {
     let sql = r#"select json_get('{"foo": 4.2e2}', 'foo')::numeric"#;
     let batches = run_query(sql).await.unwrap();
-    assert_eq!(display_val(batches).await, (DataType::Float64, "420.0".to_string()));
+    assert_eq!(
+        display_val(batches).await,
+        (DataType::Decimal128(38, 10), "420.0000000000".to_string())
+    );
 }
 
 #[tokio::test]
@@ -1214,7 +1217,7 @@ async fn test_json_get_int_unnest() {
 async fn test_plan_json_get_int_unnest() {
     let sql = "explain select json_get(json_get(json_data, 'foo'), 0)::int v from test";
     let expected = [
-        "Projection: json_get_int(test.json_data, Utf8(\"foo\"), Int64(0)) AS v",
+        "Projection: CAST(json_get_int(test.json_data, Utf8(\"foo\"), Int64(0)) AS Int32) AS v",
         "  TableScan: test projection=[json_data]",
     ];
 
@@ -1438,7 +1441,7 @@ async fn test_arrow_cast_int() {
     for_all_json_datatypes(async |dt| {
         let batches = run_query_datatype(sql, dt).await.unwrap();
         assert_batches_eq!(expected, &batches);
-        assert_eq!(display_val(batches).await, (DataType::Int64, "42".to_string()));
+        assert_eq!(display_val(batches).await, (DataType::Int32, "42".to_string()));
     })
     .await;
 }
@@ -1448,7 +1451,7 @@ async fn test_plan_arrow_cast_int() {
     let lines = logical_plan(r"explain select (json_data->'foo')::int from test").await;
 
     let expected = [
-        "Projection: json_get_int(test.json_data, Utf8(\"foo\")) AS json_data -> 'foo'",
+        "Projection: CAST(json_get_int(test.json_data, Utf8(\"foo\")) AS Int32) AS json_data -> 'foo'",
         "  TableScan: test projection=[json_data]",
     ];
 
@@ -1575,7 +1578,7 @@ async fn test_plan_arrow_double_nested_cast() {
     let lines = logical_plan(r"explain select (json_data->'foo'->0)::int from test").await;
 
     let expected = [
-        "Projection: json_get_int(test.json_data, Utf8(\"foo\"), Int64(0)) AS json_data -> 'foo' -> 0",
+        "Projection: CAST(json_get_int(test.json_data, Utf8(\"foo\"), Int64(0)) AS Int32) AS json_data -> 'foo' -> 0",
         "  TableScan: test projection=[json_data]",
     ];
 
