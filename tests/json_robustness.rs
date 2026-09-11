@@ -246,11 +246,10 @@ fn prop_scalar_and_array_paths_agree() {
 /// The four string encodings a JSON column can arrive in are four separate code paths, and
 /// they must all produce the same answer.
 ///
-/// Dictionary-encoded input keeps its encoding in the output, so the dictionary wrapper is
+/// Dictionary-encoded input may keep its encoding in the output, so the dictionary wrapper is
 /// stripped before comparing types. `json_get` is left out: it returns the JSON union, which
 /// has no meaningful text form to compare — `json_as_text` and `json_get_json` cover the same
-/// scanning code and do return text. `json_get_array` is left out too, but for a different
-/// reason — see [`json_get_array_errors_on_dictionary_input`].
+/// scanning code and do return text.
 #[test]
 fn prop_input_encoding_does_not_change_result() {
     let rt = runtime();
@@ -258,7 +257,7 @@ fn prop_input_encoding_does_not_change_result() {
 
     proptest!(config(48), |(json in json_text(), path in path())| {
         for func in PATH_FUNCS {
-            if !callable(func, &path) || matches!(*func, "json_get" | "json_get_array") {
+            if !callable(func, &path) || *func == "json_get" {
                 continue;
             }
             let sql = format!("select {} as v from {JSON_TABLE}", call(func, JSON_COLUMN, &path));
@@ -275,48 +274,4 @@ fn prop_input_encoding_does_not_change_result() {
             }
         }
     });
-}
-
-/// `json_get_array` is unusable on a dictionary-encoded JSON column: every call fails with an
-/// internal error, whatever the document and whatever the path.
-///
-/// `return_type_check` wraps the declared return type in `Dictionary(Int64, ..)` whenever the
-/// first argument is a dictionary and the value type is not primitive. `json_get_array` is the
-/// only UDF here whose value type is not primitive (`List(Utf8)`) *and* whose `InvokeResult`
-/// sets `ACCEPT_DICT_RETURN = false`, so `invoke_array_array` hands back a bare `List` while
-/// `return_type` promised a dictionary, and `DataFusion` rejects the mismatch.
-///
-/// The fix is to stop promising the wrapper for this one function, i.e. teach
-/// `return_type_check` about `ACCEPT_DICT_RETURN` (or unwrap the dictionary in
-/// `JsonGetArray::return_type`). **Delete this test once that lands**, and drop
-/// `json_get_array` from the exclusion in [`prop_input_encoding_does_not_change_result`],
-/// which then covers it.
-#[test]
-fn json_get_array_errors_on_dictionary_input() {
-    let rt = runtime();
-    let ctx = create_context().unwrap();
-
-    for json in [r"[1, 2, 3]", r#"{"a": [1, 2]}"#, "null", "not json"] {
-        set_doc(&ctx, json, &dict_encoding());
-        let err = rt
-            .block_on(outcome(
-                &ctx,
-                &format!("select json_get_array({JSON_COLUMN}) as v from {JSON_TABLE}"),
-            ))
-            .expect_err("json_get_array over a dictionary column should still be failing");
-        // debug builds trip DataFusion's own assertion, release builds reach Arrow's schema
-        // check; both name the dictionary type that `return_type` promised and did not deliver
-        assert!(
-            err.contains("Dictionary(Int64, List("),
-            "unexpected error for {json:?}: {err}"
-        );
-
-        // the same document in a plain string column works
-        set_doc(&ctx, json, &DataType::Utf8View);
-        rt.block_on(outcome(
-            &ctx,
-            &format!("select json_get_array({JSON_COLUMN}) as v from {JSON_TABLE}"),
-        ))
-        .expect("json_get_array over a string column works");
-    }
 }
