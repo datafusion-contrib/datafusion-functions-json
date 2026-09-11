@@ -2150,6 +2150,35 @@ async fn test_dict_get_int() {
     .await;
 }
 
+#[tokio::test]
+async fn test_dict_get_array() {
+    // both calls take a column path, so both go through `invoke_array_array` with a dictionary
+    // JSON argument; `json_get_array` does not re-wrap its result, so the output is a plain list
+    let sql = "select json_get_array(json_get_json(json_data, str_key1), str_key2) v from dicts";
+    #[rustfmt::skip]
+    let expected = [
+        "+-----+",
+        "| v   |",
+        "+-----+",
+        "| [0] |",
+        "|     |",
+        "|     |",
+        "|     |",
+        "+-----+",
+    ];
+
+    for_all_json_datatypes(async |dt| {
+        let batches = run_query_datatype(sql, dt).await.unwrap();
+        let value_type = batches[0].schema().field(0).data_type().clone();
+        assert!(
+            matches!(value_type, DataType::List(_)),
+            "unexpected type {value_type} for {dt}"
+        );
+        assert_batches_eq!(expected, &batches);
+    })
+    .await;
+}
+
 async fn build_dict_schema() -> SessionContext {
     let mut builder = StringDictionaryBuilder::<Int8Type>::new();
     builder.append(r#"{"foo": "bar"}"#).unwrap();

@@ -22,8 +22,9 @@ use crate::common_union::{
 /// # Type parameters
 ///
 /// * `R` - the `InvokeResult` implementation the function passes to [`invoke`]; its
-///   `ACCEPT_DICT_RETURN` decides whether a dictionary input produces a dictionary output, so reading
-///   it here keeps the declared return type in step with what `invoke` actually builds
+///   `ACCEPT_DICT_RETURN` decides whether a dictionary input column produces a dictionary output,
+///   so reading it here keeps the declared return type in step with what the array paths of
+///   `invoke` build (dictionary *scalar* inputs are not yet re-wrapped, see the `FIXME`s below)
 ///
 /// # Arguments
 ///
@@ -187,7 +188,8 @@ pub trait InvokeResult {
     type Item;
     type Builder;
 
-    // Whether the return type should is allowed to be a dictionary
+    /// Whether a dictionary-encoded JSON column produces a `Dictionary(Int64, _)` result; read by
+    /// both `return_type_check` (the declared type) and `invoke` (the built array), so they agree
     const ACCEPT_DICT_RETURN: bool;
 
     fn builder(capacity: usize) -> Self::Builder;
