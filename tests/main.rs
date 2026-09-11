@@ -11,7 +11,7 @@ use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs};
 use datafusion::prelude::SessionContext;
 use datafusion_functions_json::json_field_metadata;
 use datafusion_functions_json::udfs::json_get_str_udf;
-use utils::{create_context, display_val, logical_plan, run_query, run_query_params};
+use utils::{create_context, display_rows, display_val, logical_plan, run_query, run_query_params};
 
 use crate::utils::{for_all_json_datatypes, run_query_datatype};
 
@@ -2468,6 +2468,49 @@ FROM json_columns, attr_names
 
     let batches = run_query(sql).await.unwrap();
     assert_batches_eq!(expected, &batches);
+}
+
+/// A dictionary-encoded JSON literal goes through the scalar paths of `invoke` — scalar/scalar
+/// for a literal path, scalar/array for a column path. For the functions whose result keeps the
+/// dictionary encoding of their input, those paths have to wrap their result just as the array
+/// paths do, or it disagrees with the type `return_type` declared.
+#[tokio::test]
+async fn test_dict_scalar_json() {
+    let doc = r#"'{"a": {"b": "x"}, "c": "y"}'"#;
+    let dict_doc = format!("arrow_cast({doc}, 'Dictionary(Int32, Utf8)')");
+    let cases = [
+        ("json_get", "a", r#"{object={"b": "x"}}"#),
+        ("json_get_str", "c", "y"),
+        ("json_get_json", "a", r#"{"b": "x"}"#),
+        ("json_as_text", "c", "y"),
+        ("json_object_keys", "a", "[b]"),
+    ];
+
+    for (func, key, expected) in cases {
+        // the same call on a plain literal gives the type the dictionary wraps
+        let (value_type, _) = display_val(run_query(&format!("select {func}({doc}, '{key}')")).await.unwrap()).await;
+        let dict_type = DataType::Dictionary(Box::new(DataType::Int64), Box::new(value_type));
+
+        let sql = format!("select {func}({dict_doc}, '{key}')");
+        let batches = run_query(&sql).await.unwrap();
+        assert_eq!(
+            display_val(batches).await,
+            (dict_type.clone(), expected.to_string()),
+            "{sql}"
+        );
+
+        let sql = format!("select {func}({dict_doc}, 'missing')");
+        let batches = run_query(&sql).await.unwrap();
+        assert_eq!(display_val(batches).await, (dict_type.clone(), String::new()), "{sql}");
+
+        let sql = format!("select {func}({dict_doc}, k) from (select unnest(['{key}', 'missing']) as k)");
+        let batches = run_query(&sql).await.unwrap();
+        assert_eq!(
+            display_rows(&batches),
+            (dict_type, vec![expected.to_string(), String::new()]),
+            "{sql}"
+        );
+    }
 }
 
 // ============================================================================

@@ -22,9 +22,9 @@ use crate::common_union::{
 /// # Type parameters
 ///
 /// * `R` - the `InvokeResult` implementation the function passes to [`invoke`]; its
-///   `ACCEPT_DICT_RETURN` decides whether a dictionary input column produces a dictionary output,
-///   so reading it here keeps the declared return type in step with what the array paths of
-///   `invoke` build (dictionary *scalar* inputs are not yet re-wrapped, see the `FIXME`s below)
+///   `ACCEPT_DICT_RETURN` decides whether a dictionary JSON argument, column or scalar, produces a
+///   dictionary output, so reading it here keeps the declared return type in step with what every
+///   path of `invoke` builds (see [`returns_dictionary`])
 ///
 /// # Arguments
 ///
@@ -40,8 +40,7 @@ pub fn return_type_check<R: InvokeResult>(
     let Some(first) = args.first() else {
         return plan_err!("The '{fn_name}' function requires one or more arguments.");
     };
-    let first_dict_key_type = dict_key_type(first);
-    if !(is_str(first) || is_json_union(first) || first_dict_key_type.is_some()) {
+    if !(is_str(first) || is_json_union(first) || dict_key_type(first).is_some()) {
         // if !matches!(first, DataType::Utf8 | DataType::LargeUtf8) {
         return plan_err!("Unexpected argument type to '{fn_name}' at position 1, expected a string, got {first:?}.");
     }
@@ -55,13 +54,20 @@ pub fn return_type_check<R: InvokeResult>(
             )
         }
     })?;
-    // this must mirror the dictionary handling in `invoke_array_array` and `invoke_array_scalars`,
-    // which wrap the result back into a dictionary if and only if `R::ACCEPT_DICT_RETURN` is set
-    if first_dict_key_type.is_some() && R::ACCEPT_DICT_RETURN {
+    if returns_dictionary::<R>(first) {
         Ok(DataType::Dictionary(Box::new(DataType::Int64), Box::new(value_type)))
     } else {
         Ok(value_type)
     }
+}
+
+/// Whether `R`'s result for a JSON argument of type `json_type` is a `Dictionary(Int64, _)`.
+///
+/// `return_type_check` declares its type from this and the scalar paths of `invoke` wrap their
+/// result from it. The array paths, `invoke_array_array` and `invoke_array_scalars`, already know
+/// their input is a dictionary from the branch they are in, and wrap if `R::ACCEPT_DICT_RETURN`.
+fn returns_dictionary<R: InvokeResult>(json_type: &DataType) -> bool {
+    R::ACCEPT_DICT_RETURN && dict_key_type(json_type).is_some()
 }
 
 fn is_str(d: &DataType) -> bool {
@@ -219,9 +225,7 @@ pub fn invoke<R: InvokeResult>(
         (ColumnarValue::Scalar(s), JsonPathArgs::Array(path_array)) => {
             invoke_scalar_array::<R>(s, path_array, jiter_find)
         }
-        (ColumnarValue::Scalar(s), JsonPathArgs::Scalars(path)) => {
-            invoke_scalar_scalars(s, &path, jiter_find, R::scalar)
-        }
+        (ColumnarValue::Scalar(s), JsonPathArgs::Scalars(path)) => invoke_scalar_scalars::<R>(s, &path, jiter_find),
     }
 }
 
@@ -249,7 +253,7 @@ fn invoke_array_array<R: InvokeResult>(
             )?;
             if R::ACCEPT_DICT_RETURN {
                 // ensure return is a dictionary to satisfy the declaration above in return_type_check
-                Ok(Arc::new(wrap_as_large_dictionary(&json_array, output)))
+                Ok(Arc::new(wrap_as_large_dictionary(output)))
             } else {
                 Ok(output)
             }
@@ -263,7 +267,7 @@ fn invoke_array_array<R: InvokeResult>(
             )?;
             if R::ACCEPT_DICT_RETURN {
                 // ensure return is a dictionary to satisfy the declaration above in return_type_check
-                Ok(Arc::new(wrap_as_large_dictionary(&json_array, output)))
+                Ok(Arc::new(wrap_as_large_dictionary(output)))
             } else {
                 Ok(output)
             }
@@ -393,7 +397,7 @@ fn invoke_scalar_array<R: InvokeResult>(
 
     // TODO: possible optimization here if path_array is a dictionary; can apply against the
     // dictionary values directly for less work
-    zip_apply::<R>(
+    let output = zip_apply::<R>(
         RunArray::try_new(
             &PrimitiveArray::<Int64Type>::new_scalar(i64::try_from(path_array.len()).expect("len out of i64 range"))
                 .into_inner(),
@@ -403,21 +407,32 @@ fn invoke_scalar_array<R: InvokeResult>(
         .expect("type known"),
         path_array,
         jiter_find,
-    )
-    // FIXME edge cases where scalar is wrapped in a dictionary, should return a dictionary?
-    .map(ColumnarValue::Array)
+    )?;
+    if returns_dictionary::<R>(&scalar.data_type()) {
+        // ensure return is a dictionary to satisfy the declaration in return_type_check
+        Ok(ColumnarValue::Array(Arc::new(wrap_as_large_dictionary(output))))
+    } else {
+        Ok(ColumnarValue::Array(output))
+    }
 }
 
-fn invoke_scalar_scalars<I>(
+fn invoke_scalar_scalars<R: InvokeResult>(
     scalar: &ScalarValue,
     path: &[JsonPath],
-    jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<I, GetError>,
-    to_scalar: impl Fn(Option<I>) -> ScalarValue,
+    jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<R::Item, GetError>,
 ) -> DataFusionResult<ColumnarValue> {
     let s = extract_json_scalar(scalar)?;
-    let v = jiter_find(s, path).ok();
-    // FIXME edge cases where scalar is wrapped in a dictionary, should return a dictionary?
-    Ok(ColumnarValue::Scalar(to_scalar(v)))
+    let value = R::scalar(jiter_find(s, path).ok());
+    if returns_dictionary::<R>(&scalar.data_type()) {
+        // ensure return is a dictionary to satisfy the declaration in return_type_check; a null
+        // value expands to null keys, as the array paths build
+        Ok(ColumnarValue::Scalar(ScalarValue::Dictionary(
+            Box::new(DataType::Int64),
+            Box::new(value),
+        )))
+    } else {
+        Ok(ColumnarValue::Scalar(value))
+    }
 }
 
 fn zip_apply<'a, R: InvokeResult>(
@@ -553,11 +568,9 @@ fn cast_to_large_dictionary(dict_array: &dyn AnyDictionaryArray) -> DataFusionRe
     Ok(DictionaryArray::<Int64Type>::new(keys, dict_array.values().clone()))
 }
 
-/// Wrap an array as a dictionary with i64 indices.
-fn wrap_as_large_dictionary(original: &dyn AnyDictionaryArray, new_values: ArrayRef) -> DictionaryArray<Int64Type> {
-    assert_eq!(original.keys().len(), new_values.len());
-    let mut keys =
-        PrimitiveArray::from_iter_values(0i64..original.keys().len().try_into().expect("keys out of i64 range"));
+/// Wrap an array as a dictionary with i64 indices, one key per row.
+fn wrap_as_large_dictionary(new_values: ArrayRef) -> DictionaryArray<Int64Type> {
+    let mut keys = PrimitiveArray::from_iter_values(0i64..new_values.len().try_into().expect("keys out of i64 range"));
     if is_json_union(new_values.data_type()) {
         // JSON union: post-process the array to set keys to null where the union member is null
         let type_ids = new_values.as_union().type_ids();

@@ -280,6 +280,22 @@ pub async fn display_val(batch: Vec<RecordBatch>) -> (DataType, String) {
     (schema_col.data_type().clone(), repr)
 }
 
+/// The type of a single-column result and the display form of each of its rows.
+pub fn display_rows(batches: &[RecordBatch]) -> (DataType, Vec<String>) {
+    let data_type = batches.first().unwrap().schema().field(0).data_type().clone();
+    let options = FormatOptions::default().with_display_error(true);
+    let rows = batches
+        .iter()
+        .flat_map(|batch| {
+            let f = ArrayFormatter::try_new(batch.column(0).as_ref(), &options).unwrap();
+            (0..batch.num_rows())
+                .map(|i| f.value(i).try_to_string().unwrap())
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    (data_type, rows)
+}
+
 pub async fn logical_plan(sql: &str) -> Vec<String> {
     let batches = run_query(sql).await.unwrap();
     let plan_col = batches[0].column(1).as_any().downcast_ref::<StringArray>().unwrap();
