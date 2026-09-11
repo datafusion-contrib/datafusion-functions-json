@@ -6,7 +6,9 @@ use datafusion::common::{Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
 use jiter::Peek;
 
-use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath};
+use crate::common::{
+    get_err, invoke, jiter_array_len, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath,
+};
 use crate::common_macros::make_udf_function;
 
 make_udf_function!(
@@ -99,16 +101,7 @@ impl InvokeResult for UInt64Array {
 fn jiter_json_length(opt_json: Option<&str>, path: &[JsonPath]) -> Result<u64, GetError> {
     if let Some((mut jiter, peek)) = jiter_json_find(opt_json, path) {
         match peek {
-            Peek::Array => {
-                let mut peek_opt = jiter.known_array()?;
-                let mut length: u64 = 0;
-                while let Some(peek) = peek_opt {
-                    jiter.known_skip(peek)?;
-                    length += 1;
-                    peek_opt = jiter.array_step()?;
-                }
-                Ok(length)
-            }
+            Peek::Array => Ok(jiter_array_len(&mut jiter)? as u64),
             Peek::Object => {
                 let mut opt_key = jiter.known_object()?;
 
