@@ -3106,3 +3106,238 @@ async fn test_json_union_to_text_arms() {
     .await;
     assert_eq!(repr, "true");
 }
+
+// `#>` and `#>>`, the postgres JSON path operators.
+//
+// `a #> array['x', 'y']` is `a -> 'x' -> 'y'`, and `a #>> array['x', 'y']` is `a -> 'x' ->> 'y'`.
+
+const NESTED: &str = r#"'{"a": {"b": {"c": "x"}}}'"#;
+
+#[tokio::test]
+async fn test_hash_long_arrow_path() {
+    let batches = run_query(&format!("select {NESTED} #>> array['a', 'b', 'c']"))
+        .await
+        .unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "x".to_string()));
+}
+
+#[tokio::test]
+async fn test_hash_long_arrow_single_element() {
+    let batches = run_query(&format!("select {NESTED} #>> array['a']")).await.unwrap();
+    assert_eq!(
+        display_val(batches).await,
+        (DataType::Utf8, r#"{"b": {"c": "x"}}"#.to_string())
+    );
+}
+
+#[tokio::test]
+async fn test_hash_arrow_path() {
+    // `#>` keeps the value as JSON, where `#>>` renders it as text
+    let batches = run_query(&format!("select {NESTED} #> array['a', 'b']")).await.unwrap();
+    assert_eq!(display_val(batches).await.1, r#"{object={"c": "x"}}"#);
+}
+
+#[tokio::test]
+async fn test_hash_long_arrow_cast_array() {
+    let sql = format!("select {NESTED} #>> array['a', 'b', 'c']::text[]");
+    let batches = run_query(&sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "x".to_string()));
+}
+
+#[tokio::test]
+async fn test_hash_long_arrow_missing_path() {
+    // a missing path is null, never an error
+    let batches = run_query(&format!("select {NESTED} #>> array['nope', 'nope']"))
+        .await
+        .unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, String::new()));
+}
+
+#[tokio::test]
+async fn test_hash_long_arrow_dotted_key() {
+    // a key containing dots is a single element
+    let sql = r#"select '{"code.file.path": "main.py"}' #>> array['code.file.path']"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "main.py".to_string()));
+}
+
+#[tokio::test]
+async fn test_hash_arrow_equivalent_to_arrow_chain() {
+    let sql = format!("select ({NESTED} #>> array['a', 'b', 'c']) = ({NESTED} -> 'a' -> 'b' ->> 'c')");
+    let batches = run_query(&sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Boolean, "true".to_string()));
+}
+
+#[tokio::test]
+async fn test_hash_long_arrow_integer_list() {
+    // a list of integers is a path of indices; a list is homogeneous, so a mixed path spells
+    // its indices as text and relies on the index-or-key rule instead
+    let batches = run_query("select '[[1, 2], [3, 4]]' #>> array[1, 0]").await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "3".to_string()));
+
+    let batches = run_query("select '[[1, 2], [3, 4]]' #>> array[-1, -1]").await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "4".to_string()));
+
+    let sql = r#"select '{"a": [{"b": "x"}]}' #>> array['a', '0', 'b']"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "x".to_string()));
+}
+
+#[tokio::test]
+async fn test_hash_long_arrow_null_element() {
+    // a null path element is null overall, as in postgres
+    let batches = run_query(&format!("select {NESTED} #>> array['a', null]"))
+        .await
+        .unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, String::new()));
+}
+
+#[tokio::test]
+async fn test_hash_long_arrow_param() {
+    let params = || vec![ScalarValue::Utf8(Some("a".to_string()))];
+
+    // with a cast to `text[]`...
+    let sql = format!("select {NESTED} #>> array[$1]::text[]");
+    let batches = run_query_params(&sql, &DataType::Utf8View, params()).await.unwrap();
+    assert_eq!(
+        display_val(batches).await,
+        (DataType::Utf8, r#"{"b": {"c": "x"}}"#.to_string())
+    );
+
+    // ...and without it: the placeholder has no type until bound, and the list is accepted anyway
+    let sql = format!("select {NESTED} #>> array[$1]");
+    let batches = run_query_params(&sql, &DataType::Utf8View, params()).await.unwrap();
+    assert_eq!(
+        display_val(batches).await,
+        (DataType::Utf8, r#"{"b": {"c": "x"}}"#.to_string())
+    );
+
+    // mixed placeholders and literals
+    let sql = format!("select {NESTED} #>> array[$1, 'b', 'c']::text[]");
+    let batches = run_query_params(&sql, &DataType::Utf8View, params()).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "x".to_string()));
+}
+
+#[tokio::test]
+async fn test_hash_long_arrow_list_param() {
+    // the whole path as one bound parameter
+    let sql = format!("select {NESTED} #>> $1::text[]");
+    let path = ScalarValue::List(ScalarValue::new_list_nullable(
+        &[
+            ScalarValue::Utf8(Some("a".to_string())),
+            ScalarValue::Utf8(Some("b".to_string())),
+        ],
+        &DataType::Utf8,
+    ));
+    let batches = run_query_params(&sql, &DataType::Utf8View, vec![path]).await.unwrap();
+    assert_eq!(
+        display_val(batches).await,
+        (DataType::Utf8, r#"{"c": "x"}"#.to_string())
+    );
+}
+
+#[tokio::test]
+async fn test_json_as_text_list_path() {
+    // the list form is a property of the functions, not just the operators
+    let sql = r#"select json_as_text('{"a": {"b": 1}}', array['a', 'b'])"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "1".to_string()));
+}
+
+#[tokio::test]
+async fn test_hash_long_arrow_list_column() {
+    // a list-valued column is one path per row, which is not supported
+    let err = run_query("select json_data #>> array[name] from test")
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_string()
+            .starts_with("Execution error: unexpected second argument type, expected string or int array, got List"),
+        "{err}"
+    );
+}
+
+#[tokio::test]
+async fn test_plan_hash_long_arrow() {
+    // the path is passed through whole, and DataFusion folds a constant array into a list literal
+    let lines = logical_plan(r"explain select json_data #>> array['a', 'b']::text[] from test").await;
+    assert_eq!(
+        lines,
+        [
+            "Projection: json_as_text(test.json_data, List([a, b])) AS json_data #>> make_array(Utf8(\"a\"), Utf8(\"b\"))",
+            "  TableScan: test projection=[json_data]",
+        ]
+    );
+
+    let lines = logical_plan(r"explain select json_data #> array['a', 'b'] from test").await;
+    assert_eq!(
+        lines,
+        [
+            "Projection: json_get(test.json_data, List([a, b])) AS json_data #> make_array(Utf8(\"a\"), Utf8(\"b\"))",
+            "  TableScan: test projection=[json_data]",
+        ]
+    );
+}
+
+#[tokio::test]
+async fn test_hash_long_arrow_index_or_key() {
+    // as in postgres, a path element is resolved against the value it reaches: an index
+    // for an array, a key for an object, even when the element spells an integer
+    let sql = r#"select '{"items": [{"n": "first"}, {"n": "second"}]}' #>> array['items', '1', 'n']"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "second".to_string()));
+
+    let sql = r#"select '{"0": "v"}' #>> array['0']"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "v".to_string()));
+
+    // a non-integer element reaching an array is null, as is an out of range index
+    let batches = run_query("select '[1, 2]' #>> array['x']").await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, String::new()));
+
+    let batches = run_query("select '[1, 2]' #>> array['5']").await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, String::new()));
+
+    // a negative index counts from the end, and one past the start is null
+    let batches = run_query("select '[1, 2]' #>> array['-1']").await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "2".to_string()));
+
+    let batches = run_query("select '[1, 2]' #>> array['-3']").await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, String::new()));
+}
+
+#[tokio::test]
+async fn test_long_arrow_text_index() {
+    // the same rule applies to a text key which reaches an array; postgres returns null
+    // here because its text `->` only looks at objects, so this is more lenient
+    let batches = run_query("select '[1, 2]' ->> '0'").await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "1".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_get_unsigned_index() {
+    let batches = run_query("select '[1, 2, 3]' -> arrow_cast(1, 'UInt64')")
+        .await
+        .unwrap();
+    assert_eq!(display_val(batches).await.1, "{int=2}");
+}
+
+#[tokio::test]
+async fn test_json_get_negative_index() {
+    let batches = run_query("select '[1, 2, 3]' -> -1").await.unwrap();
+    assert_eq!(display_val(batches).await.1, "{int=3}");
+
+    let batches = run_query("select '[1, 2, 3]' -> -3").await.unwrap();
+    assert_eq!(display_val(batches).await.1, "{int=1}");
+
+    let batches = run_query("select '[1, 2, 3]' -> -4").await.unwrap();
+    assert_eq!(display_val(batches).await.1, "{null=}");
+
+    let batches = run_query("select '[]' -> -1").await.unwrap();
+    assert_eq!(display_val(batches).await.1, "{null=}");
+
+    let batches = run_query(r#"select json_get_str('{"a": ["x", "y"]}', 'a', -1)"#)
+        .await
+        .unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "y".to_string()));
+}

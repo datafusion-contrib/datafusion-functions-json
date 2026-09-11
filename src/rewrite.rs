@@ -107,6 +107,8 @@ enum JsonOperator {
     Arrow,
     LongArrow,
     Question,
+    HashArrow,
+    HashLongArrow,
 }
 
 impl TryFrom<&BinaryOperator> for JsonOperator {
@@ -117,6 +119,8 @@ impl TryFrom<&BinaryOperator> for JsonOperator {
             BinaryOperator::Arrow => Ok(JsonOperator::Arrow),
             BinaryOperator::LongArrow => Ok(JsonOperator::LongArrow),
             BinaryOperator::Question => Ok(JsonOperator::Question),
+            BinaryOperator::HashArrow => Ok(JsonOperator::HashArrow),
+            BinaryOperator::HashLongArrow => Ok(JsonOperator::HashLongArrow),
             _ => Err(()),
         }
     }
@@ -125,8 +129,10 @@ impl TryFrom<&BinaryOperator> for JsonOperator {
 impl From<JsonOperator> for Arc<ScalarUDF> {
     fn from(op: JsonOperator) -> Arc<ScalarUDF> {
         match op {
-            JsonOperator::Arrow => crate::udfs::json_get_udf(),
-            JsonOperator::LongArrow => crate::udfs::json_as_text_udf(),
+            // the path operators use the same functions as their single key counterparts, with
+            // the path passed as a list
+            JsonOperator::Arrow | JsonOperator::HashArrow => crate::udfs::json_get_udf(),
+            JsonOperator::LongArrow | JsonOperator::HashLongArrow => crate::udfs::json_as_text_udf(),
             JsonOperator::Question => crate::udfs::json_contains_udf(),
         }
     }
@@ -138,6 +144,8 @@ impl std::fmt::Display for JsonOperator {
             JsonOperator::Arrow => write!(f, "->"),
             JsonOperator::LongArrow => write!(f, "->>"),
             JsonOperator::Question => write!(f, "?"),
+            JsonOperator::HashArrow => write!(f, "#>"),
+            JsonOperator::HashLongArrow => write!(f, "#>>"),
         }
     }
 }
