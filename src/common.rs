@@ -568,7 +568,8 @@ fn cast_to_large_dictionary(dict_array: &dyn AnyDictionaryArray) -> DataFusionRe
     Ok(DictionaryArray::<Int64Type>::new(keys, dict_array.values().clone()))
 }
 
-/// Wrap an array as a dictionary with i64 indices, one key per row.
+/// Wrap an array as a dictionary with i64 indices, one key per row, with every null row a null key
+/// (see [`remap_dictionary_key_nulls`]).
 fn wrap_as_large_dictionary(new_values: ArrayRef) -> DictionaryArray<Int64Type> {
     let mut keys = PrimitiveArray::from_iter_values(0i64..new_values.len().try_into().expect("keys out of i64 range"));
     if is_json_union(new_values.data_type()) {
@@ -576,7 +577,7 @@ fn wrap_as_large_dictionary(new_values: ArrayRef) -> DictionaryArray<Int64Type> 
         let type_ids = new_values.as_union().type_ids();
         keys = mask_dictionary_keys(&keys, type_ids);
     }
-    DictionaryArray::new(keys, new_values)
+    remap_dictionary_key_nulls(keys, new_values)
 }
 
 pub fn jiter_json_find<'j>(opt_json: Option<&'j str>, path: &[JsonPath]) -> Option<(Jiter<'j>, Peek)> {

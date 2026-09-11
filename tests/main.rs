@@ -2027,6 +2027,28 @@ async fn test_dict_get_no_null_values() {
     }
 }
 
+/// As above, for a column path, which goes through `invoke_array_array`.
+#[tokio::test]
+async fn test_dict_column_path_no_null_values() {
+    let sql = "select json_as_text(json_data, str_key2) v from dicts";
+    #[rustfmt::skip]
+    let expected = [
+        "+---+",
+        "| v |",
+        "+---+",
+        "|   |",
+        "|   |",
+        "| 1 |",
+        "| 2 |",
+        "+---+",
+    ];
+    let batches = run_query(sql).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+    for batch in batches {
+        check_for_null_dictionary_values(batch.column(0).as_ref());
+    }
+}
+
 #[tokio::test]
 async fn test_dict_haystack_filter() {
     let sql = "select json_data v from dicts where json_get(json_data, 'foo') is not null";
@@ -2493,6 +2515,7 @@ async fn test_dict_scalar_json() {
 
         let sql = format!("select {func}({dict_doc}, '{key}')");
         let batches = run_query(&sql).await.unwrap();
+        check_for_null_dictionary_values(batches[0].column(0).as_ref());
         assert_eq!(
             display_val(batches).await,
             (dict_type.clone(), expected.to_string()),
@@ -2501,6 +2524,7 @@ async fn test_dict_scalar_json() {
 
         let sql = format!("select {func}({dict_doc}, 'missing')");
         let batches = run_query(&sql).await.unwrap();
+        check_for_null_dictionary_values(batches[0].column(0).as_ref());
         assert_eq!(display_val(batches).await, (dict_type.clone(), String::new()), "{sql}");
 
         let sql = format!("select {func}({dict_doc}, k) from (select unnest(['{key}', 'missing']) as k)");
@@ -2510,6 +2534,9 @@ async fn test_dict_scalar_json() {
             (dict_type, vec![expected.to_string(), String::new()]),
             "{sql}"
         );
+        for batch in &batches {
+            check_for_null_dictionary_values(batch.column(0).as_ref());
+        }
     }
 }
 
