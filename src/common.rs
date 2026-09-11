@@ -184,6 +184,8 @@ fn scalar_path(scalar: &ScalarValue, pos: usize) -> DataFusionResult<JsonPath<'_
     match scalar {
         ScalarValue::UInt64(Some(i)) => Ok((*i).into()),
         ScalarValue::Int64(Some(i)) => Ok((*i).into()),
+        // `try_as_str` already sees through a dictionary of strings, not one of integers
+        ScalarValue::Dictionary(_, value) => scalar_path(value, pos),
         other => exec_err!(
             "Unexpected argument type at position {}, expected string or int, got {other:?}.",
             pos + 1

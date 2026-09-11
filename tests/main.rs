@@ -2372,6 +2372,27 @@ async fn test_dict_view_json_column_path() {
     }
 }
 
+/// A dictionary-encoded literal path is a `ScalarValue::Dictionary`, which `scalar_path` has to
+/// unwrap for an integer index just as for a string key.
+#[tokio::test]
+async fn test_dict_scalar_path() {
+    let cases = [
+        (r#"'{"a": 20}'"#, "arrow_cast('a', 'Dictionary(Int32, Utf8View)')"),
+        ("'[10, 20]'", "arrow_cast(1, 'Dictionary(Int32, Int64)')"),
+        ("'[10, 20]'", "arrow_cast(1, 'Dictionary(Int32, UInt64)')"),
+    ];
+    for (doc, path) in cases {
+        // a literal document is const-evaluated, a column is not
+        for sql in [
+            format!("select json_get_int({doc}, {path})"),
+            format!("select json_get_int(j, {path}) from (select unnest([{doc}]) as j)"),
+        ] {
+            let batches = run_query(&sql).await.unwrap();
+            assert_eq!(display_val(batches).await, (DataType::Int64, "20".to_string()), "{sql}");
+        }
+    }
+}
+
 async fn build_dict_schema() -> SessionContext {
     let mut builder = StringDictionaryBuilder::<Int8Type>::new();
     builder.append(r#"{"foo": "bar"}"#).unwrap();
