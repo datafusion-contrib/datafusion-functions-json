@@ -63,59 +63,78 @@ enum Fold {
     Narrowing,
 }
 
-/// A cast target: how it is spelled in SQL, the typed accessor the rewriter folds it to, and
-/// what the fold does with it.
+/// A cast target: how it is spelled in SQL, the exact Arrow type `arrow_cast` names for it,
+/// the typed accessor the rewriter folds it to, and what each of the two folding paths does
+/// with it.
 #[derive(Debug, Clone, Copy)]
 struct Target {
     sql: &'static str,
+    arrow: &'static str,
     accessor: &'static str,
     sql_cast: Fold,
+    arrow_cast: Fold,
 }
 
 const TARGETS: &[Target] = &[
     Target {
         sql: "bigint",
+        arrow: "Int64",
         accessor: "json_get_int",
         sql_cast: Fold::Exact,
+        arrow_cast: Fold::Exact,
     },
     Target {
         sql: "double",
+        arrow: "Float64",
         accessor: "json_get_float",
         sql_cast: Fold::Exact,
+        arrow_cast: Fold::Exact,
     },
     Target {
         sql: "boolean",
+        arrow: "Boolean",
         accessor: "json_get_bool",
         sql_cast: Fold::Exact,
+        arrow_cast: Fold::Exact,
     },
     // SQL `VARCHAR` is `Utf8View` in DataFusion, but `json_get_str` returns `Utf8`.
     Target {
         sql: "varchar",
+        arrow: "Utf8",
         accessor: "json_get_str",
         sql_cast: Fold::Narrowing,
+        arrow_cast: Fold::Exact,
     },
     // Narrowing targets: the type asked for is narrower than what the accessor returns, so the
     // fold keeps the cast on top of the accessor.
     Target {
         sql: "int",
+        arrow: "Int32",
         accessor: "json_get_int",
         sql_cast: Fold::Narrowing,
+        arrow_cast: Fold::Narrowing,
     },
     Target {
         sql: "real",
+        arrow: "Float32",
         accessor: "json_get_float",
         sql_cast: Fold::Narrowing,
+        arrow_cast: Fold::Narrowing,
     },
     Target {
         sql: "decimal(10,2)",
+        arrow: "Decimal128(10, 2)",
         accessor: "json_get_float",
         sql_cast: Fold::Narrowing,
+        arrow_cast: Fold::Narrowing,
     },
-    // A type with no accessor, so it is not folded.
+    // A type neither path has an accessor for, so neither folds it.
     Target {
         sql: "smallint",
+        arrow: "Int16",
         accessor: "json_get_int",
         sql_cast: Fold::None,
+        arrow_cast: Fold::None,
     },
 ];
 
@@ -124,9 +143,18 @@ const TARGETS: &[Target] = &[
 enum Spelling {
     Cast,
     DoubleColon,
+    TryCast,
+    ArrowCast,
+    ArrowTryCast,
 }
 
-const SPELLINGS: &[Spelling] = &[Spelling::Cast, Spelling::DoubleColon];
+const SPELLINGS: &[Spelling] = &[
+    Spelling::Cast,
+    Spelling::DoubleColon,
+    Spelling::TryCast,
+    Spelling::ArrowCast,
+    Spelling::ArrowTryCast,
+];
 
 impl Spelling {
     /// Write `inner` cast to `target`.
@@ -134,14 +162,23 @@ impl Spelling {
         match self {
             Spelling::Cast => format!("cast({inner} as {})", target.sql),
             Spelling::DoubleColon => format!("({inner})::{}", target.sql),
+            Spelling::TryCast => format!("try_cast({inner} as {})", target.sql),
+            Spelling::ArrowCast => format!("arrow_cast({inner}, '{}')", target.arrow),
+            Spelling::ArrowTryCast => format!("arrow_try_cast({inner}, '{}')", target.arrow),
         }
     }
 
-    /// What the rewriter does with this spelling of this target. Every spelling here is a SQL
-    /// cast, so they all fold alike; the argument stays for the call sites that pair the two.
+    fn names_an_arrow_type(self) -> bool {
+        matches!(self, Spelling::ArrowCast | Spelling::ArrowTryCast)
+    }
+
+    /// What the rewriter does with this spelling of this target.
     fn fold(self, target: Target) -> Fold {
-        let _ = self;
-        target.sql_cast
+        if self.names_an_arrow_type() {
+            target.arrow_cast
+        } else {
+            target.sql_cast
+        }
     }
 }
 
@@ -483,19 +520,24 @@ fn narrowing_cast_preserves_type_and_narrows() {
     let rt = runtime();
     let ctx = create_context().unwrap();
 
-    // (json value, sql type, CAST outcome)
+    // (json value, sql type, CAST outcome, TRY_CAST outcome)
     let cases = [
-        ("42", "int", "Int32=42"),
-        ("42", "real", "Float32=42.0"),
-        ("42", "decimal(10,2)", "Decimal128(10, 2)=42.00"),
-        (r#""abc""#, "varchar", "Utf8View=abc"),
-        // out of the target type's range: CAST fails
-        ("3000000000", "int", "ERROR"),
-        ("9223372036854775807", "int", "ERROR"),
-        ("3000000000", "decimal(10,2)", "ERROR"),
+        ("42", "int", "Int32=42", "Int32=42"),
+        ("42", "real", "Float32=42.0", "Float32=42.0"),
+        (
+            "42",
+            "decimal(10,2)",
+            "Decimal128(10, 2)=42.00",
+            "Decimal128(10, 2)=42.00",
+        ),
+        (r#""abc""#, "varchar", "Utf8View=abc", "Utf8View=abc"),
+        // out of the target type's range: CAST fails, TRY_CAST yields NULL
+        ("3000000000", "int", "ERROR", "Int32=NULL"),
+        ("9223372036854775807", "int", "ERROR", "Int32=NULL"),
+        ("3000000000", "decimal(10,2)", "ERROR", "Decimal128(10, 2)=NULL"),
     ];
 
-    for (value, sql_type, want_cast) in cases {
+    for (value, sql_type, want_cast, want_try_cast) in cases {
         let target = TARGETS.iter().find(|t| t.sql == sql_type).unwrap();
         let doc = Doc {
             json: format!(r#"{{"a": {value}}}"#),
@@ -503,8 +545,10 @@ fn narrowing_cast_preserves_type_and_narrows() {
         };
         set_doc(&ctx, &doc.json);
 
-        let sql = select(&Spelling::Cast.apply(&doc.json_get(), *target));
-        assert_eq!(rt.block_on(outcome(&ctx, &sql)).to_string(), want_cast, "{sql}");
+        for (spelling, want) in [(Spelling::Cast, want_cast), (Spelling::TryCast, want_try_cast)] {
+            let sql = select(&spelling.apply(&doc.json_get(), *target));
+            assert_eq!(rt.block_on(outcome(&ctx, &sql)).to_string(), want, "{sql}");
+        }
     }
 }
 
