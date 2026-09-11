@@ -24,6 +24,26 @@ pub static DICT_TYPE: LazyLock<DataType> =
     LazyLock::new(|| DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)));
 pub static LARGE_DICT_TYPE: LazyLock<DataType> =
     LazyLock::new(|| DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::LargeUtf8)));
+pub static VIEW_DICT_TYPE: LazyLock<DataType> =
+    LazyLock::new(|| DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8View)));
+
+/// Build a string array of the given (non-dictionary) type.
+fn string_array<'a>(data_type: &DataType, values: impl IntoIterator<Item = &'a str>) -> ArrayRef {
+    match data_type {
+        DataType::Utf8 => Arc::new(StringArray::from_iter_values(values)),
+        DataType::LargeUtf8 => Arc::new(LargeStringArray::from_iter_values(values)),
+        DataType::Utf8View => Arc::new(StringViewArray::from_iter_values(values)),
+        _ => panic!("Unsupported JSON data type: {data_type}"),
+    }
+}
+
+/// The string type holding the JSON: the type itself, or the value type of a dictionary.
+fn json_value_type(json_data_type: &DataType) -> &DataType {
+    match json_data_type {
+        DataType::Dictionary(_, value_type) => value_type,
+        other => other,
+    }
+}
 
 #[expect(clippy::too_many_lines)]
 async fn create_test_table(json_data_type: &DataType) -> Result<SessionContext> {
@@ -41,29 +61,14 @@ async fn create_test_table(json_data_type: &DataType) -> Result<SessionContext> 
     let json_values = test_data.iter().map(|(_, json)| *json);
 
     let json_array = match json_data_type {
-        DataType::Utf8 => Arc::new(StringArray::from_iter_values(json_values)) as ArrayRef,
-        DataType::LargeUtf8 => Arc::new(LargeStringArray::from_iter_values(json_values)),
-        DataType::Utf8View => Arc::new(StringViewArray::from_iter_values(json_values)),
         DataType::Dictionary(key_type, _) if key_type.as_ref() != &DataType::Int32 => {
             panic!("Only Int32 dictionary encoding is supported for JSON data in these tests")
         }
-        DataType::Dictionary(key_type, child)
-            if key_type.as_ref() == &DataType::Int32 && child.as_ref() == &DataType::Utf8 =>
-        {
-            Arc::new(DictionaryArray::<Int32Type>::new(
-                Int32Array::from_iter_values(0..(i32::try_from(json_values.len()).expect("fits in a i32"))),
-                Arc::new(StringArray::from_iter_values(json_values)),
-            ))
-        }
-        DataType::Dictionary(key_type, child)
-            if key_type.as_ref() == &DataType::Int32 && child.as_ref() == &DataType::LargeUtf8 =>
-        {
-            Arc::new(DictionaryArray::<Int32Type>::new(
-                Int32Array::from_iter_values(0..(i32::try_from(json_values.len()).expect("fits in a i32"))),
-                Arc::new(LargeStringArray::from_iter_values(json_values)),
-            ))
-        }
-        _ => panic!("Unsupported JSON data type: {json_data_type}"),
+        DataType::Dictionary(_, value_type) => Arc::new(DictionaryArray::<Int32Type>::new(
+            Int32Array::from_iter_values(0..(i32::try_from(json_values.len()).expect("fits in a i32"))),
+            string_array(value_type, json_values),
+        )),
+        _ => string_array(json_data_type, json_values),
     };
 
     let test_batch = RecordBatch::try_new(
@@ -154,11 +159,14 @@ async fn create_test_table(json_data_type: &DataType) -> Result<SessionContext> 
         (r#" {"spam": 1, "snap": 2} "#, "foo", "spam", 0),
         (r#" {"spam": 1, "snap": 2} "#, "foo", "snap", 0),
     ];
+    // `json_data` is always a dictionary here, holding the string type under test, so the `dicts`
+    // queries run through `for_all_json_datatypes` cover each dictionary value type with column paths
+    let dict_json_value_type = json_value_type(json_data_type);
     let dict_batch = RecordBatch::try_new(
         Arc::new(Schema::new(vec![
             Field::new(
                 "json_data",
-                DataType::Dictionary(DataType::UInt32.into(), DataType::Utf8.into()),
+                DataType::Dictionary(DataType::UInt32.into(), dict_json_value_type.clone().into()),
                 false,
             ),
             Field::new(
@@ -185,9 +193,7 @@ async fn create_test_table(json_data_type: &DataType) -> Result<SessionContext> 
                         .enumerate()
                         .map(|(id, _)| u32::try_from(id).expect("fits in a u32")),
                 ),
-                Arc::new(StringArray::from(
-                    dict_data.iter().map(|(json, _, _, _)| *json).collect::<Vec<_>>(),
-                )),
+                string_array(dict_json_value_type, dict_data.iter().map(|(json, _, _, _)| *json)),
             )),
             Arc::new(DictionaryArray::<UInt8Type>::new(
                 UInt8Array::from_iter_values(
@@ -262,6 +268,7 @@ pub async fn for_all_json_datatypes(f: impl AsyncFn(&DataType)) {
         &DataType::Utf8View,
         &DICT_TYPE,
         &LARGE_DICT_TYPE,
+        &VIEW_DICT_TYPE,
     ] {
         f(dt).await;
     }

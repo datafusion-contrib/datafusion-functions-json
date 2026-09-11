@@ -45,7 +45,8 @@ pub fn return_type_check<R: InvokeResult>(
         return plan_err!("Unexpected argument type to '{fn_name}' at position 1, expected a string, got {first:?}.");
     }
     args.iter().skip(1).enumerate().try_for_each(|(index, arg)| {
-        if is_str(arg) || is_int(arg) || is_path_list(arg) || dict_key_type(arg).is_some() {
+        let is_int_dict = matches!(arg, DataType::Dictionary(_, value) if is_int(value));
+        if is_str(arg) || is_int(arg) || is_path_list(arg) || dict_key_type(arg).is_some() || is_int_dict {
             Ok(())
         } else {
             plan_err!(
@@ -183,6 +184,8 @@ fn scalar_path(scalar: &ScalarValue, pos: usize) -> DataFusionResult<JsonPath<'_
     match scalar {
         ScalarValue::UInt64(Some(i)) => Ok((*i).into()),
         ScalarValue::Int64(Some(i)) => Ok((*i).into()),
+        // `try_as_str` already sees through a dictionary of strings, not one of integers
+        ScalarValue::Dictionary(_, value) => scalar_path(value, pos),
         other => exec_err!(
             "Unexpected argument type at position {}, expected string or int, got {other:?}.",
             pos + 1
