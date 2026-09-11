@@ -9,7 +9,8 @@
 //!   yet")` panic fixed in #124: a JSON integer too wide for jiter's fast path.
 //! * [`prop_scalar_and_array_paths_agree`] — a literal argument is const-evaluated through
 //!   the `ScalarValue` path while a column goes through the array path. They are separate
-//!   code paths in every UDF here, and they have to agree.
+//!   code paths in every UDF here, and they have to agree — for plain and dictionary-encoded
+//!   documents alike, including on whether the result is a dictionary.
 //! * [`prop_input_encoding_does_not_change_result`] — `Utf8`, `LargeUtf8`, `Utf8View` and
 //!   dictionary-encoded input are four more separate paths that have to agree.
 
@@ -90,20 +91,28 @@ fn dict_encoding() -> DataType {
     DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8))
 }
 
-/// Run a single-row query, formatting the result. `Err` carries only the fact that the query
-/// failed, so the properties are not brittle about error text.
+/// Run a single-row query, formatting the result with its exact type. `Err` carries only the
+/// fact that the query failed, so the properties are not brittle about error text.
 async fn outcome(ctx: &SessionContext, sql: &str) -> std::result::Result<String, String> {
+    let (data_type, value) = run_single(ctx, sql).await?;
+    Ok(format!("{data_type}={value}"))
+}
+
+/// Like [`outcome`], but with any dictionary wrapper stripped from the type.
+async fn logical_outcome(ctx: &SessionContext, sql: &str) -> std::result::Result<String, String> {
+    let (data_type, value) = run_single(ctx, sql).await?;
+    Ok(format!("{}={value}", logical_type(&data_type)))
+}
+
+async fn run_single(ctx: &SessionContext, sql: &str) -> std::result::Result<(DataType, String), String> {
     let df = ctx.sql(sql).await.map_err(|e| e.to_string())?;
     let batches = df.collect().await.map_err(|e| e.to_string())?;
     let batch = &batches[0];
     let column = batch.column(0);
     let options = FormatOptions::default().with_display_error(true);
     let formatter = ArrayFormatter::try_new(column.as_ref(), &options).map_err(|e| e.to_string())?;
-    Ok(format!(
-        "{}={}",
-        logical_type(batch.schema().field(0).data_type()),
-        formatter.value(0).try_to_string().map_err(|e| e.to_string())?
-    ))
+    let value = formatter.value(0).try_to_string().map_err(|e| e.to_string())?;
+    Ok((batch.schema().field(0).data_type().clone(), value))
 }
 
 /// Dictionary encoding of the input carries through to the output, so compare the type it
@@ -219,26 +228,32 @@ fn prop_no_panic_on_arbitrary_json() {
 }
 
 /// A literal document is const-evaluated through each UDF's `ScalarValue` path; a column goes
-/// through its array path. The two must not disagree.
+/// through its array path. The two must not disagree, down to the exact result type.
+///
+/// Both are checked as plain strings and dictionary-encoded, since a dictionary argument may make
+/// the result a dictionary too, and each path has to decide that the same way `return_type` did.
 #[test]
 fn prop_scalar_and_array_paths_agree() {
     let rt = runtime();
     let ctx = create_context().unwrap();
 
     proptest!(config(96), |(json in json_text(), path in path())| {
-        set_doc(&ctx, &json, &DataType::Utf8View);
         let literal = format!("'{}'", json.replace('\'', "''"));
-        for func in PATH_FUNCS {
-            if !callable(func, &path) {
-                continue;
+        let dict_literal = format!("arrow_cast({literal}, '{}')", dict_encoding());
+        for (encoding, literal) in [(DataType::Utf8View, literal), (dict_encoding(), dict_literal)] {
+            set_doc(&ctx, &json, &encoding);
+            for func in PATH_FUNCS {
+                if !callable(func, &path) {
+                    continue;
+                }
+                let from_column = format!("select {} as v from {JSON_TABLE}", call(func, JSON_COLUMN, &path));
+                let from_literal = format!("select {} as v", call(func, &literal, &path));
+                let column = rt.block_on(outcome(&ctx, &from_column));
+                let scalar = rt.block_on(outcome(&ctx, &from_literal));
+                prop_assert_eq!(&column, &scalar,
+                    "\n  column in {}: {} => {:?}\n  literal: {} => {:?}\n  json: {:?}\n",
+                    encoding, from_column, column, from_literal, scalar, json);
             }
-            let from_column = format!("select {} as v from {JSON_TABLE}", call(func, JSON_COLUMN, &path));
-            let from_literal = format!("select {} as v", call(func, &literal, &path));
-            let column = rt.block_on(outcome(&ctx, &from_column));
-            let scalar = rt.block_on(outcome(&ctx, &from_literal));
-            prop_assert_eq!(&column, &scalar,
-                "\n  column:  {} => {:?}\n  literal: {} => {:?}\n  json: {:?}\n",
-                from_column, column, from_literal, scalar, json);
         }
     });
 }
@@ -263,11 +278,11 @@ fn prop_input_encoding_does_not_change_result() {
             let sql = format!("select {} as v from {JSON_TABLE}", call(func, JSON_COLUMN, &path));
 
             set_doc(&ctx, &json, &DataType::Utf8View);
-            let baseline = rt.block_on(outcome(&ctx, &sql));
+            let baseline = rt.block_on(logical_outcome(&ctx, &sql));
 
             for encoding in ENCODINGS.iter().cloned().chain(std::iter::once(dict_encoding())) {
                 set_doc(&ctx, &json, &encoding);
-                let got = rt.block_on(outcome(&ctx, &sql));
+                let got = rt.block_on(logical_outcome(&ctx, &sql));
                 prop_assert_eq!(&got, &baseline,
                     "\n  {} in {} => {:?}\n  in Utf8View => {:?}\n  json: {:?}\n",
                     sql, encoding, got, baseline, json);

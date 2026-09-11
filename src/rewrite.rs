@@ -10,7 +10,7 @@ use datafusion::logical_expr::expr::{Alias, Cast, Expr, ScalarFunction};
 use datafusion::logical_expr::expr_rewriter::FunctionRewrite;
 use datafusion::logical_expr::planner::{ExprPlanner, PlannerResult, RawBinaryExpr};
 use datafusion::logical_expr::sqlparser::ast::BinaryOperator;
-use datafusion::logical_expr::ScalarUDF;
+use datafusion::logical_expr::{ExprSchemable, ScalarUDF};
 use datafusion::scalar::ScalarValue;
 
 #[derive(Debug)]
@@ -21,15 +21,17 @@ impl FunctionRewrite for JsonFunctionRewriter {
         "JsonFunctionRewriter"
     }
 
-    fn rewrite(&self, expr: Expr, _schema: &DFSchema, _config: &ConfigOptions) -> Result<Transformed<Expr>> {
+    fn rewrite(&self, expr: Expr, schema: &DFSchema, _config: &ConfigOptions) -> Result<Transformed<Expr>> {
         let transform = match &expr {
-            Expr::Cast(cast) => optimise_json_get(cast.field.data_type(), &cast.expr).map(|folded| match folded {
-                Folded::Exact(accessor) => accessor,
-                Folded::Narrowing(accessor) => Expr::Cast(Cast {
-                    expr: Box::new(accessor),
-                    field: cast.field.clone(),
-                }),
-            }),
+            Expr::Cast(cast) => {
+                optimise_json_get(cast.field.data_type(), &cast.expr, schema).map(|folded| match folded {
+                    Folded::Exact(accessor) => accessor,
+                    Folded::Narrowing(accessor) => Expr::Cast(Cast {
+                        expr: Box::new(accessor),
+                        field: cast.field.clone(),
+                    }),
+                })
+            }
             Expr::ScalarFunction(func) => unnest_json_calls(func),
             _ => None,
         };
@@ -49,40 +51,40 @@ enum Folded {
 /// Replace the `json_get` under a cast to `cast_to` with the typed accessor that reads that type
 /// out of the JSON directly, so the JSON union never has to be materialized just to be cast away.
 ///
-/// The accessors return one Arrow type per JSON type — `json_get_int` is always `Int64` — which is
-/// not necessarily the type that was asked for. Where it is, the cast is dropped and this is the
-/// plain substitution it has always been. Where it is not, only the cast's *input* is replaced:
-/// dropping the cast there would silently change the type of the expression, and for a narrowing
-/// cast its value too, while keeping it costs one primitive-to-primitive cast and still never
-/// materializes the union.
-fn optimise_json_get(cast_to: &DataType, cast_expr: &Expr) -> Option<Folded> {
+/// The accessors return one Arrow type per JSON type — `json_get_int` is always `Int64`, and a
+/// dictionary of it for a dictionary-encoded JSON argument — which is not necessarily the type
+/// that was asked for. Where it is, the cast is dropped and this is the plain substitution it has
+/// always been. Where it is not, only the cast's *input* is replaced: dropping the cast there would
+/// silently change the type of the expression, and for a narrowing cast its value too, while
+/// keeping it costs one primitive-to-primitive cast and still never materializes the union.
+fn optimise_json_get(cast_to: &DataType, cast_expr: &Expr, schema: &DFSchema) -> Option<Folded> {
     let scalar_func = extract_scalar_function(cast_expr)?;
     if !is_json_get(scalar_func) {
         return None;
     }
-    let (func, returns) = typed_accessor(cast_to)?;
     let accessor = Expr::ScalarFunction(ScalarFunction {
-        func,
+        func: typed_accessor(cast_to)?,
         args: scalar_func.args.clone(),
     });
-    Some(if returns == *cast_to {
+    // the type the accessor returns for these particular arguments; if it can't be worked out,
+    // keeping the cast is always correct
+    let returns = accessor.get_type(schema).ok();
+    Some(if returns.as_ref() == Some(cast_to) {
         Folded::Exact(accessor)
     } else {
         Folded::Narrowing(accessor)
     })
 }
 
-/// The accessor that reads `cast_to` out of JSON, if there is one, and the type it returns.
-fn typed_accessor(cast_to: &DataType) -> Option<(Arc<ScalarUDF>, DataType)> {
+/// The accessor that reads `cast_to` out of JSON, if there is one.
+fn typed_accessor(cast_to: &DataType) -> Option<Arc<ScalarUDF>> {
     Some(match cast_to {
-        DataType::Boolean => (crate::json_get_bool::json_get_bool_udf(), DataType::Boolean),
+        DataType::Boolean => crate::json_get_bool::json_get_bool_udf(),
         DataType::Float64 | DataType::Float32 | DataType::Decimal128(_, _) | DataType::Decimal256(_, _) => {
-            (crate::json_get_float::json_get_float_udf(), DataType::Float64)
+            crate::json_get_float::json_get_float_udf()
         }
-        DataType::Int64 | DataType::Int32 => (crate::json_get_int::json_get_int_udf(), DataType::Int64),
-        DataType::Utf8 | DataType::Utf8View | DataType::LargeUtf8 => {
-            (crate::json_get_str::json_get_str_udf(), DataType::Utf8)
-        }
+        DataType::Int64 | DataType::Int32 => crate::json_get_int::json_get_int_udf(),
+        DataType::Utf8 | DataType::Utf8View | DataType::LargeUtf8 => crate::json_get_str::json_get_str_udf(),
         _ => return None,
     })
 }

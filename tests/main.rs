@@ -11,7 +11,7 @@ use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs};
 use datafusion::prelude::SessionContext;
 use datafusion_functions_json::json_field_metadata;
 use datafusion_functions_json::udfs::json_get_str_udf;
-use utils::{create_context, display_val, logical_plan, run_query, run_query_params};
+use utils::{create_context, display_rows, display_val, logical_plan, run_query, run_query_params};
 
 use crate::utils::{for_all_json_datatypes, run_query_datatype};
 
@@ -2027,6 +2027,73 @@ async fn test_dict_get_no_null_values() {
     }
 }
 
+/// As above, for a column path, which goes through `invoke_array_array`.
+#[tokio::test]
+async fn test_dict_column_path_no_null_values() {
+    let sql = "select json_as_text(json_data, str_key2) v from dicts";
+    #[rustfmt::skip]
+    let expected = [
+        "+---+",
+        "| v |",
+        "+---+",
+        "|   |",
+        "|   |",
+        "| 1 |",
+        "| 2 |",
+        "+---+",
+    ];
+    let batches = run_query(sql).await.unwrap();
+    assert_batches_eq!(expected, &batches);
+    for batch in batches {
+        check_for_null_dictionary_values(batch.column(0).as_ref());
+    }
+}
+
+/// A dictionary JSON column of every string value type, with a column path.
+#[tokio::test]
+async fn test_dict_value_types_column_path() {
+    for value_type in ["Utf8", "LargeUtf8", "Utf8View"] {
+        let sql = format!(
+            "select json_as_text(arrow_cast(json_data, 'Dictionary(Int32, {value_type})'), str_key) v from other"
+        );
+        let batches = run_query(&sql).await.unwrap();
+        assert_eq!(
+            display_rows(&batches),
+            (
+                DataType::Dictionary(Box::new(DataType::Int64), Box::new(DataType::Utf8)),
+                vec!["42".to_string(), String::new(), String::new(), String::new()]
+            ),
+            "{sql}"
+        );
+        for batch in &batches {
+            check_for_null_dictionary_values(batch.column(0).as_ref());
+        }
+    }
+}
+
+/// With `varchar` planned as `Utf8`, `json_get(..)::varchar` folds to `json_get_str` and drops the
+/// cast, since `json_get_str` returns `Utf8` too. For a dictionary JSON argument it returns
+/// `Dictionary(Int64, Utf8)`, so there the cast has to stay.
+#[tokio::test]
+async fn test_cast_json_get_dict_to_utf8() {
+    let config = datafusion::prelude::SessionConfig::new()
+        .set_str("datafusion.sql_parser.dialect", "postgres")
+        .set_bool("datafusion.sql_parser.map_string_types_to_utf8view", false);
+    let mut ctx = SessionContext::new_with_config(config);
+    datafusion_functions_json::register_all(&mut ctx).unwrap();
+
+    let doc = r#"'{"c": "y"}'"#;
+    for json in [
+        doc.to_string(),
+        format!("arrow_cast({doc}, 'Dictionary(Int32, Utf8)')"),
+        format!("arrow_cast(unnest([{doc}]), 'Dictionary(Int32, Utf8)')"),
+    ] {
+        let sql = format!("select cast(json_get({json}, 'c') as varchar)");
+        let batches = ctx.sql(&sql).await.unwrap().collect().await.unwrap();
+        assert_eq!(display_val(batches).await, (DataType::Utf8, "y".to_string()), "{sql}");
+    }
+}
+
 #[tokio::test]
 async fn test_dict_haystack_filter() {
     let sql = "select json_data v from dicts where json_get(json_data, 'foo') is not null";
@@ -2468,6 +2535,54 @@ FROM json_columns, attr_names
 
     let batches = run_query(sql).await.unwrap();
     assert_batches_eq!(expected, &batches);
+}
+
+/// A dictionary-encoded JSON literal goes through the scalar paths of `invoke` — scalar/scalar
+/// for a literal path, scalar/array for a column path. For the functions whose result keeps the
+/// dictionary encoding of their input, those paths have to wrap their result just as the array
+/// paths do, or it disagrees with the type `return_type` declared.
+#[tokio::test]
+async fn test_dict_scalar_json() {
+    let doc = r#"'{"a": {"b": "x"}, "c": "y"}'"#;
+    let dict_doc = format!("arrow_cast({doc}, 'Dictionary(Int32, Utf8)')");
+    let cases = [
+        ("json_get", "a", r#"{object={"b": "x"}}"#),
+        ("json_get_str", "c", "y"),
+        ("json_get_json", "a", r#"{"b": "x"}"#),
+        ("json_as_text", "c", "y"),
+        ("json_object_keys", "a", "[b]"),
+    ];
+
+    for (func, key, expected) in cases {
+        // the same call on a plain literal gives the type the dictionary wraps
+        let (value_type, _) = display_val(run_query(&format!("select {func}({doc}, '{key}')")).await.unwrap()).await;
+        let dict_type = DataType::Dictionary(Box::new(DataType::Int64), Box::new(value_type));
+
+        let sql = format!("select {func}({dict_doc}, '{key}')");
+        let batches = run_query(&sql).await.unwrap();
+        check_for_null_dictionary_values(batches[0].column(0).as_ref());
+        assert_eq!(
+            display_val(batches).await,
+            (dict_type.clone(), expected.to_string()),
+            "{sql}"
+        );
+
+        let sql = format!("select {func}({dict_doc}, 'missing')");
+        let batches = run_query(&sql).await.unwrap();
+        check_for_null_dictionary_values(batches[0].column(0).as_ref());
+        assert_eq!(display_val(batches).await, (dict_type.clone(), String::new()), "{sql}");
+
+        let sql = format!("select {func}({dict_doc}, k) from (select unnest(['{key}', 'missing']) as k)");
+        let batches = run_query(&sql).await.unwrap();
+        assert_eq!(
+            display_rows(&batches),
+            (dict_type, vec![expected.to_string(), String::new()]),
+            "{sql}"
+        );
+        for batch in &batches {
+            check_for_null_dictionary_values(batch.column(0).as_ref());
+        }
+    }
 }
 
 // ============================================================================
