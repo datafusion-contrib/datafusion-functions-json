@@ -2049,6 +2049,51 @@ async fn test_dict_column_path_no_null_values() {
     }
 }
 
+/// A dictionary JSON column of every string value type, with a column path.
+#[tokio::test]
+async fn test_dict_value_types_column_path() {
+    for value_type in ["Utf8", "LargeUtf8", "Utf8View"] {
+        let sql = format!(
+            "select json_as_text(arrow_cast(json_data, 'Dictionary(Int32, {value_type})'), str_key) v from other"
+        );
+        let batches = run_query(&sql).await.unwrap();
+        assert_eq!(
+            display_rows(&batches),
+            (
+                DataType::Dictionary(Box::new(DataType::Int64), Box::new(DataType::Utf8)),
+                vec!["42".to_string(), String::new(), String::new(), String::new()]
+            ),
+            "{sql}"
+        );
+        for batch in &batches {
+            check_for_null_dictionary_values(batch.column(0).as_ref());
+        }
+    }
+}
+
+/// With `varchar` planned as `Utf8`, `json_get(..)::varchar` folds to `json_get_str` and drops the
+/// cast, since `json_get_str` returns `Utf8` too. For a dictionary JSON argument it returns
+/// `Dictionary(Int64, Utf8)`, so there the cast has to stay.
+#[tokio::test]
+async fn test_cast_json_get_dict_to_utf8() {
+    let config = datafusion::prelude::SessionConfig::new()
+        .set_str("datafusion.sql_parser.dialect", "postgres")
+        .set_bool("datafusion.sql_parser.map_string_types_to_utf8view", false);
+    let mut ctx = SessionContext::new_with_config(config);
+    datafusion_functions_json::register_all(&mut ctx).unwrap();
+
+    let doc = r#"'{"c": "y"}'"#;
+    for json in [
+        doc.to_string(),
+        format!("arrow_cast({doc}, 'Dictionary(Int32, Utf8)')"),
+        format!("arrow_cast(unnest([{doc}]), 'Dictionary(Int32, Utf8)')"),
+    ] {
+        let sql = format!("select cast(json_get({json}, 'c') as varchar)");
+        let batches = ctx.sql(&sql).await.unwrap().collect().await.unwrap();
+        assert_eq!(display_val(batches).await, (DataType::Utf8, "y".to_string()), "{sql}");
+    }
+}
+
 #[tokio::test]
 async fn test_dict_haystack_filter() {
     let sql = "select json_data v from dicts where json_get(json_data, 'foo') is not null";

@@ -194,8 +194,9 @@ pub trait InvokeResult {
     type Item;
     type Builder;
 
-    /// Whether a dictionary-encoded JSON column produces a `Dictionary(Int64, _)` result; read by
-    /// both `return_type_check` (the declared type) and `invoke` (the built array), so they agree
+    /// Whether a dictionary-encoded JSON argument, column or scalar, produces a `Dictionary(Int64, _)`
+    /// result; read by both `return_type_check` (the declared type) and `invoke` (the built result),
+    /// so they agree
     const ACCEPT_DICT_RETURN: bool;
 
     fn builder(capacity: usize) -> Self::Builder;
@@ -262,6 +263,20 @@ fn invoke_array_array<R: InvokeResult>(
             let json_array = cast_to_large_dictionary(json_array.as_any_dictionary())?;
             let output = zip_apply::<R>(
                 json_array.downcast_dict::<LargeStringArray>().unwrap(),
+                path_array,
+                jiter_find,
+            )?;
+            if R::ACCEPT_DICT_RETURN {
+                // ensure return is a dictionary to satisfy the declaration above in return_type_check
+                Ok(Arc::new(wrap_as_large_dictionary(output)))
+            } else {
+                Ok(output)
+            }
+        }
+        DataType::Dictionary(_, value_type) if value_type.as_ref() == &DataType::Utf8View => {
+            let json_array = cast_to_large_dictionary(json_array.as_any_dictionary())?;
+            let output = zip_apply::<R>(
+                json_array.downcast_dict::<StringViewArray>().unwrap(),
                 path_array,
                 jiter_find,
             )?;
