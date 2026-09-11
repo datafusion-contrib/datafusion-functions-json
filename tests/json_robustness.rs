@@ -12,14 +12,16 @@
 //!   code paths in every UDF here, and they have to agree — for plain and dictionary-encoded
 //!   documents alike, including on whether the result is a dictionary.
 //! * [`prop_input_encoding_does_not_change_result`] — `Utf8`, `LargeUtf8`, `Utf8View` and
-//!   dictionary-encoded input are four more separate paths that have to agree.
+//!   their dictionary-encoded forms are more separate paths that have to agree, with the
+//!   lookup path written as literals and again with it held in a column.
 
 use std::sync::Arc;
 
 use datafusion::arrow::array::{
-    ArrayRef, DictionaryArray, Int32Array, LargeStringArray, RecordBatch, StringArray, StringViewArray,
+    ArrayRef, DictionaryArray, Int32Array, Int64Array, LargeStringArray, RecordBatch, StringArray, StringViewArray,
+    UInt64Array,
 };
-use datafusion::arrow::datatypes::{DataType, Field, Int32Type, Schema};
+use datafusion::arrow::datatypes::{DataType, Int32Type};
 use datafusion::arrow::util::display::{ArrayFormatter, FormatOptions};
 use datafusion::error::Result;
 use datafusion::execution::context::SessionContext;
@@ -44,6 +46,8 @@ const PATH_FUNCS: &[&str] = &[
 
 const JSON_TABLE: &str = "t";
 const JSON_COLUMN: &str = "j";
+/// A lookup path step held in a column of [`JSON_TABLE`] rather than written as a literal.
+const PATH_COLUMN: &str = "p";
 
 fn create_context() -> Result<SessionContext> {
     let config = SessionConfig::new().set_str("datafusion.sql_parser.dialect", "postgres");
@@ -69,23 +73,39 @@ fn config(cases: u32) -> ProptestConfig {
 
 /// Build the single-row table `t` holding `json` in the given encoding.
 fn set_doc(ctx: &SessionContext, json: &str, encoding: &DataType) {
-    let array: ArrayRef = match encoding {
-        DataType::Utf8 => Arc::new(StringArray::from(vec![json])),
-        DataType::LargeUtf8 => Arc::new(LargeStringArray::from(vec![json])),
-        DataType::Utf8View => Arc::new(StringViewArray::from(vec![json])),
-        DataType::Dictionary(_, _) => Arc::new(DictionaryArray::<Int32Type>::new(
-            Int32Array::from(vec![0]),
-            Arc::new(StringArray::from(vec![json])),
-        )),
-        other => panic!("unsupported JSON encoding {other}"),
-    };
-    let schema = Schema::new(vec![Field::new(JSON_COLUMN, encoding.clone(), false)]);
-    let batch = RecordBatch::try_new(Arc::new(schema), vec![array]).unwrap();
+    set_table(ctx, vec![(JSON_COLUMN, string_array(json, encoding))]);
+}
+
+/// Replace the table `t` with one holding `columns`.
+fn set_table(ctx: &SessionContext, columns: Vec<(&str, ArrayRef)>) {
+    let batch = RecordBatch::try_from_iter_with_nullable(columns.into_iter().map(|(name, array)| (name, array, false)))
+        .unwrap();
     let _ = ctx.deregister_table(JSON_TABLE);
     ctx.register_batch(JSON_TABLE, batch).unwrap();
 }
 
-const ENCODINGS: &[DataType] = &[DataType::Utf8, DataType::LargeUtf8, DataType::Utf8View];
+/// A single-row array holding `text` in the given encoding.
+fn string_array(text: &str, encoding: &DataType) -> ArrayRef {
+    match encoding {
+        DataType::Utf8 => Arc::new(StringArray::from(vec![text])),
+        DataType::LargeUtf8 => Arc::new(LargeStringArray::from(vec![text])),
+        DataType::Utf8View => Arc::new(StringViewArray::from(vec![text])),
+        DataType::Dictionary(key, value) if **key == DataType::Int32 => Arc::new(DictionaryArray::<Int32Type>::new(
+            Int32Array::from(vec![0]),
+            string_array(text, value),
+        )),
+        other => panic!("unsupported string encoding {other}"),
+    }
+}
+
+/// Every string encoding a JSON document, or a key in a path column, can arrive in.
+fn string_encodings() -> Vec<DataType> {
+    let plain = [DataType::Utf8, DataType::LargeUtf8, DataType::Utf8View];
+    let dicts = plain
+        .clone()
+        .map(|value| DataType::Dictionary(Box::new(DataType::Int32), Box::new(value)));
+    plain.into_iter().chain(dicts).collect()
+}
 
 fn dict_encoding() -> DataType {
     DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8))
@@ -178,14 +198,55 @@ fn valid_json() -> impl Strategy<Value = String> {
     })
 }
 
+/// One step of a lookup path.
+#[derive(Debug)]
+enum Step {
+    Key(String),
+    Index(i64),
+}
+
+impl Step {
+    /// The step as a SQL literal.
+    fn literal(&self) -> String {
+        match self {
+            Step::Key(key) => format!("'{key}'"),
+            Step::Index(index) => index.to_string(),
+        }
+    }
+}
+
+/// A string key or an array index.
+fn step() -> impl Strategy<Value = Step> {
+    prop_oneof!["[a-c]{1,2}".prop_map(Step::Key), (0i64..4).prop_map(Step::Index)]
+}
+
 /// A lookup path: string keys and array indices, rendered as SQL arguments.
 fn path() -> impl Strategy<Value = Vec<String>> {
-    prop::collection::vec(
-        prop_oneof![
-            "[a-c]{1,2}".prop_map(|k| format!("'{k}'")),
-            (0i64..4).prop_map(|i| i.to_string()),
-        ],
-        0..3,
+    prop::collection::vec(step().prop_map(|step| step.literal()), 0..3)
+}
+
+/// A single lookup step held in a single-row column: a key in any string encoding, or an index
+/// as either integer type the UDFs accept, plain or dictionary-encoded.
+fn column_step() -> impl Strategy<Value = (Step, ArrayRef)> {
+    (step(), prop::sample::select(string_encodings()), any::<(bool, bool)>()).prop_map(
+        |(step, key_encoding, (unsigned, dictionary))| {
+            let column: ArrayRef = match &step {
+                Step::Key(key) => string_array(key, &key_encoding),
+                Step::Index(index) => {
+                    let values: ArrayRef = if unsigned {
+                        Arc::new(UInt64Array::from(vec![index.unsigned_abs()]))
+                    } else {
+                        Arc::new(Int64Array::from(vec![*index]))
+                    };
+                    if dictionary {
+                        Arc::new(DictionaryArray::<Int32Type>::new(Int32Array::from(vec![0]), values))
+                    } else {
+                        values
+                    }
+                }
+            };
+            (step, column)
+        },
     )
 }
 
@@ -258,8 +319,13 @@ fn prop_scalar_and_array_paths_agree() {
     });
 }
 
-/// The four string encodings a JSON column can arrive in are four separate code paths, and
-/// they must all produce the same answer.
+/// The string encodings a JSON column can arrive in are separate code paths, and they must all
+/// produce the same answer.
+///
+/// A lookup path held in a column rather than written as literals takes separate code again
+/// (`invoke_array_array` rather than `invoke_array_scalars`, with a branch per dictionary value
+/// type), so every encoding is also checked with a single step in a column, against the same
+/// step written as a literal.
 ///
 /// Dictionary-encoded input may keep its encoding in the output, so the dictionary wrapper is
 /// stripped before comparing types. `json_get` is left out: it returns the JSON union, which
@@ -270,22 +336,37 @@ fn prop_input_encoding_does_not_change_result() {
     let rt = runtime();
     let ctx = create_context().unwrap();
 
-    proptest!(config(48), |(json in json_text(), path in path())| {
-        for func in PATH_FUNCS {
-            if !callable(func, &path) || *func == "json_get" {
-                continue;
-            }
-            let sql = format!("select {} as v from {JSON_TABLE}", call(func, JSON_COLUMN, &path));
+    proptest!(config(48), |(json in json_text(), path in path(), (step, step_column) in column_step())| {
+        // the baselines are a `Utf8View` document with the path written as literals
+        set_doc(&ctx, &json, &DataType::Utf8View);
+        let mut cases = Vec::new();
+        for func in PATH_FUNCS.iter().filter(|func| **func != "json_get") {
+            let sql = callable(func, &path)
+                .then(|| format!("select {} as v from {JSON_TABLE}", call(func, JSON_COLUMN, &path)));
+            let baseline = sql.as_ref().map(|sql| rt.block_on(logical_outcome(&ctx, sql)));
+            let from_column = format!("select {} as v from {JSON_TABLE}", call(func, JSON_COLUMN, &[PATH_COLUMN.to_string()]));
+            let from_literal = format!("select {} as v from {JSON_TABLE}", call(func, JSON_COLUMN, &[step.literal()]));
+            let step_baseline = rt.block_on(logical_outcome(&ctx, &from_literal));
+            cases.push((sql.zip(baseline), from_column, from_literal, step_baseline));
+        }
 
-            set_doc(&ctx, &json, &DataType::Utf8View);
-            let baseline = rt.block_on(logical_outcome(&ctx, &sql));
-
-            for encoding in ENCODINGS.iter().cloned().chain(std::iter::once(dict_encoding())) {
-                set_doc(&ctx, &json, &encoding);
-                let got = rt.block_on(logical_outcome(&ctx, &sql));
-                prop_assert_eq!(&got, &baseline,
-                    "\n  {} in {} => {:?}\n  in Utf8View => {:?}\n  json: {:?}\n",
-                    sql, encoding, got, baseline, json);
+        for encoding in string_encodings() {
+            set_table(&ctx, vec![
+                (JSON_COLUMN, string_array(&json, &encoding)),
+                (PATH_COLUMN, step_column.clone()),
+            ]);
+            for (literal_path, from_column, from_literal, step_baseline) in &cases {
+                if let Some((sql, baseline)) = literal_path {
+                    let got = rt.block_on(logical_outcome(&ctx, sql));
+                    prop_assert_eq!(&got, baseline,
+                        "\n  {} in {} => {:?}\n  in Utf8View => {:?}\n  json: {:?}\n",
+                        sql, encoding, got, baseline, json);
+                }
+                let got = rt.block_on(logical_outcome(&ctx, from_column));
+                prop_assert_eq!(&got, step_baseline,
+                    "\n  {} in {} with {} = {:?} as {} => {:?}\n  {} in Utf8View => {:?}\n  json: {:?}\n",
+                    from_column, encoding, PATH_COLUMN, step, step_column.data_type(), got,
+                    from_literal, step_baseline, json);
             }
         }
     });

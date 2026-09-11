@@ -45,7 +45,8 @@ pub fn return_type_check<R: InvokeResult>(
         return plan_err!("Unexpected argument type to '{fn_name}' at position 1, expected a string, got {first:?}.");
     }
     args.iter().skip(1).enumerate().try_for_each(|(index, arg)| {
-        if is_str(arg) || is_int(arg) || is_path_list(arg) || dict_key_type(arg).is_some() {
+        let is_int_dict = matches!(arg, DataType::Dictionary(_, value) if is_int(value));
+        if is_str(arg) || is_int(arg) || is_path_list(arg) || dict_key_type(arg).is_some() || is_int_dict {
             Ok(())
         } else {
             plan_err!(

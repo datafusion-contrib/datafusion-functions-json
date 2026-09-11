@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use datafusion::arrow::array::{Array, ArrayRef, DictionaryArray, RecordBatch};
-use datafusion::arrow::datatypes::{Field, Int64Type, Int8Type, Schema};
+use datafusion::arrow::array::{
+    Array, ArrayRef, DictionaryArray, Int32Array, Int64Array, RecordBatch, StringArray, StringViewArray, UInt8Array,
+};
+use datafusion::arrow::compute::cast;
+use datafusion::arrow::datatypes::{Field, Int32Type, Int64Type, Int8Type, Schema, UInt8Type};
 use datafusion::arrow::{array::StringDictionaryBuilder, datatypes::DataType};
 use datafusion::assert_batches_eq;
 use datafusion::common::ScalarValue;
@@ -2244,6 +2247,129 @@ async fn test_dict_get_array() {
         assert_batches_eq!(expected, &batches);
     })
     .await;
+}
+
+/// Table `t` with a `Dictionary(key_type, Utf8View)` JSON column `j`, and path columns: `k` a
+/// `Utf8` key, `kv` the same key as a `Dictionary(UInt8, Utf8View)`, `i` an `Int64` index and
+/// `id` the same index as a `Dictionary(UInt8, Int64)`.
+async fn build_dict_view_schema(key_type: &DataType) -> SessionContext {
+    let docs = StringViewArray::from(vec![
+        r#"{"a": "x", "b": 1, "c": [1, 2], "d": {"e": null}}"#,
+        r#"[true, 2.5, "y"]"#,
+        "not json",
+    ]);
+    // rows share documents and the last is null, so the keys are not just `0..len`
+    let doc_keys = Int32Array::from(vec![
+        Some(0),
+        Some(0),
+        Some(0),
+        Some(0),
+        Some(1),
+        Some(1),
+        Some(2),
+        None,
+    ]);
+    let json = DictionaryArray::<Int32Type>::new(doc_keys, Arc::new(docs));
+    let json = cast(
+        &json,
+        &DataType::Dictionary(Box::new(key_type.clone()), Box::new(DataType::Utf8View)),
+    )
+    .unwrap();
+
+    let str_keys = ["a", "b", "c", "d", "a", "a", "a", "a"];
+    let view_keys = DictionaryArray::<UInt8Type>::new(
+        UInt8Array::from(vec![0, 1, 2, 3, 0, 0, 0, 0]),
+        Arc::new(StringViewArray::from(vec!["a", "b", "c", "d"])),
+    );
+    let int_keys = Int64Array::from(vec![0, 0, 0, 0, 0, 1, 0, 0]);
+    let dict_int_keys = DictionaryArray::<UInt8Type>::new(
+        UInt8Array::from(vec![0, 0, 0, 0, 0, 1, 0, 0]),
+        Arc::new(Int64Array::from(vec![0, 1])),
+    );
+
+    let batch = RecordBatch::try_new(
+        Arc::new(Schema::new(vec![
+            Field::new("j", json.data_type().clone(), true),
+            Field::new("k", DataType::Utf8, false),
+            Field::new("kv", view_keys.data_type().clone(), false),
+            Field::new("i", DataType::Int64, false),
+            Field::new("id", dict_int_keys.data_type().clone(), false),
+        ])),
+        vec![
+            json,
+            Arc::new(StringArray::from(str_keys.to_vec())),
+            Arc::new(view_keys),
+            Arc::new(int_keys),
+            Arc::new(dict_int_keys),
+        ],
+    )
+    .unwrap();
+
+    let ctx = create_context().await.unwrap();
+    ctx.register_batch("t", batch).unwrap();
+    ctx
+}
+
+/// A column path takes `invoke_array_array`, which has a branch per dictionary value type,
+/// where a literal path takes `invoke_array_scalars`; this covers `Utf8View` values across key
+/// types and path column encodings, and checks which functions keep the dictionary encoding.
+#[tokio::test]
+async fn test_dict_view_json_column_path() {
+    let keyed = "select json_get(j, k) get, json_get_str(j, k) str, json_get_int(j, kv) int, \
+        json_get_json(j, kv) json, json_as_text(j, k) text, json_contains(j, kv) contains from t";
+    let keyed_expected = [
+        "+----------------------+-----+-----+-------------+-------------+----------+",
+        "| get                  | str | int | json        | text        | contains |",
+        "+----------------------+-----+-----+-------------+-------------+----------+",
+        "| {str=x}              | x   |     | \"x\"         | x           | true     |",
+        "| {int=1}              |     | 1   | 1           | 1           | true     |",
+        "| {array=[1, 2]}       |     |     | [1, 2]      | [1, 2]      | true     |",
+        "| {object={\"e\": null}} |     |     | {\"e\": null} | {\"e\": null} | true     |",
+        "|                      |     |     |             |             | false    |",
+        "|                      |     |     |             |             | false    |",
+        "|                      |     |     |             |             | false    |",
+        "|                      |     |     |             |             | false    |",
+        "+----------------------+-----+-----+-------------+-------------+----------+",
+    ];
+    let containers = "select json_get_array(j, k) arr, json_length(j, kv) len, json_object_keys(j, k) keys, \
+        json_get_bool(j, i) bool, json_get_float(j, id) float, json_as_text(j, id) text_i from t";
+    let containers_expected = [
+        "+--------+-----+------+------+-------+--------+",
+        "| arr    | len | keys | bool | float | text_i |",
+        "+--------+-----+------+------+-------+--------+",
+        "|        |     |      |      |       |        |",
+        "|        |     |      |      |       |        |",
+        "| [1, 2] | 2   |      |      |       |        |",
+        "|        | 1   | [e]  |      |       |        |",
+        "|        |     |      | true |       | true   |",
+        "|        |     |      |      | 2.5   | 2.5    |",
+        "|        |     |      |      |       |        |",
+        "|        |     |      |      |       |        |",
+        "+--------+-----+------+------+-------+--------+",
+    ];
+    // the functions whose `InvokeResult` sets `ACCEPT_DICT_RETURN`
+    let dict_columns = ["get", "str", "json", "text", "keys", "text_i"];
+
+    for key_type in [DataType::Int8, DataType::UInt16, DataType::Int32, DataType::UInt64] {
+        let ctx = build_dict_view_schema(&key_type).await;
+        for (sql, expected) in [(keyed, &keyed_expected), (containers, &containers_expected)] {
+            let batches = ctx.sql(sql).await.unwrap().collect().await.unwrap();
+            assert_batches_eq!(expected, &batches);
+            for (field, column) in batches[0].schema().fields().iter().zip(batches[0].columns()) {
+                let is_dict = matches!(field.data_type(), DataType::Dictionary(key, _) if **key == DataType::Int64);
+                assert_eq!(
+                    is_dict,
+                    dict_columns.contains(&field.name().as_str()),
+                    "unexpected type {} for {} with {key_type} keys",
+                    field.data_type(),
+                    field.name(),
+                );
+                if is_dict {
+                    check_for_null_dictionary_values(column.as_ref());
+                }
+            }
+        }
+    }
 }
 
 async fn build_dict_schema() -> SessionContext {
