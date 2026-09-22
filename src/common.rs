@@ -405,6 +405,48 @@ fn invoke_array_scalars<R: InvokeResult>(
     }
 }
 
+/// Write results directly into the Arrow builder for plain string arrays with
+/// scalar paths. Other input shapes retain the general `invoke` path.
+pub(crate) fn invoke_array_scalars_direct<R: InvokeResult>(
+    args: &[ColumnarValue],
+    append: impl Fn(Option<&str>, &[JsonPath], &mut R::Builder),
+) -> DataFusionResult<Option<ColumnarValue>> {
+    #[allow(clippy::needless_pass_by_value)] // ArrayAccessor is implemented on references
+    fn inner<'j, R: InvokeResult>(
+        json_array: impl ArrayAccessor<Item = &'j str>,
+        path: &[JsonPath],
+        append: impl Fn(Option<&str>, &[JsonPath], &mut R::Builder),
+    ) -> DataFusionResult<ColumnarValue> {
+        let mut builder = R::builder(json_array.len());
+        for row in 0..json_array.len() {
+            let json = (!json_array.is_null(row)).then(|| json_array.value(row));
+            append(json, path, &mut builder);
+        }
+        R::finish(builder).map(ColumnarValue::Array)
+    }
+
+    let Some((ColumnarValue::Array(json_array), path_args)) = args.split_first() else {
+        return Ok(None);
+    };
+    if !matches!(
+        json_array.data_type(),
+        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View
+    ) || matches!(path_args, [ColumnarValue::Array(_)])
+    {
+        return Ok(None);
+    }
+    let JsonPathArgs::Scalars(path) = JsonPathArgs::extract_path(path_args)? else {
+        return Ok(None);
+    };
+
+    Ok(Some(match json_array.data_type() {
+        DataType::Utf8 => inner::<R>(json_array.as_string::<i32>(), &path, append)?,
+        DataType::LargeUtf8 => inner::<R>(json_array.as_string::<i64>(), &path, append)?,
+        DataType::Utf8View => inner::<R>(json_array.as_string_view(), &path, append)?,
+        _ => return Ok(None),
+    }))
+}
+
 fn invoke_scalar_array<R: InvokeResult>(
     scalar: &ScalarValue,
     path_array: &ArrayRef,

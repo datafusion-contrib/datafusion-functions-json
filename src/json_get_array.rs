@@ -5,8 +5,11 @@ use datafusion::arrow::datatypes::{DataType, Field};
 use datafusion::common::{Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
 use jiter::Peek;
+use smallvec::SmallVec;
 
-use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath};
+use crate::common::{
+    get_err, invoke, invoke_array_scalars_direct, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath,
+};
 use crate::common_macros::make_udf_function;
 use crate::common_union::json_field_metadata;
 
@@ -50,6 +53,9 @@ impl ScalarUDFImpl for JsonGetArray {
     }
 
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DataFusionResult<ColumnarValue> {
+        if let Some(result) = invoke_array_scalars_direct::<BuildArrayList>(&args.args, append_json_array)? {
+            return Ok(result);
+        }
         invoke::<BuildArrayList>(&args.args, jiter_json_get_array)
     }
 
@@ -140,5 +146,92 @@ fn jiter_json_get_array(opt_json: Option<&str>, path: &[JsonPath]) -> Result<Vec
         }
     } else {
         get_err!()
+    }
+}
+
+fn append_json_array(opt_json: Option<&str>, path: &[JsonPath], builder: &mut ListBuilder<StringBuilder>) {
+    let value = (|| {
+        let Some((mut jiter, Peek::Array)) = jiter_json_find(opt_json, path) else {
+            return get_err!();
+        };
+        let mut items: SmallVec<[&str; 8]> = SmallVec::new();
+        let mut peek = jiter.known_array()?;
+        while let Some(element) = peek {
+            let start = jiter.current_index();
+            jiter.known_skip(element)?;
+            items.push(std::str::from_utf8(jiter.slice_to_current(start))?);
+            peek = jiter.array_step()?;
+        }
+        Ok::<_, GetError>(items)
+    })();
+    builder.append_option(value.ok().map(|items| items.into_iter().map(Some)));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use datafusion::arrow::array::{AsArray, LargeStringArray, StringViewArray};
+
+    #[test]
+    fn direct_builder_matches_owned_results() {
+        let rows = [
+            Some(r#"{"a":[null,true,42,"escaped\nvalue",{"x":[1,2]}],"b":[]}"#),
+            Some(r#"{"a":[1,2,3,4,5,6,7,8,9],"b":null}"#),
+            Some(r#"{"a":[[1,2],[3,4]],"b":["x"]}"#),
+            Some(r#"{"a":false,"b":["x"]}"#),
+            Some(r#"{"a":[1,truX]}"#),
+            Some(r#"{"a":[9],"b":[]}"#),
+            Some("invalid"),
+            None,
+        ];
+        let arrays: Vec<ArrayRef> = vec![
+            Arc::new(datafusion::arrow::array::StringArray::from_iter(rows)),
+            Arc::new(LargeStringArray::from_iter(rows)),
+            Arc::new(StringViewArray::from_iter(rows)),
+        ];
+        let paths = vec![
+            vec![],
+            vec![ScalarValue::Utf8(Some("a".to_owned()))],
+            vec![ScalarValue::Utf8(Some("b".to_owned()))],
+            vec![ScalarValue::Utf8(Some("missing".to_owned()))],
+            vec![ScalarValue::Utf8(Some("a".to_owned())), ScalarValue::Int64(Some(0))],
+            vec![ScalarValue::Utf8(None)],
+        ];
+        for array in arrays {
+            for path in &paths {
+                let mut args = vec![ColumnarValue::Array(array.clone())];
+                args.extend(path.iter().cloned().map(ColumnarValue::Scalar));
+                let direct = invoke_array_scalars_direct::<BuildArrayList>(&args, append_json_array)
+                    .unwrap()
+                    .unwrap();
+                let owned = invoke::<BuildArrayList>(&args, jiter_json_get_array).unwrap();
+                let (ColumnarValue::Array(direct), ColumnarValue::Array(owned)) = (direct, owned) else {
+                    panic!("array input must produce array output");
+                };
+                assert_eq!(direct.data_type(), owned.data_type());
+                assert_eq!(direct.as_ref(), owned.as_ref(), "path={path:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn malformed_late_element_does_not_append_partial_values() {
+        let args = vec![
+            ColumnarValue::Array(Arc::new(datafusion::arrow::array::StringArray::from(vec![
+                r#"{"a":[1,truX]}"#,
+                r#"{"a":[9]}"#,
+            ]))),
+            ColumnarValue::Scalar(ScalarValue::Utf8(Some("a".to_owned()))),
+        ];
+        let ColumnarValue::Array(result) = invoke_array_scalars_direct::<BuildArrayList>(&args, append_json_array)
+            .unwrap()
+            .unwrap()
+        else {
+            panic!("array input must produce array output");
+        };
+        assert!(result.is_null(0));
+        let list = result.as_list::<i32>();
+        assert_eq!(list.values().len(), 1);
+        assert_eq!(list.value(1).as_string::<i32>().value(0), "9");
     }
 }

@@ -6,7 +6,69 @@ use datafusion::arrow::array::{StringArray, StringViewArray};
 use datafusion::arrow::datatypes::{DataType, Field};
 use datafusion::logical_expr::ColumnarValue;
 use datafusion::{common::ScalarValue, logical_expr::ScalarFunctionArgs};
-use datafusion_functions_json::udfs::{json_contains_udf, json_get_str_udf, json_length_udf};
+use datafusion_functions_json::udfs::{
+    json_as_text_udf, json_contains_udf, json_get_array_udf, json_get_str_udf, json_length_udf,
+};
+
+fn bench_json_as_text_array(b: &mut Bencher) {
+    let udf = json_as_text_udf();
+    let array = StringViewArray::from_iter_values(
+        (0..1024).map(|i| format!(r#"{{"a":"value-{i}","b":{{"nested":[1,2,3]}},"c":"payload"}}"#)),
+    );
+    let args = vec![
+        ColumnarValue::Array(Arc::new(array)),
+        ColumnarValue::Scalar(ScalarValue::Utf8(Some("c".to_string()))),
+    ];
+    let arg_fields = vec![
+        Arc::new(Field::new("json", DataType::Utf8View, false)),
+        Arc::new(Field::new("path", DataType::Utf8, false)),
+    ];
+    let return_field = Arc::new(Field::new("out", DataType::Utf8, true));
+    let config_options = Arc::new(datafusion::config::ConfigOptions::default());
+
+    b.iter(|| {
+        udf.invoke_with_args(ScalarFunctionArgs {
+            args: args.clone(),
+            number_rows: 1024,
+            arg_fields: arg_fields.clone(),
+            return_field: return_field.clone(),
+            config_options: config_options.clone(),
+        })
+        .unwrap()
+    });
+}
+
+fn bench_json_get_array_array(b: &mut Bencher) {
+    let udf = json_get_array_udf();
+    let items: Vec<_> = (0..8).map(|i| format!(r#"{{"id":{i},"text":"message"}}"#)).collect();
+    let json = format!(r#"{{"a":true,"messages":[{}],"z":"tail"}}"#, items.join(","));
+    let array = StringViewArray::from_iter_values(std::iter::repeat_n(json, 1024));
+    let args = vec![
+        ColumnarValue::Array(Arc::new(array)),
+        ColumnarValue::Scalar(ScalarValue::Utf8(Some("messages".to_string()))),
+    ];
+    let arg_fields = vec![
+        Arc::new(Field::new("json", DataType::Utf8View, false)),
+        Arc::new(Field::new("path", DataType::Utf8, false)),
+    ];
+    let return_field = Arc::new(Field::new(
+        "out",
+        udf.return_type(&[DataType::Utf8View, DataType::Utf8]).unwrap(),
+        true,
+    ));
+    let config_options = Arc::new(datafusion::config::ConfigOptions::default());
+
+    b.iter(|| {
+        udf.invoke_with_args(ScalarFunctionArgs {
+            args: args.clone(),
+            number_rows: 1024,
+            arg_fields: arg_fields.clone(),
+            return_field: return_field.clone(),
+            config_options: config_options.clone(),
+        })
+        .unwrap()
+    });
+}
 
 fn bench_json_contains(b: &mut Bencher) {
     let json_contains = json_contains_udf();
@@ -218,6 +280,8 @@ fn bench_json_length_array(b: &mut Bencher) {
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
+    c.bench_function("json_as_text_array", bench_json_as_text_array);
+    c.bench_function("json_get_array_array", bench_json_get_array_array);
     c.bench_function("json_get_str_index", bench_json_get_str_index);
     c.bench_function("json_get_str_index_last", bench_json_get_str_index_last);
     c.bench_function("json_get_str_negative_index", bench_json_get_str_negative_index);
