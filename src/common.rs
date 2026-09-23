@@ -409,13 +409,13 @@ fn invoke_array_scalars<R: InvokeResult>(
 /// scalar paths. Other input shapes retain the general `invoke` path.
 pub(crate) fn invoke_array_scalars_direct<R: InvokeResult>(
     args: &[ColumnarValue],
-    append: impl Fn(Option<&str>, &[JsonPath], &mut R::Builder),
+    append: impl FnMut(Option<&str>, &[JsonPath], &mut R::Builder),
 ) -> DataFusionResult<Option<ColumnarValue>> {
     #[allow(clippy::needless_pass_by_value)] // ArrayAccessor is implemented on references
     fn inner<'j, R: InvokeResult>(
         json_array: impl ArrayAccessor<Item = &'j str>,
         path: &[JsonPath],
-        append: impl Fn(Option<&str>, &[JsonPath], &mut R::Builder),
+        mut append: impl FnMut(Option<&str>, &[JsonPath], &mut R::Builder),
     ) -> DataFusionResult<ColumnarValue> {
         let mut builder = R::builder(json_array.len());
         for row in 0..json_array.len() {
