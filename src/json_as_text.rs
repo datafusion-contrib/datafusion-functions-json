@@ -4,10 +4,11 @@ use datafusion::arrow::array::{ArrayRef, StringArray, StringBuilder};
 use datafusion::arrow::datatypes::DataType;
 use datafusion::common::{Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
-use jiter::Peek;
+use jiter::{Jiter, Peek};
 
 use crate::common::{
-    get_err, invoke, invoke_array_scalars_direct, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath,
+    get_err, invoke, invoke_array_scalars_direct, jiter_json_find, jiter_skip_str, return_type_check, GetError,
+    InvokeResult, JsonPath,
 };
 use crate::common_macros::make_udf_function;
 
@@ -101,49 +102,34 @@ impl InvokeResult for StringArray {
 }
 
 fn jiter_json_as_text(opt_json: Option<&str>, path: &[JsonPath]) -> Result<String, GetError> {
-    if let Some((mut jiter, peek)) = jiter_json_find(opt_json, path) {
-        match peek {
-            Peek::Null => {
-                jiter.known_null()?;
-                get_err!()
-            }
-            Peek::String => Ok(jiter.known_str()?.to_owned()),
-            _ => {
-                let start = jiter.current_index();
-                jiter.known_skip(peek)?;
-                let object_slice = jiter.slice_to_current(start);
-                let object_string = std::str::from_utf8(object_slice)?;
-                Ok(object_string.to_owned())
-            }
-        }
-    } else {
-        get_err!()
-    }
+    let (Some(json), Some((mut jiter, peek))) = (opt_json, jiter_json_find(opt_json, path)) else {
+        return get_err!();
+    };
+    text_value(json, &mut jiter, peek).map(str::to_owned)
 }
 
 fn append_json_as_text(opt_json: Option<&str>, path: &[JsonPath], builder: &mut StringBuilder) {
-    let Some((mut jiter, peek)) = jiter_json_find(opt_json, path) else {
+    if let (Some(json), Some((mut jiter, peek))) = (opt_json, jiter_json_find(opt_json, path)) {
+        builder.append_option(text_value(json, &mut jiter, peek).ok());
+    } else {
         builder.append_null();
-        return;
-    };
+    }
+}
+
+/// A JSON string decoded, any other value as its raw JSON text. JSON `null` is an error, so
+/// it becomes SQL null like a missing path.
+fn text_value<'a, 'j: 'a>(json: &'j str, jiter: &'a mut Jiter<'j>, peek: Peek) -> Result<&'a str, GetError> {
     match peek {
-        Peek::Null => builder.append_null(),
-        Peek::String => builder.append_option(jiter.known_str().ok()),
-        _ => {
-            let start = jiter.current_index();
-            let value = jiter
-                .known_skip(peek)
-                .ok()
-                .and_then(|()| std::str::from_utf8(jiter.slice_to_current(start)).ok());
-            builder.append_option(value);
-        }
+        Peek::Null => get_err!(),
+        Peek::String => Ok(jiter.known_str()?),
+        _ => jiter_skip_str(json, jiter, peek),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datafusion::arrow::array::{LargeStringArray, StringViewArray};
+    use crate::common::test_util::assert_direct_matches_owned;
 
     #[test]
     fn direct_builder_matches_owned_results() {
@@ -153,11 +139,6 @@ mod tests {
             Some(r#"{"a":null,"a":"second","c":"text"}"#),
             Some("invalid"),
             None,
-        ];
-        let arrays: Vec<ArrayRef> = vec![
-            Arc::new(StringArray::from_iter(rows)),
-            Arc::new(LargeStringArray::from_iter(rows)),
-            Arc::new(StringViewArray::from_iter(rows)),
         ];
         let paths = vec![
             vec![],
@@ -172,19 +153,6 @@ mod tests {
             ],
             vec![ScalarValue::Utf8(None)],
         ];
-        for array in arrays {
-            for path in &paths {
-                let mut args = vec![ColumnarValue::Array(array.clone())];
-                args.extend(path.iter().cloned().map(ColumnarValue::Scalar));
-                let direct = invoke_array_scalars_direct::<StringArray>(&args, append_json_as_text)
-                    .unwrap()
-                    .unwrap();
-                let owned = invoke::<StringArray>(&args, jiter_json_as_text).unwrap();
-                let (ColumnarValue::Array(direct), ColumnarValue::Array(owned)) = (direct, owned) else {
-                    panic!("array input must produce array output");
-                };
-                assert_eq!(direct.as_ref(), owned.as_ref(), "path={path:?}");
-            }
-        }
+        assert_direct_matches_owned::<StringArray>(&rows, &paths, append_json_as_text, jiter_json_as_text);
     }
 }

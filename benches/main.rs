@@ -2,13 +2,64 @@ use std::sync::Arc;
 
 use codspeed_criterion_compat::{criterion_group, criterion_main, Bencher, Criterion};
 
-use datafusion::arrow::array::{StringArray, StringViewArray};
-use datafusion::arrow::datatypes::{DataType, Field};
-use datafusion::logical_expr::ColumnarValue;
+use datafusion::arrow::array::{ArrayRef, DictionaryArray, Int32Array, StringArray, StringViewArray};
+use datafusion::arrow::datatypes::{DataType, Field, Int32Type};
+use datafusion::logical_expr::{ColumnarValue, ScalarUDF};
 use datafusion::{common::ScalarValue, logical_expr::ScalarFunctionArgs};
 use datafusion_functions_json::udfs::{
-    json_as_text_udf, json_contains_udf, json_get_array_udf, json_get_str_udf, json_length_udf,
+    json_as_text_udf, json_contains_udf, json_get_array_udf, json_get_json_udf, json_get_str_udf, json_get_udf,
+    json_length_udf,
 };
+
+/// One sample object per row: `a` a distinct string, `b` an object, `c` a short string.
+fn sample_objects(rows: usize) -> impl Iterator<Item = String> {
+    (0..rows).map(|i| format!(r#"{{"a":"value-{i}","b":{{"nested":[1,2,3]}},"c":"payload"}}"#))
+}
+
+/// Time `udf(json, path)` over a whole batch.
+fn bench_udf_batch(b: &mut Bencher, udf: &ScalarUDF, json: ArrayRef, path: &str) {
+    let arg_types = [json.data_type().clone(), DataType::Utf8];
+    let arg_fields = vec![
+        Arc::new(Field::new("json", arg_types[0].clone(), false)),
+        Arc::new(Field::new("path", DataType::Utf8, false)),
+    ];
+    let return_field = Arc::new(Field::new("out", udf.return_type(&arg_types).unwrap(), true));
+    let number_rows = json.len();
+    let args = vec![
+        ColumnarValue::Array(json),
+        ColumnarValue::Scalar(ScalarValue::Utf8(Some(path.to_string()))),
+    ];
+    let config_options = Arc::new(datafusion::config::ConfigOptions::default());
+
+    b.iter(|| {
+        udf.invoke_with_args(ScalarFunctionArgs {
+            args: args.clone(),
+            number_rows,
+            arg_fields: arg_fields.clone(),
+            return_field: return_field.clone(),
+            config_options: config_options.clone(),
+        })
+        .unwrap()
+    });
+}
+
+fn bench_json_get_json_array(b: &mut Bencher) {
+    let json = StringViewArray::from_iter_values(sample_objects(1024));
+    bench_udf_batch(b, &json_get_json_udf(), Arc::new(json), "b");
+}
+
+fn bench_json_get_view_array(b: &mut Bencher) {
+    let json = StringViewArray::from_iter_values(sample_objects(1024));
+    bench_udf_batch(b, &json_get_udf(), Arc::new(json), "a");
+}
+
+/// 1,024 rows over 128 distinct dictionary values, as a Parquet reader produces.
+fn bench_json_get_str_dict_array(b: &mut Bencher) {
+    let values = StringArray::from_iter_values(sample_objects(128));
+    let keys = Int32Array::from_iter_values((0..1024).map(|i| i % 128));
+    let json = DictionaryArray::<Int32Type>::try_new(keys, Arc::new(values)).unwrap();
+    bench_udf_batch(b, &json_get_str_udf(), Arc::new(json), "a");
+}
 
 fn bench_json_as_text_array(b: &mut Bencher) {
     let udf = json_as_text_udf();
@@ -293,6 +344,9 @@ fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("json_as_text_array", bench_json_as_text_array);
     c.bench_function("json_get_array_array", bench_json_get_array_array);
     c.bench_function("json_get_array_array_wide", bench_json_get_array_array_wide);
+    c.bench_function("json_get_json_array", bench_json_get_json_array);
+    c.bench_function("json_get_view_array", bench_json_get_view_array);
+    c.bench_function("json_get_str_dict_array", bench_json_get_str_dict_array);
     c.bench_function("json_get_str_index", bench_json_get_str_index);
     c.bench_function("json_get_str_index_last", bench_json_get_str_index_last);
     c.bench_function("json_get_str_negative_index", bench_json_get_str_negative_index);

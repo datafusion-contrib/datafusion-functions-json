@@ -9,9 +9,12 @@ use datafusion::scalar::ScalarValue;
 use jiter::{Jiter, NumberAny, NumberInt, Peek};
 
 use crate::common::InvokeResult;
-use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, JsonPath};
+use crate::common::{
+    get_err, invoke, invoke_array_scalars_direct, jiter_json_find, jiter_skip_str, return_type_check, GetError,
+    JsonPath,
+};
 use crate::common_macros::make_udf_function;
-use crate::common_union::{JsonUnion, JsonUnionField};
+use crate::common_union::{JsonUnion, JsonUnionField, JsonUnionValue};
 
 make_udf_function!(
     JsonGet,
@@ -51,6 +54,9 @@ impl ScalarUDFImpl for JsonGet {
     }
 
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DataFusionResult<ColumnarValue> {
+        if let Some(result) = invoke_array_scalars_direct::<JsonUnion>(&args.args, append_json_get_union)? {
+            return Ok(result);
+        }
         invoke::<JsonUnion>(&args.args, jiter_json_get_union)
     }
 
@@ -90,7 +96,7 @@ impl InvokeResult for JsonUnion {
 
     fn append_value(builder: &mut Self::Builder, value: Option<Self::Item>) {
         if let Some(value) = value {
-            builder.push(value);
+            builder.push(&value);
         } else {
             builder.push_none();
         }
@@ -107,52 +113,77 @@ impl InvokeResult for JsonUnion {
 }
 
 fn jiter_json_get_union(opt_json: Option<&str>, path: &[JsonPath]) -> Result<JsonUnionField, GetError> {
-    if let Some((mut jiter, peek)) = jiter_json_find(opt_json, path) {
-        build_union(&mut jiter, peek)
+    let (Some(json), Some((mut jiter, peek))) = (opt_json, jiter_json_find(opt_json, path)) else {
+        return get_err!();
+    };
+    build_union(json, &mut jiter, peek).map(JsonUnionField::from)
+}
+
+fn append_json_get_union(opt_json: Option<&str>, path: &[JsonPath], builder: &mut JsonUnion) {
+    if let (Some(json), Some((mut jiter, peek))) = (opt_json, jiter_json_find(opt_json, path)) {
+        match build_union(json, &mut jiter, peek) {
+            Ok(value) => builder.push_value(value),
+            Err(GetError) => builder.push_none(),
+        }
     } else {
-        get_err!()
+        builder.push_none();
     }
 }
 
-fn build_union(jiter: &mut Jiter, peek: Peek) -> Result<JsonUnionField, GetError> {
+fn build_union<'a, 'j: 'a>(
+    json: &'j str,
+    jiter: &'a mut Jiter<'j>,
+    peek: Peek,
+) -> Result<JsonUnionValue<'a>, GetError> {
     match peek {
         Peek::Null => {
             jiter.known_null()?;
-            Ok(JsonUnionField::JsonNull)
+            Ok(JsonUnionValue::JsonNull)
         }
-        Peek::True | Peek::False => {
-            let value = jiter.known_bool(peek)?;
-            Ok(JsonUnionField::Bool(value))
-        }
-        Peek::String => {
-            let value = jiter.known_str()?;
-            Ok(JsonUnionField::Str(value.to_owned()))
-        }
-        Peek::Array => {
-            let start = jiter.current_index();
-            jiter.known_skip(peek)?;
-            let array_slice = jiter.slice_to_current(start);
-            let array_string = std::str::from_utf8(array_slice)?;
-            Ok(JsonUnionField::Array(array_string.to_owned()))
-        }
-        Peek::Object => {
-            let start = jiter.current_index();
-            jiter.known_skip(peek)?;
-            let object_slice = jiter.slice_to_current(start);
-            let object_string = std::str::from_utf8(object_slice)?;
-            Ok(JsonUnionField::Object(object_string.to_owned()))
-        }
+        Peek::True | Peek::False => Ok(JsonUnionValue::Bool(jiter.known_bool(peek)?)),
+        Peek::String => Ok(JsonUnionValue::Str(jiter.known_str()?)),
+        Peek::Array => Ok(JsonUnionValue::Array(jiter_skip_str(json, jiter, peek)?)),
+        Peek::Object => Ok(JsonUnionValue::Object(jiter_skip_str(json, jiter, peek)?)),
         _ => match jiter.known_number(peek)? {
-            NumberAny::Int(NumberInt::Int(value)) => Ok(JsonUnionField::Int(value)),
+            NumberAny::Int(NumberInt::Int(value)) => Ok(JsonUnionValue::Int(value)),
             // jiter returns `BigInt` for any integer its fast path couldn't decode, which includes
             // values that do fit in `i64`, hence the conversion attempt. Values genuinely outside
             // `i64` range have no representation in the union, so they're returned as null rather
             // than silently losing precision as a `Float`.
             NumberAny::Int(NumberInt::BigInt(value)) => match i64::try_from(value) {
-                Ok(value) => Ok(JsonUnionField::Int(value)),
+                Ok(value) => Ok(JsonUnionValue::Int(value)),
                 Err(_) => get_err!(),
             },
-            NumberAny::Float(value) => Ok(JsonUnionField::Float(value)),
+            NumberAny::Float(value) => Ok(JsonUnionValue::Float(value)),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::test_util::assert_direct_matches_owned;
+
+    #[test]
+    fn direct_builder_matches_owned_results() {
+        let rows = [
+            Some(r#"{"a":"escaped\nvalue","b":null,"c":[1,{"x":true}],"d":{"k":1.5}}"#),
+            Some(r#"{"a":42,"b":true,"c":[false,-7,18446744073709551615],"d":{}}"#),
+            Some(r#"{"a":null,"a":"second","c":"text","d":[]}"#),
+            Some(r#"{"a":1e400,"b":123456789012345678901234567890}"#),
+            Some("invalid"),
+            None,
+        ];
+        let paths = vec![
+            vec![],
+            vec![ScalarValue::Utf8(Some("a".to_owned()))],
+            vec![ScalarValue::Utf8(Some("b".to_owned()))],
+            vec![ScalarValue::Utf8(Some("d".to_owned()))],
+            vec![ScalarValue::Utf8(Some("missing".to_owned()))],
+            vec![ScalarValue::Utf8(Some("c".to_owned())), ScalarValue::Int64(Some(1))],
+            vec![ScalarValue::Utf8(Some("c".to_owned())), ScalarValue::Int64(Some(2))],
+            vec![ScalarValue::Utf8(None)],
+        ];
+        assert_direct_matches_owned::<JsonUnion>(&rows, &paths, append_json_get_union, jiter_json_get_union);
     }
 }

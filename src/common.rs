@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::str::Utf8Error;
 use std::sync::Arc;
 
 use datafusion::arrow::array::{
@@ -224,7 +223,10 @@ pub fn invoke<R: InvokeResult>(
             invoke_array_array::<R>(json_array, path_array, jiter_find).map(ColumnarValue::Array)
         }
         (ColumnarValue::Array(json_array), JsonPathArgs::Scalars(path)) => {
-            invoke_array_scalars::<R>(json_array, &path, jiter_find).map(ColumnarValue::Array)
+            invoke_array_scalars::<R>(json_array, &path, &mut |json, path, builder| {
+                R::append_value(builder, jiter_find(json, path).ok());
+            })
+            .map(ColumnarValue::Array)
         }
         (ColumnarValue::Scalar(s), JsonPathArgs::Array(path_array)) => {
             invoke_scalar_array::<R>(s, path_array, jiter_find)
@@ -349,26 +351,25 @@ fn remap_dictionary_key_nulls(keys: PrimitiveArray<Int64Type>, values: ArrayRef)
     DictionaryArray::new(new_keys, values)
 }
 
+/// Build the result for a JSON array and a scalar path; `append` writes one row into the builder.
+///
+/// A dictionary array is processed once per distinct value, and a JSON union once over the member
+/// the path's first step selects.
 fn invoke_array_scalars<R: InvokeResult>(
     json_array: &ArrayRef,
     path: &[JsonPath],
-    jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<R::Item, GetError>,
+    append: &mut impl FnMut(Option<&str>, &[JsonPath], &mut R::Builder),
 ) -> DataFusionResult<ArrayRef> {
     #[allow(clippy::needless_pass_by_value)] // ArrayAccessor is implemented on references
     fn inner<'j, R: InvokeResult>(
         json_array: impl ArrayAccessor<Item = &'j str>,
         path: &[JsonPath],
-        jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<R::Item, GetError>,
+        append: &mut impl FnMut(Option<&str>, &[JsonPath], &mut R::Builder),
     ) -> DataFusionResult<ArrayRef> {
         let mut builder = R::builder(json_array.len());
         for i in 0..json_array.len() {
-            let opt_json = if json_array.is_null(i) {
-                None
-            } else {
-                Some(json_array.value(i))
-            };
-            let opt_value = jiter_find(opt_json, path).ok();
-            R::append_value(&mut builder, opt_value);
+            let opt_json = (!json_array.is_null(i)).then(|| json_array.value(i));
+            append(opt_json, path, &mut builder);
         }
         R::finish(builder)
     }
@@ -376,7 +377,7 @@ fn invoke_array_scalars<R: InvokeResult>(
     match json_array.data_type() {
         DataType::Dictionary(_, _) => {
             let json_array = json_array.as_any_dictionary();
-            let values = invoke_array_scalars::<R>(json_array.values(), path, jiter_find)?;
+            let values = invoke_array_scalars::<R>(json_array.values(), path, append)?;
             return if R::ACCEPT_DICT_RETURN {
                 // make the keys into i64 to avoid generic bloat here
                 let mut keys: PrimitiveArray<Int64Type> = downcast_array(&cast(json_array.keys(), &DataType::Int64)?);
@@ -391,13 +392,13 @@ fn invoke_array_scalars<R: InvokeResult>(
                 Ok(take(&values, json_array.keys(), None)?)
             };
         }
-        DataType::Utf8 => inner::<R>(json_array.as_string::<i32>(), path, jiter_find),
-        DataType::LargeUtf8 => inner::<R>(json_array.as_string::<i64>(), path, jiter_find),
-        DataType::Utf8View => inner::<R>(json_array.as_string_view(), path, jiter_find),
+        DataType::Utf8 => inner::<R>(json_array.as_string::<i32>(), path, append),
+        DataType::LargeUtf8 => inner::<R>(json_array.as_string::<i64>(), path, append),
+        DataType::Utf8View => inner::<R>(json_array.as_string_view(), path, append),
         DataType::Null => null_result::<R>(json_array.len()),
         other => {
             if let Some(string_array) = nested_json_array(json_array, is_object_lookup(path)) {
-                inner::<R>(string_array, path, jiter_find)
+                inner::<R>(string_array, path, append)
             } else {
                 exec_err!("unexpected json array type {:?}", other)
             }
@@ -405,46 +406,22 @@ fn invoke_array_scalars<R: InvokeResult>(
     }
 }
 
-/// Write results directly into the Arrow builder for plain string arrays with
-/// scalar paths. Other input shapes retain the general `invoke` path.
+/// Write results straight into the Arrow builder for a JSON array argument with scalar paths.
+///
+/// `invoke` serves that shape through an owned value per row; this takes an `append` that borrows
+/// from the row instead. Any other argument shape returns `None` for the caller to pass to `invoke`.
 pub(crate) fn invoke_array_scalars_direct<R: InvokeResult>(
     args: &[ColumnarValue],
-    append: impl FnMut(Option<&str>, &[JsonPath], &mut R::Builder),
+    mut append: impl FnMut(Option<&str>, &[JsonPath], &mut R::Builder),
 ) -> DataFusionResult<Option<ColumnarValue>> {
-    #[allow(clippy::needless_pass_by_value)] // ArrayAccessor is implemented on references
-    fn inner<'j, R: InvokeResult>(
-        json_array: impl ArrayAccessor<Item = &'j str>,
-        path: &[JsonPath],
-        mut append: impl FnMut(Option<&str>, &[JsonPath], &mut R::Builder),
-    ) -> DataFusionResult<ColumnarValue> {
-        let mut builder = R::builder(json_array.len());
-        for row in 0..json_array.len() {
-            let json = (!json_array.is_null(row)).then(|| json_array.value(row));
-            append(json, path, &mut builder);
-        }
-        R::finish(builder).map(ColumnarValue::Array)
-    }
-
     let Some((ColumnarValue::Array(json_array), path_args)) = args.split_first() else {
         return Ok(None);
     };
-    if !matches!(
-        json_array.data_type(),
-        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View
-    ) || matches!(path_args, [ColumnarValue::Array(_)])
-    {
-        return Ok(None);
-    }
     let JsonPathArgs::Scalars(path) = JsonPathArgs::extract_path(path_args)? else {
         return Ok(None);
     };
-
-    Ok(Some(match json_array.data_type() {
-        DataType::Utf8 => inner::<R>(json_array.as_string::<i32>(), &path, append)?,
-        DataType::LargeUtf8 => inner::<R>(json_array.as_string::<i64>(), &path, append)?,
-        DataType::Utf8View => inner::<R>(json_array.as_string_view(), &path, append)?,
-        _ => return Ok(None),
-    }))
+    let array = invoke_array_scalars::<R>(json_array, &path, &mut append)?;
+    Ok(Some(ColumnarValue::Array(array)))
 }
 
 fn invoke_scalar_array<R: InvokeResult>(
@@ -640,6 +617,17 @@ fn wrap_as_large_dictionary(new_values: ArrayRef) -> DictionaryArray<Int64Type> 
     remap_dictionary_key_nulls(keys, new_values)
 }
 
+/// Skip the value `jiter` is positioned at and return its raw text as a slice of `json`, the
+/// string `jiter` was built from.
+///
+/// jiter stops on ASCII bytes, so the byte range is on char boundaries and the slice needs no
+/// UTF-8 pass over the value.
+pub(crate) fn jiter_skip_str<'j>(json: &'j str, jiter: &mut Jiter<'j>, peek: Peek) -> Result<&'j str, GetError> {
+    let start = jiter.current_index();
+    jiter.known_skip(peek)?;
+    json.get(start..jiter.current_index()).ok_or(GetError)
+}
+
 pub fn jiter_json_find<'j>(opt_json: Option<&'j str>, path: &[JsonPath]) -> Option<(Jiter<'j>, Peek)> {
     let json_str = opt_json?;
     let mut jiter = Jiter::new(json_str.as_bytes());
@@ -715,12 +703,6 @@ impl From<JiterError> for GetError {
     }
 }
 
-impl From<Utf8Error> for GetError {
-    fn from(_: Utf8Error) -> Self {
-        GetError
-    }
-}
-
 /// Set keys to null where the union member is null.
 ///
 /// This is a workaround to <https://github.com/apache/arrow-rs/issues/6017#issuecomment-2352756753>
@@ -739,6 +721,47 @@ fn mask_dictionary_keys(keys: &PrimitiveArray<Int64Type>, type_ids: &[i8]) -> Pr
         }
     }
     PrimitiveArray::new(keys.values().clone(), Some(null_mask.into()))
+}
+
+#[cfg(test)]
+pub(crate) mod test_util {
+    use super::*;
+    use datafusion::arrow::array::{LargeStringArray, StringViewArray};
+
+    /// `rows` as each string encoding `invoke_array_scalars_direct` handles.
+    pub(crate) fn string_arrays(rows: &[Option<&str>]) -> Vec<ArrayRef> {
+        let utf8: ArrayRef = Arc::new(StringArray::from_iter(rows.iter().copied()));
+        let dict_type = DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8));
+        vec![
+            utf8.clone(),
+            Arc::new(LargeStringArray::from_iter(rows.iter().copied())),
+            Arc::new(StringViewArray::from_iter(rows.iter().copied())),
+            cast(&utf8, &dict_type).unwrap(),
+        ]
+    }
+
+    /// Check the direct path and `invoke` build equal arrays for every encoding of `rows` and
+    /// every path in `paths`.
+    pub(crate) fn assert_direct_matches_owned<R: InvokeResult>(
+        rows: &[Option<&str>],
+        paths: &[Vec<ScalarValue>],
+        mut append: impl FnMut(Option<&str>, &[JsonPath], &mut R::Builder),
+        jiter_find: impl Fn(Option<&str>, &[JsonPath]) -> Result<R::Item, GetError>,
+    ) {
+        for array in string_arrays(rows) {
+            for path in paths {
+                let mut args = vec![ColumnarValue::Array(array.clone())];
+                args.extend(path.iter().cloned().map(ColumnarValue::Scalar));
+                let direct = invoke_array_scalars_direct::<R>(&args, &mut append).unwrap().unwrap();
+                let owned = invoke::<R>(&args, &jiter_find).unwrap();
+                let (ColumnarValue::Array(direct), ColumnarValue::Array(owned)) = (direct, owned) else {
+                    panic!("array input must produce array output");
+                };
+                assert_eq!(direct.data_type(), owned.data_type(), "path={path:?}");
+                assert_eq!(direct.as_ref(), owned.as_ref(), "path={path:?}");
+            }
+        }
+    }
 }
 
 #[cfg(test)]

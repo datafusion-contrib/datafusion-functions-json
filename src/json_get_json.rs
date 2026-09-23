@@ -1,13 +1,16 @@
 use std::sync::Arc;
 
-use datafusion::arrow::array::StringArray;
+use datafusion::arrow::array::{StringArray, StringBuilder};
 use datafusion::arrow::datatypes::{DataType, Field, FieldRef};
 use datafusion::common::Result as DataFusionResult;
 use datafusion::logical_expr::{
     ColumnarValue, ReturnFieldArgs, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility,
 };
 
-use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, JsonPath};
+use crate::common::{
+    get_err, invoke, invoke_array_scalars_direct, jiter_json_find, jiter_skip_str, return_type_check, GetError,
+    JsonPath,
+};
 use crate::common_macros::make_udf_function;
 use crate::common_union::json_field_metadata;
 
@@ -55,6 +58,9 @@ impl ScalarUDFImpl for JsonGetJson {
     }
 
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DataFusionResult<ColumnarValue> {
+        if let Some(result) = invoke_array_scalars_direct::<StringArray>(&args.args, append_json_get_json)? {
+            return Ok(result);
+        }
         invoke::<StringArray>(&args.args, jiter_json_get_json)
     }
 
@@ -82,13 +88,43 @@ impl ScalarUDFImpl for JsonGetJson {
 }
 
 fn jiter_json_get_json(opt_json: Option<&str>, path: &[JsonPath]) -> Result<String, GetError> {
-    if let Some((mut jiter, peek)) = jiter_json_find(opt_json, path) {
-        let start = jiter.current_index();
-        jiter.known_skip(peek)?;
-        let object_slice = jiter.slice_to_current(start);
-        let object_string = std::str::from_utf8(object_slice)?;
-        Ok(object_string.to_owned())
+    let (Some(json), Some((mut jiter, peek))) = (opt_json, jiter_json_find(opt_json, path)) else {
+        return get_err!();
+    };
+    jiter_skip_str(json, &mut jiter, peek).map(str::to_owned)
+}
+
+fn append_json_get_json(opt_json: Option<&str>, path: &[JsonPath], builder: &mut StringBuilder) {
+    if let (Some(json), Some((mut jiter, peek))) = (opt_json, jiter_json_find(opt_json, path)) {
+        builder.append_option(jiter_skip_str(json, &mut jiter, peek).ok());
     } else {
-        get_err!()
+        builder.append_null();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::test_util::assert_direct_matches_owned;
+    use datafusion::common::ScalarValue;
+
+    #[test]
+    fn direct_builder_matches_owned_results() {
+        let rows = [
+            Some(r#"{"a":"escaped\nvalue","b":null,"c":[1,{"x":true}]}"#),
+            Some(r#"{"a":42,"b":{"nested":[1,2,{"y":"z"}]},"c":"text"}"#),
+            Some(r#"{"a":[],"b":{}}"#),
+            Some("invalid"),
+            None,
+        ];
+        let paths = vec![
+            vec![],
+            vec![ScalarValue::Utf8(Some("a".to_owned()))],
+            vec![ScalarValue::Utf8(Some("b".to_owned()))],
+            vec![ScalarValue::Utf8(Some("missing".to_owned()))],
+            vec![ScalarValue::Utf8(Some("c".to_owned())), ScalarValue::Int64(Some(1))],
+            vec![ScalarValue::Utf8(None)],
+        ];
+        assert_direct_matches_owned::<StringArray>(&rows, &paths, append_json_get_json, jiter_json_get_json);
     }
 }
