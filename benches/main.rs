@@ -39,8 +39,18 @@ fn bench_json_as_text_array(b: &mut Bencher) {
 }
 
 fn bench_json_get_array_array(b: &mut Bencher) {
+    bench_json_get_array_array_n(b, 8);
+}
+
+fn bench_json_get_array_array_wide(b: &mut Bencher) {
+    bench_json_get_array_array_n(b, 32);
+}
+
+fn bench_json_get_array_array_n(b: &mut Bencher, elements: usize) {
     let udf = json_get_array_udf();
-    let items: Vec<_> = (0..8).map(|i| format!(r#"{{"id":{i},"text":"message"}}"#)).collect();
+    let items: Vec<_> = (0..elements)
+        .map(|i| format!(r#"{{"id":{i},"text":"message"}}"#))
+        .collect();
     let json = format!(r#"{{"a":true,"messages":[{}],"z":"tail"}}"#, items.join(","));
     let array = StringViewArray::from_iter_values(std::iter::repeat_n(json, 1024));
     let args = vec![
@@ -282,6 +292,7 @@ fn bench_json_length_array(b: &mut Bencher) {
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("json_as_text_array", bench_json_as_text_array);
     c.bench_function("json_get_array_array", bench_json_get_array_array);
+    c.bench_function("json_get_array_array_wide", bench_json_get_array_array_wide);
     c.bench_function("json_get_str_index", bench_json_get_str_index);
     c.bench_function("json_get_str_index_last", bench_json_get_str_index_last);
     c.bench_function("json_get_str_negative_index", bench_json_get_str_negative_index);
