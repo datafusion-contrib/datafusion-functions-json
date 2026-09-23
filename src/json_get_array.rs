@@ -8,7 +8,8 @@ use jiter::Peek;
 use std::ops::Range;
 
 use crate::common::{
-    get_err, invoke, invoke_array_scalars_direct, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath,
+    get_err, invoke, invoke_array_scalars_direct, jiter_json_find, jiter_skip_str, return_type_check, GetError,
+    InvokeResult, JsonPath,
 };
 use crate::common_macros::make_udf_function;
 use crate::common_union::json_field_metadata;
@@ -123,34 +124,20 @@ impl InvokeResult for BuildArrayList {
 }
 
 fn jiter_json_get_array(opt_json: Option<&str>, path: &[JsonPath]) -> Result<Vec<String>, GetError> {
-    if let Some((mut jiter, peek)) = jiter_json_find(opt_json, path) {
-        match peek {
-            Peek::Array => {
-                let mut peek_opt = jiter.known_array()?;
-                let mut array_items: Vec<String> = Vec::new();
-
-                while let Some(element_peek) = peek_opt {
-                    // Get the raw JSON slice for each array element
-                    let start = jiter.current_index();
-                    jiter.known_skip(element_peek)?;
-                    let slice = jiter.slice_to_current(start);
-                    let element_str = std::str::from_utf8(slice)?.to_string();
-
-                    array_items.push(element_str);
-                    peek_opt = jiter.array_step()?;
-                }
-
-                Ok(array_items)
-            }
-            _ => get_err!(),
-        }
-    } else {
-        get_err!()
+    let (Some(json), Some((mut jiter, Peek::Array))) = (opt_json, jiter_json_find(opt_json, path)) else {
+        return get_err!();
+    };
+    let mut array_items = Vec::new();
+    let mut peek_opt = jiter.known_array()?;
+    while let Some(element_peek) = peek_opt {
+        array_items.push(jiter_skip_str(json, &mut jiter, element_peek)?.to_owned());
+        peek_opt = jiter.array_step()?;
     }
+    Ok(array_items)
 }
 
-/// Fast path for plain string columns with scalar paths, see `invoke_array_scalars_direct`.
-/// One scratch buffer of element ranges is shared by every row of the batch.
+/// The direct path of `invoke_array_scalars_direct`, with one scratch buffer of element ranges
+/// shared by every row of the batch.
 fn invoke_direct(args: &[ColumnarValue]) -> DataFusionResult<Option<ColumnarValue>> {
     let mut scratch = Vec::new();
     invoke_array_scalars_direct::<BuildArrayList>(args, |opt_json, path, builder| {
@@ -190,7 +177,8 @@ fn append_json_array(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datafusion::arrow::array::{AsArray, LargeStringArray, StringViewArray};
+    use crate::common::test_util::assert_direct_matches_owned;
+    use datafusion::arrow::array::AsArray;
 
     #[test]
     fn direct_builder_matches_owned_results() {
@@ -204,11 +192,6 @@ mod tests {
             Some("invalid"),
             None,
         ];
-        let arrays: Vec<ArrayRef> = vec![
-            Arc::new(datafusion::arrow::array::StringArray::from_iter(rows)),
-            Arc::new(LargeStringArray::from_iter(rows)),
-            Arc::new(StringViewArray::from_iter(rows)),
-        ];
         let paths = vec![
             vec![],
             vec![ScalarValue::Utf8(Some("a".to_owned()))],
@@ -217,19 +200,13 @@ mod tests {
             vec![ScalarValue::Utf8(Some("a".to_owned())), ScalarValue::Int64(Some(0))],
             vec![ScalarValue::Utf8(None)],
         ];
-        for array in arrays {
-            for path in &paths {
-                let mut args = vec![ColumnarValue::Array(array.clone())];
-                args.extend(path.iter().cloned().map(ColumnarValue::Scalar));
-                let direct = invoke_direct(&args).unwrap().unwrap();
-                let owned = invoke::<BuildArrayList>(&args, jiter_json_get_array).unwrap();
-                let (ColumnarValue::Array(direct), ColumnarValue::Array(owned)) = (direct, owned) else {
-                    panic!("array input must produce array output");
-                };
-                assert_eq!(direct.data_type(), owned.data_type());
-                assert_eq!(direct.as_ref(), owned.as_ref(), "path={path:?}");
-            }
-        }
+        let mut scratch = Vec::new();
+        assert_direct_matches_owned::<BuildArrayList>(
+            &rows,
+            &paths,
+            |opt_json, path, builder| append_json_array(&mut scratch, opt_json, path, builder),
+            jiter_json_get_array,
+        );
     }
 
     #[test]

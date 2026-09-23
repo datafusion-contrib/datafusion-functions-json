@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, OnceLock};
 
 use datafusion::arrow::array::{
-    Array, ArrayRef, AsArray, BooleanArray, Float64Array, Int64Array, NullArray, StringArray, UnionArray,
+    Array, ArrayRef, AsArray, BooleanArray, BooleanBuilder, Float64Array, Float64Builder, Int64Array, Int64Builder,
+    NullArray, StringArray, StringBuilder, UnionArray,
 };
 use datafusion::arrow::buffer::{Buffer, ScalarBuffer};
 use datafusion::arrow::datatypes::{DataType, Field, UnionFields, UnionMode};
@@ -74,31 +75,32 @@ pub(crate) fn json_from_union_scalar<'a>(
 
 pub static JSON_UNION_DATA_TYPE: LazyLock<DataType> = LazyLock::new(JsonUnion::data_type);
 
+/// Builder for the JSON union array.
+///
+/// The union is sparse, so every child has one slot per row: the member's value and a null in
+/// each other child. The string children are Arrow builders, so a `push_value` copies each
+/// borrowed string once, into the array's own buffer.
 #[derive(Debug)]
 pub(crate) struct JsonUnion {
-    bools: Vec<Option<bool>>,
-    ints: Vec<Option<i64>>,
-    floats: Vec<Option<f64>>,
-    strings: Vec<Option<String>>,
-    arrays: Vec<Option<String>>,
-    objects: Vec<Option<String>>,
+    bools: BooleanBuilder,
+    ints: Int64Builder,
+    floats: Float64Builder,
+    strings: StringBuilder,
+    arrays: StringBuilder,
+    objects: StringBuilder,
     type_ids: Vec<i8>,
-    index: usize,
-    length: usize,
 }
 
 impl JsonUnion {
-    pub fn new(length: usize) -> Self {
+    pub fn new(capacity: usize) -> Self {
         Self {
-            bools: vec![None; length],
-            ints: vec![None; length],
-            floats: vec![None; length],
-            strings: vec![None; length],
-            arrays: vec![None; length],
-            objects: vec![None; length],
-            type_ids: vec![TYPE_ID_NULL; length],
-            index: 0,
-            length,
+            bools: BooleanBuilder::with_capacity(capacity),
+            ints: Int64Builder::with_capacity(capacity),
+            floats: Float64Builder::with_capacity(capacity),
+            strings: StringBuilder::with_capacity(capacity, 0),
+            arrays: StringBuilder::with_capacity(capacity, 0),
+            objects: StringBuilder::with_capacity(capacity, 0),
+            type_ids: Vec::with_capacity(capacity),
         }
     }
 
@@ -106,24 +108,32 @@ impl JsonUnion {
         DataType::Union(union_fields(), UnionMode::Sparse)
     }
 
-    pub fn push(&mut self, field: JsonUnionField) {
-        self.type_ids[self.index] = field.type_id();
-        match field {
-            JsonUnionField::JsonNull => (),
-            JsonUnionField::Bool(value) => self.bools[self.index] = Some(value),
-            JsonUnionField::Int(value) => self.ints[self.index] = Some(value),
-            JsonUnionField::Float(value) => self.floats[self.index] = Some(value),
-            JsonUnionField::Str(value) => self.strings[self.index] = Some(value),
-            JsonUnionField::Array(value) => self.arrays[self.index] = Some(value),
-            JsonUnionField::Object(value) => self.objects[self.index] = Some(value),
-        }
-        self.index += 1;
-        debug_assert!(self.index <= self.length);
+    pub fn push(&mut self, field: &JsonUnionField) {
+        self.push_value(field.as_value());
     }
 
+    pub fn push_value(&mut self, value: JsonUnionValue<'_>) {
+        self.type_ids.push(value.type_id());
+        let (bool_, int, float, string, array, object) = match value {
+            JsonUnionValue::JsonNull => (None, None, None, None, None, None),
+            JsonUnionValue::Bool(b) => (Some(b), None, None, None, None, None),
+            JsonUnionValue::Int(i) => (None, Some(i), None, None, None, None),
+            JsonUnionValue::Float(f) => (None, None, Some(f), None, None, None),
+            JsonUnionValue::Str(s) => (None, None, None, Some(s), None, None),
+            JsonUnionValue::Array(s) => (None, None, None, None, Some(s), None),
+            JsonUnionValue::Object(s) => (None, None, None, None, None, Some(s)),
+        };
+        self.bools.append_option(bool_);
+        self.ints.append_option(int);
+        self.floats.append_option(float);
+        self.strings.append_option(string);
+        self.arrays.append_option(array);
+        self.objects.append_option(object);
+    }
+
+    /// SQL null: the same row as a JSON null, type id `TYPE_ID_NULL` with every child null.
     pub fn push_none(&mut self) {
-        self.index += 1;
-        debug_assert!(self.index <= self.length);
+        self.push_value(JsonUnionValue::JsonNull);
     }
 }
 
@@ -136,7 +146,7 @@ impl FromIterator<Option<JsonUnionField>> for JsonUnion {
 
         for opt_field in inner {
             if let Some(union_field) = opt_field {
-                union.push(union_field);
+                union.push(&union_field);
             } else {
                 union.push_none();
             }
@@ -148,15 +158,15 @@ impl FromIterator<Option<JsonUnionField>> for JsonUnion {
 impl TryFrom<JsonUnion> for UnionArray {
     type Error = ArrowError;
 
-    fn try_from(value: JsonUnion) -> Result<Self, Self::Error> {
+    fn try_from(mut value: JsonUnion) -> Result<Self, Self::Error> {
         let children: Vec<Arc<dyn Array>> = vec![
-            Arc::new(NullArray::new(value.length)),
-            Arc::new(BooleanArray::from(value.bools)),
-            Arc::new(Int64Array::from(value.ints)),
-            Arc::new(Float64Array::from(value.floats)),
-            Arc::new(StringArray::from(value.strings)),
-            Arc::new(StringArray::from(value.arrays)),
-            Arc::new(StringArray::from(value.objects)),
+            Arc::new(NullArray::new(value.type_ids.len())),
+            Arc::new(value.bools.finish()),
+            Arc::new(value.ints.finish()),
+            Arc::new(value.floats.finish()),
+            Arc::new(value.strings.finish()),
+            Arc::new(value.arrays.finish()),
+            Arc::new(value.objects.finish()),
         ];
         UnionArray::try_new(union_fields(), Buffer::from_vec(value.type_ids).into(), None, children)
     }
@@ -205,24 +215,38 @@ fn union_fields() -> UnionFields {
 }
 
 impl JsonUnionField {
-    fn type_id(&self) -> i8 {
+    pub(crate) fn as_value(&self) -> JsonUnionValue<'_> {
         match self {
-            Self::JsonNull => TYPE_ID_NULL,
-            Self::Bool(_) => TYPE_ID_BOOL,
-            Self::Int(_) => TYPE_ID_INT,
-            Self::Float(_) => TYPE_ID_FLOAT,
-            Self::Str(_) => TYPE_ID_STR,
-            Self::Array(_) => TYPE_ID_ARRAY,
-            Self::Object(_) => TYPE_ID_OBJECT,
+            Self::JsonNull => JsonUnionValue::JsonNull,
+            Self::Bool(b) => JsonUnionValue::Bool(*b),
+            Self::Int(i) => JsonUnionValue::Int(*i),
+            Self::Float(f) => JsonUnionValue::Float(*f),
+            Self::Str(s) => JsonUnionValue::Str(s),
+            Self::Array(s) => JsonUnionValue::Array(s),
+            Self::Object(s) => JsonUnionValue::Object(s),
         }
     }
 
     pub fn scalar_value(f: Option<Self>) -> ScalarValue {
         ScalarValue::Union(
-            f.map(|f| (f.type_id(), Box::new(f.into()))),
+            f.map(|f| (f.as_value().type_id(), Box::new(f.into()))),
             union_fields(),
             UnionMode::Sparse,
         )
+    }
+}
+
+impl From<JsonUnionValue<'_>> for JsonUnionField {
+    fn from(value: JsonUnionValue<'_>) -> Self {
+        match value {
+            JsonUnionValue::JsonNull => Self::JsonNull,
+            JsonUnionValue::Bool(b) => Self::Bool(b),
+            JsonUnionValue::Int(i) => Self::Int(i),
+            JsonUnionValue::Float(f) => Self::Float(f),
+            JsonUnionValue::Str(s) => Self::Str(s.to_owned()),
+            JsonUnionValue::Array(s) => Self::Array(s.to_owned()),
+            JsonUnionValue::Object(s) => Self::Object(s.to_owned()),
+        }
     }
 }
 
@@ -294,7 +318,7 @@ impl JsonUnionEncoder {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum JsonUnionValue<'a> {
     JsonNull,
     Bool(bool),
@@ -303,6 +327,20 @@ pub enum JsonUnionValue<'a> {
     Str(&'a str),
     Array(&'a str),
     Object(&'a str),
+}
+
+impl JsonUnionValue<'_> {
+    pub(crate) fn type_id(&self) -> i8 {
+        match self {
+            Self::JsonNull => TYPE_ID_NULL,
+            Self::Bool(_) => TYPE_ID_BOOL,
+            Self::Int(_) => TYPE_ID_INT,
+            Self::Float(_) => TYPE_ID_FLOAT,
+            Self::Str(_) => TYPE_ID_STR,
+            Self::Array(_) => TYPE_ID_ARRAY,
+            Self::Object(_) => TYPE_ID_OBJECT,
+        }
+    }
 }
 
 #[cfg(test)]

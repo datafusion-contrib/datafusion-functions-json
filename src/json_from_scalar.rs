@@ -180,7 +180,7 @@ fn array_to_json_union(array: &ArrayRef) -> DataFusionResult<JsonUnion> {
                 if arr.is_null(i) {
                     union.push_none();
                 } else {
-                    union.push(JsonUnionField::Int(i64::try_from(arr.value(i)).map_err(|_| {
+                    union.push(&JsonUnionField::Int(i64::try_from(arr.value(i)).map_err(|_| {
                         exec_datafusion_err!("UInt64 value {} is out of range for i64", arr.value(i))
                     })?));
                 }
