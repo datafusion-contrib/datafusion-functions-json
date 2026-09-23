@@ -237,12 +237,11 @@ async fn test_json_get_array_inner_field_json_metadata() {
     assert_json_field_metadata(produced_inner.metadata());
 }
 
-fn assert_json_field_metadata(metadata: &HashMap<String, String>) {
-    assert_eq!(
-        metadata.get("ARROW:extension:name").map(String::as_str),
-        Some("arrow.json")
-    );
-    assert_eq!(metadata.get("ARROW:extension:metadata").map(String::as_str), Some("{}"));
+// Takes an iterator so it accepts both arrow 59's `&HashMap` and arrow 60's `&Metadata`.
+fn assert_json_field_metadata<'a>(metadata: impl IntoIterator<Item = (&'a String, &'a String)>) {
+    let metadata: HashMap<&str, &str> = metadata.into_iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    assert_eq!(metadata.get("ARROW:extension:name"), Some(&"arrow.json"));
+    assert_eq!(metadata.get("ARROW:extension:metadata"), Some(&"{}"));
 }
 
 #[tokio::test]
