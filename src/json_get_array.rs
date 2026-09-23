@@ -5,7 +5,7 @@ use datafusion::arrow::datatypes::{DataType, Field};
 use datafusion::common::{Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
 use jiter::Peek;
-use smallvec::SmallVec;
+use std::ops::Range;
 
 use crate::common::{
     get_err, invoke, invoke_array_scalars_direct, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath,
@@ -53,7 +53,7 @@ impl ScalarUDFImpl for JsonGetArray {
     }
 
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DataFusionResult<ColumnarValue> {
-        if let Some(result) = invoke_array_scalars_direct::<BuildArrayList>(&args.args, append_json_array)? {
+        if let Some(result) = invoke_direct(&args.args)? {
             return Ok(result);
         }
         invoke::<BuildArrayList>(&args.args, jiter_json_get_array)
@@ -149,22 +149,42 @@ fn jiter_json_get_array(opt_json: Option<&str>, path: &[JsonPath]) -> Result<Vec
     }
 }
 
-fn append_json_array(opt_json: Option<&str>, path: &[JsonPath], builder: &mut ListBuilder<StringBuilder>) {
-    let value = (|| {
+/// Fast path for plain string columns with scalar paths, see `invoke_array_scalars_direct`.
+/// One scratch buffer of element ranges is shared by every row of the batch.
+fn invoke_direct(args: &[ColumnarValue]) -> DataFusionResult<Option<ColumnarValue>> {
+    let mut scratch = Vec::new();
+    invoke_array_scalars_direct::<BuildArrayList>(args, |opt_json, path, builder| {
+        append_json_array(&mut scratch, opt_json, path, builder);
+    })
+}
+
+/// Elements are buffered as byte ranges until the whole array parses, so a malformed
+/// element leaves nothing in the values builder and the row is null.
+fn append_json_array(
+    scratch: &mut Vec<Range<usize>>,
+    opt_json: Option<&str>,
+    path: &[JsonPath],
+    builder: &mut ListBuilder<StringBuilder>,
+) {
+    scratch.clear();
+    let parsed = (|| {
         let Some((mut jiter, Peek::Array)) = jiter_json_find(opt_json, path) else {
             return get_err!();
         };
-        let mut items: SmallVec<[&str; 8]> = SmallVec::new();
         let mut peek = jiter.known_array()?;
         while let Some(element) = peek {
             let start = jiter.current_index();
             jiter.known_skip(element)?;
-            items.push(std::str::from_utf8(jiter.slice_to_current(start))?);
+            scratch.push(start..jiter.current_index());
             peek = jiter.array_step()?;
         }
-        Ok::<_, GetError>(items)
+        Ok::<_, GetError>(())
     })();
-    builder.append_option(value.ok().map(|items| items.into_iter().map(Some)));
+    match (parsed, opt_json) {
+        // jiter stops on ASCII bytes, so every range boundary is a char boundary of `json`
+        (Ok(()), Some(json)) => builder.append_value(scratch.iter().map(|range| Some(&json[range.clone()]))),
+        _ => builder.append_null(),
+    }
 }
 
 #[cfg(test)]
@@ -201,9 +221,7 @@ mod tests {
             for path in &paths {
                 let mut args = vec![ColumnarValue::Array(array.clone())];
                 args.extend(path.iter().cloned().map(ColumnarValue::Scalar));
-                let direct = invoke_array_scalars_direct::<BuildArrayList>(&args, append_json_array)
-                    .unwrap()
-                    .unwrap();
+                let direct = invoke_direct(&args).unwrap().unwrap();
                 let owned = invoke::<BuildArrayList>(&args, jiter_json_get_array).unwrap();
                 let (ColumnarValue::Array(direct), ColumnarValue::Array(owned)) = (direct, owned) else {
                     panic!("array input must produce array output");
@@ -223,10 +241,7 @@ mod tests {
             ]))),
             ColumnarValue::Scalar(ScalarValue::Utf8(Some("a".to_owned()))),
         ];
-        let ColumnarValue::Array(result) = invoke_array_scalars_direct::<BuildArrayList>(&args, append_json_array)
-            .unwrap()
-            .unwrap()
-        else {
+        let ColumnarValue::Array(result) = invoke_direct(&args).unwrap().unwrap() else {
             panic!("array input must produce array output");
         };
         assert!(result.is_null(0));
