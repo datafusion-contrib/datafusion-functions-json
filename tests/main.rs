@@ -407,6 +407,50 @@ async fn test_json_get_int_string_parse() {
     assert_eq!(display_val(batches).await, (DataType::Int64, String::new()));
 }
 
+/// A JSON float with an integral value reads as that integer. A fractional value, a value outside
+/// the `i64` range, and everything else that is not an integer stay NULL.
+#[tokio::test]
+async fn test_json_get_int_integral_float() {
+    let cases = [
+        ("1.0", "1"),
+        ("-2.0", "-2"),
+        ("-0.0", "0"),
+        ("2e3", "2000"),
+        ("1.5E1", "15"),
+        ("-9.2233720368547748e18", "-9223372036854774784"),
+        ("1.5", ""),
+        ("-0.5", ""),
+        ("1e300", ""),
+        // rounds to 2^63, one past `i64::MAX`
+        ("9.223372036854776e18", ""),
+        // decoded by jiter as a `BigInt`, outside the `i64` range
+        ("123456789012345678901234567890", ""),
+        // unchanged: integers and numeric strings
+        ("42", "42"),
+        ("-9223372036854775808", "-9223372036854775808"),
+        (r#""42""#, "42"),
+        (r#""1.0""#, ""),
+        ("true", ""),
+        ("null", ""),
+        ("[1.0]", ""),
+    ];
+    for (value, want) in cases {
+        let doc = format!(r#"{{"foo": {value}}}"#);
+        for sql in [
+            format!("select json_get_int('{doc}', 'foo')"),
+            format!("select cast(json_get('{doc}', 'foo') as bigint)"),
+            format!("select ('{doc}' -> 'foo')::bigint"),
+        ] {
+            let batches = run_query(&sql).await.unwrap();
+            assert_eq!(display_val(batches).await, (DataType::Int64, want.to_string()), "{sql}");
+        }
+    }
+
+    // a narrowing cast still applies on top of the integer
+    let batches = run_query(r#"select ('{"foo": 7.0}' -> 'foo')::int"#).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Int32, "7".to_string()));
+}
+
 #[tokio::test]
 async fn test_json_get_large_int() {
     // jiter returns these as `BigInt` even though they fit in i64, they must not be lost

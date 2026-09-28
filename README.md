@@ -58,7 +58,7 @@ SELECT id, json_col->'a' as json_col_a FROM test_table
 * [x] `json_contains(json: str, *keys: str | int) -> bool` - true if a JSON string has a specific key (used for the `?` operator)
 * [x] `json_get(json: str, *keys: str | int) -> JsonUnion` - Get a value from a JSON string by its "path"
 * [x] `json_get_str(json: str, *keys: str | int) -> str` - Get a string value from a JSON string by its "path"
-* [x] `json_get_int(json: str, *keys: str | int) -> int` - Get an integer value from a JSON string by its "path"
+* [x] `json_get_int(json: str, *keys: str | int) -> int` - Get an integer value from a JSON string by its "path", a float with an integral value such as `1.0` or `2e3` included
 * [x] `json_get_float(json: str, *keys: str | int) -> float` - Get a float value from a JSON string by its "path"
 * [x] `json_get_bool(json: str, *keys: str | int) -> bool` - Get a boolean value from a JSON string by its "path"
 * [x] `json_get_json(json: str, *keys: str | int) -> str` - Get a nested raw JSON string from a JSON string by its "path"
