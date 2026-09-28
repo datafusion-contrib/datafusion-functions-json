@@ -280,8 +280,8 @@ async fn test_json_get_cast_equals() {
         "| name             | json_get(test.json_data,Utf8(\"foo\")) = Utf8(\"abc\") |",
         "+------------------+----------------------------------------------------+",
         "| object_foo       | true                                               |",
-        "| object_foo_array |                                                    |",
-        "| object_foo_obj   |                                                    |",
+        "| object_foo_array | false                                              |",
+        "| object_foo_obj   | false                                              |",
         "| object_foo_null  |                                                    |",
         "| object_bar       |                                                    |",
         "| list_foo         |                                                    |",
@@ -453,9 +453,13 @@ async fn test_json_get_out_of_range_int() {
     let batches = run_query(sql).await.unwrap();
     assert_eq!(display_val(batches).await, (DataType::Int32, String::new()));
 
+    // a string cast reads the number's JSON text, so it keeps the digits
     let sql = r#"select json_get('{"foo": 18446744073709551615}', 'foo')::string"#;
     let batches = run_query(sql).await.unwrap();
-    assert_eq!(display_val(batches).await, (DataType::Utf8View, String::new()));
+    assert_eq!(
+        display_val(batches).await,
+        (DataType::Utf8View, "18446744073709551615".to_string())
+    );
 }
 
 #[tokio::test]
@@ -2074,8 +2078,8 @@ async fn test_dict_value_types_column_path() {
     }
 }
 
-/// With `varchar` planned as `Utf8`, `json_get(..)::varchar` folds to `json_get_str` and drops the
-/// cast, since `json_get_str` returns `Utf8` too. For a dictionary JSON argument it returns
+/// With `varchar` planned as `Utf8`, `json_get(..)::varchar` folds to `json_as_text` and drops the
+/// cast, since `json_as_text` returns `Utf8` too. For a dictionary JSON argument it returns
 /// `Dictionary(Int64, Utf8)`, so there the cast has to stay.
 #[tokio::test]
 async fn test_cast_json_get_dict_to_utf8() {
@@ -2094,6 +2098,112 @@ async fn test_cast_json_get_dict_to_utf8() {
         let sql = format!("select cast(json_get({json}, 'c') as varchar)");
         let batches = ctx.sql(&sql).await.unwrap().collect().await.unwrap();
         assert_eq!(display_val(batches).await, (DataType::Utf8, "y".to_string()), "{sql}");
+    }
+}
+
+/// A string cast of `json_get` reads any JSON value as text, as `->>` does: a string without its
+/// quotes, any other value as its JSON text, and a JSON null or a missing key as NULL.
+#[tokio::test]
+async fn test_cast_json_get_to_text() {
+    let docs = [
+        (r#"{"k": 1}"#, "1"),
+        (r#"{"k": -2.5e3}"#, "-2.5e3"),
+        (r#"{"k": true}"#, "true"),
+        (r#"{"k": "x\ny"}"#, "x\ny"),
+        (r#"{"k": null}"#, ""),
+        (r#"{"k": {"a": [1, "b"]}}"#, r#"{"a": [1, "b"]}"#),
+        (r#"{"k": [1, "x"]}"#, r#"[1, "x"]"#),
+        (r#"{"other": 1}"#, ""),
+    ];
+    let values = docs
+        .iter()
+        .map(|(doc, _)| format!("('{doc}')"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let want = docs.iter().map(|(_, text)| (*text).to_string()).collect::<Vec<_>>();
+
+    for json_type in ["Utf8", "LargeUtf8", "Utf8View", "Dictionary(Int32, Utf8)"] {
+        let json = format!("arrow_cast(j, '{json_type}')");
+        for expr in [
+            format!("({json} -> 'k')::text"),
+            format!("({json} -> 'k')::varchar"),
+            format!("cast(json_get({json}, 'k') as string)"),
+        ] {
+            let sql = format!("select {expr} from (values {values}) t(j)");
+            let batches = run_query(&sql).await.unwrap();
+            assert_eq!(display_rows(&batches), (DataType::Utf8View, want.clone()), "{sql}");
+        }
+    }
+
+    let plan = logical_plan(r"explain select (json_data -> 'foo')::text from test").await;
+    assert!(
+        plan[0].contains("CAST(json_as_text(test.json_data, Utf8(\"foo\")) AS Utf8View)"),
+        "{plan:?}"
+    );
+}
+
+/// A nested path is flattened into one call, and the string cast still folds to `json_as_text`.
+#[tokio::test]
+async fn test_cast_json_get_nested_to_text() {
+    let sql =
+        r#"select (j -> 'a' -> 'b')::text from (values ('{"a": {"b": 2}}'), ('{"a": {"b": [3]}}'), ('{"a": 4}')) t(j)"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(
+        display_rows(&batches),
+        (
+            DataType::Utf8View,
+            vec!["2".to_string(), "[3]".to_string(), String::new()]
+        )
+    );
+
+    let plan = logical_plan(r"explain select (json_data -> 'foo' -> 'bar')::text from test").await;
+    assert!(
+        plan[0].contains("CAST(json_as_text(test.json_data, Utf8(\"foo\"), Utf8(\"bar\")) AS Utf8View)"),
+        "{plan:?}"
+    );
+}
+
+/// Every string cast target folds to `json_as_text`, and the result has the type that was asked
+/// for. `json_as_text` returns `Utf8`, or `Dictionary(Int64, Utf8)` for a dictionary JSON argument,
+/// so only `Utf8` over a plain string drops the cast.
+#[tokio::test]
+async fn test_cast_json_get_to_every_string_type() {
+    use datafusion::logical_expr::{cast as cast_expr, col, lit};
+    use datafusion_functions_json::udfs::json_get_udf;
+
+    let ctx = create_context().await.unwrap();
+    let docs = StringArray::from(vec![r#"{"k": 42}"#, r#"{"k": "x"}"#, r#"{"k": [1]}"#, r#"{"k": null}"#]);
+    let want = vec!["42".to_string(), "x".to_string(), "[1]".to_string(), String::new()];
+    let dict_type = DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8));
+    let dict_docs = cast(&docs, &dict_type).unwrap();
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("j", DataType::Utf8, false),
+        Field::new("d", dict_type, false),
+    ]));
+    let batch = RecordBatch::try_new(schema, vec![Arc::new(docs), dict_docs]).unwrap();
+
+    for target in [DataType::Utf8, DataType::Utf8View, DataType::LargeUtf8] {
+        for column in ["j", "d"] {
+            let expr = cast_expr(json_get_udf().call(vec![col(column), lit("k")]), target.clone()).alias("v");
+            let df = ctx.read_batch(batch.clone()).unwrap().select(vec![expr]).unwrap();
+
+            let plan = df.clone().into_optimized_plan().unwrap().display_indent().to_string();
+            assert!(plan.contains("json_as_text("), "{target} {column}\n{plan}");
+            assert!(!plan.contains("json_get("), "{target} {column}\n{plan}");
+            let keeps_cast = plan.contains("CAST(json_as_text(");
+            assert_eq!(
+                keeps_cast,
+                !(target == DataType::Utf8 && column == "j"),
+                "{target} {column}\n{plan}"
+            );
+
+            let batches = df.collect().await.unwrap();
+            assert_eq!(
+                display_rows(&batches),
+                (target.clone(), want.clone()),
+                "{target} {column}"
+            );
+        }
     }
 }
 

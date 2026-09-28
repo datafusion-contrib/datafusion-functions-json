@@ -88,10 +88,10 @@ const TARGETS: &[Target] = &[
         accessor: "json_get_bool",
         sql_cast: Fold::Exact,
     },
-    // SQL `VARCHAR` is `Utf8View` in DataFusion, but `json_get_str` returns `Utf8`.
+    // SQL `VARCHAR` is `Utf8View` in DataFusion, but `json_as_text` returns `Utf8`.
     Target {
         sql: "varchar",
-        accessor: "json_get_str",
+        accessor: "json_as_text",
         sql_cast: Fold::Narrowing,
     },
     // Narrowing targets: the type asked for is narrower than what the accessor returns, so the

@@ -95,8 +95,11 @@ select * from foo where json_get(attributes, 'bar')::string='ham'
 ```
 Will be rewritten to:
 ```sql
-select * from foo where json_get_str(attributes, 'bar')='ham'
+select * from foo where json_as_text(attributes, 'bar')='ham'
 ```
+
+A cast to a string type reads any JSON value as text, as `->>` does: a string gives its value without quotes, a number, boolean, object or array gives its JSON text, and a JSON `null` or a missing key gives `NULL`. So `json_get(attributes, 'count')::string` is `'42'` for `{"count": 42}`.
+Use `json_get_str` to read only JSON strings.
 
 ## TODO (maybe, if they're actually useful)
 
