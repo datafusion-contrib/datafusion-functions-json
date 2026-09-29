@@ -84,7 +84,9 @@ fn typed_accessor(cast_to: &DataType) -> Option<Arc<ScalarUDF>> {
             crate::json_get_float::json_get_float_udf()
         }
         DataType::Int64 | DataType::Int32 => crate::json_get_int::json_get_int_udf(),
-        DataType::Utf8 | DataType::Utf8View | DataType::LargeUtf8 => crate::json_get_str::json_get_str_udf(),
+        // a string cast reads any JSON value as text, as `->>` does: a string without its quotes,
+        // a number, boolean, object or array as its JSON text, and a JSON null as NULL
+        DataType::Utf8 | DataType::Utf8View | DataType::LargeUtf8 => crate::json_as_text::json_as_text_udf(),
         _ => return None,
     })
 }
