@@ -4,7 +4,7 @@ use datafusion::arrow::array::{ArrayRef, Int64Array, Int64Builder};
 use datafusion::arrow::datatypes::DataType;
 use datafusion::common::{Result as DataFusionResult, ScalarValue};
 use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
-use jiter::{NumberInt, Peek};
+use jiter::{NumberAny, NumberInt, Peek};
 
 use crate::common::{get_err, invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath};
 use crate::common_macros::make_udf_function;
@@ -108,14 +108,55 @@ fn jiter_json_get_int(json_data: Option<&str>, path: &[JsonPath]) -> Result<i64,
             Peek::Null | Peek::True | Peek::False | Peek::Infinity | Peek::NaN | Peek::Array | Peek::Object => {
                 get_err!()
             }
-            _ => match jiter.known_int(peek)? {
-                NumberInt::Int(i) => Ok(i),
+            _ => match jiter.known_number(peek)? {
+                NumberAny::Int(NumberInt::Int(i)) => Ok(i),
                 // jiter returns `BigInt` for any integer its fast path couldn't decode, which
                 // includes values that do fit in `i64`, hence the conversion attempt
-                NumberInt::BigInt(b) => i64::try_from(b).map_err(|_| GetError),
+                NumberAny::Int(NumberInt::BigInt(b)) => i64::try_from(b).map_err(|_| GetError),
+                NumberAny::Float(f) => float_to_int(f),
             },
         }
     } else {
         get_err!()
+    }
+}
+
+/// A float with an integral value, such as `1.0` or `2e3`, as that integer. A fractional value is
+/// not rounded, and a value outside the `i64` range is not saturated: both are an error.
+fn float_to_int(f: f64) -> Result<i64, GetError> {
+    // -2^63 and 2^63 are exact as f64, so the range check is exact; a NaN or infinite value has a
+    // NaN fractional part and fails the first check
+    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+    if f.fract() == 0.0 && f >= i64::MIN as f64 && f < -(i64::MIN as f64) {
+        Ok(f as i64)
+    } else {
+        get_err!()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn float_to_int_edges() {
+        assert_eq!(float_to_int(1.0).ok(), Some(1));
+        assert_eq!(float_to_int(-0.0).ok(), Some(0));
+        assert_eq!(float_to_int(2e3).ok(), Some(2000));
+        // the largest f64 below 2^63, and -2^63 itself, both fit
+        assert_eq!(
+            float_to_int(9_223_372_036_854_774_784.0).ok(),
+            Some(9_223_372_036_854_774_784)
+        );
+        assert_eq!(float_to_int(-9_223_372_036_854_775_808.0).ok(), Some(i64::MIN));
+        // 2^63 is one past i64::MAX, and the next f64 below -2^63 is out of range too
+        assert!(float_to_int(9_223_372_036_854_775_808.0).is_err());
+        assert!(float_to_int(-9_223_372_036_854_777_856.0).is_err());
+        assert!(float_to_int(1.5).is_err());
+        assert!(float_to_int(-0.5).is_err());
+        assert!(float_to_int(1e300).is_err());
+        assert!(float_to_int(f64::NAN).is_err());
+        assert!(float_to_int(f64::INFINITY).is_err());
+        assert!(float_to_int(f64::NEG_INFINITY).is_err());
     }
 }
