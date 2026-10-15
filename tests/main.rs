@@ -970,7 +970,9 @@ fn test_json_get_large_utf8() {
                 Arc::new(Field::new("arg_3", DataType::LargeUtf8, false)),
             ],
             number_rows: 1,
-            return_field: Arc::new(Field::new("ret_field", DataType::Utf8, false).with_metadata(json_field_metadata())),
+            return_field: Arc::new(
+                Field::new("ret_field", DataType::LargeUtf8, false).with_metadata(json_field_metadata()),
+            ),
             config_options: Arc::new(ConfigOptions::default()),
         })
         .unwrap()
@@ -978,7 +980,7 @@ fn test_json_get_large_utf8() {
         panic!("expected scalar")
     };
 
-    assert_eq!(sv, ScalarValue::Utf8(Some("x".to_string())));
+    assert_eq!(sv, ScalarValue::LargeUtf8(Some("x".to_string())));
 }
 
 /// A `NullArray` input (Arrow `DataType::Null`, as opposed to a string array containing null
@@ -2179,7 +2181,8 @@ async fn test_dict_column_path_no_null_values() {
     }
 }
 
-/// A dictionary JSON column of every string value type, with a column path.
+/// A dictionary JSON column of every string value type, with a column path. The result is a
+/// dictionary of the same string type.
 #[tokio::test]
 async fn test_dict_value_types_column_path() {
     for value_type in ["Utf8", "LargeUtf8", "Utf8View"] {
@@ -2190,13 +2193,44 @@ async fn test_dict_value_types_column_path() {
         assert_eq!(
             display_rows(&batches),
             (
-                DataType::Dictionary(Box::new(DataType::Int64), Box::new(DataType::Utf8)),
+                DataType::Dictionary(Box::new(DataType::Int64), Box::new(value_type.parse().unwrap())),
                 vec!["42".to_string(), String::new(), String::new(), String::new()]
             ),
             "{sql}"
         );
         for batch in &batches {
             check_for_null_dictionary_values(batch.column(0).as_ref());
+        }
+    }
+}
+
+/// The string functions return the string type of their JSON argument, and a dictionary of it for
+/// a dictionary argument. A value is never longer than the JSON it comes from, so the result never
+/// needs larger offsets than the argument.
+#[tokio::test]
+async fn test_string_result_follows_json_type() {
+    let doc = r#"'{"s": "x\ny", "o": {"a": 1}}'"#;
+    let dict = |value| DataType::Dictionary(Box::new(DataType::Int64), Box::new(value));
+    for (json_type, want_type) in [
+        ("Utf8", DataType::Utf8),
+        ("LargeUtf8", DataType::LargeUtf8),
+        ("Utf8View", DataType::Utf8View),
+        ("Dictionary(Int32, Utf8View)", dict(DataType::Utf8View)),
+    ] {
+        let json = format!("arrow_cast(j, '{json_type}')");
+        for (expr, want) in [
+            (format!("json_as_text({json}, 's')"), "x\ny"),
+            (format!("{json} ->> 'o'"), r#"{"a": 1}"#),
+            (format!("json_get_str({json}, 's')"), "x\ny"),
+            (format!("json_get_json({json}, 'o')"), r#"{"a": 1}"#),
+        ] {
+            let sql = format!("select {expr} from (values ({doc})) t(j)");
+            let batches = run_query(&sql).await.unwrap();
+            assert_eq!(
+                display_rows(&batches),
+                (want_type.clone(), vec![want.to_string()]),
+                "{sql}"
+            );
         }
     }
 }
@@ -2258,9 +2292,10 @@ async fn test_cast_json_get_to_text() {
         }
     }
 
+    // `json_data` is `Utf8View`, the type `::text` asks for, so the cast goes
     let plan = logical_plan(r"explain select (json_data -> 'foo')::text from test").await;
     assert!(
-        plan[0].contains("CAST(json_as_text(test.json_data, Utf8(\"foo\")) AS Utf8View)"),
+        plan[0].contains("Projection: json_as_text(test.json_data, Utf8(\"foo\")) AS"),
         "{plan:?}"
     );
 }
@@ -2281,14 +2316,14 @@ async fn test_cast_json_get_nested_to_text() {
 
     let plan = logical_plan(r"explain select (json_data -> 'foo' -> 'bar')::text from test").await;
     assert!(
-        plan[0].contains("CAST(json_as_text(test.json_data, Utf8(\"foo\"), Utf8(\"bar\")) AS Utf8View)"),
+        plan[0].contains("Projection: json_as_text(test.json_data, Utf8(\"foo\"), Utf8(\"bar\")) AS"),
         "{plan:?}"
     );
 }
 
 /// Every string cast target folds to `json_as_text`, and the result has the type that was asked
-/// for. `json_as_text` returns `Utf8`, or `Dictionary(Int64, Utf8)` for a dictionary JSON argument,
-/// so only `Utf8` over a plain string drops the cast.
+/// for. Here `json_as_text` returns `Utf8`, or `Dictionary(Int64, Utf8)` for the dictionary JSON
+/// argument, so only `Utf8` over a plain string drops the cast.
 #[tokio::test]
 async fn test_cast_json_get_to_every_string_type() {
     use datafusion::logical_expr::{cast as cast_expr, col, lit};

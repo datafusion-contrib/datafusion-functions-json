@@ -118,7 +118,7 @@ async fn outcome(ctx: &SessionContext, sql: &str) -> std::result::Result<String,
     Ok(format!("{data_type}={value}"))
 }
 
-/// Like [`outcome`], but with any dictionary wrapper stripped from the type.
+/// Like [`outcome`], but with the input encoding taken out of the type (see [`logical_type`]).
 async fn logical_outcome(ctx: &SessionContext, sql: &str) -> std::result::Result<String, String> {
     let (data_type, value) = run_single(ctx, sql).await?;
     Ok(format!("{}={value}", logical_type(&data_type)))
@@ -135,11 +135,12 @@ async fn run_single(ctx: &SessionContext, sql: &str) -> std::result::Result<(Dat
     Ok((batch.schema().field(0).data_type().clone(), value))
 }
 
-/// Dictionary encoding of the input carries through to the output, so compare the type it
-/// wraps rather than the wrapper.
+/// The dictionary encoding and the string type of the input carry through to the output, so
+/// compare the type the dictionary wraps, with every string type as `Utf8`.
 fn logical_type(data_type: &DataType) -> &DataType {
     match data_type {
-        DataType::Dictionary(_, value) => value,
+        DataType::Dictionary(_, value) => logical_type(value),
+        DataType::LargeUtf8 | DataType::Utf8View => &DataType::Utf8,
         other => other,
     }
 }
@@ -300,8 +301,9 @@ fn prop_scalar_and_array_paths_agree() {
 
     proptest!(config(96), |(json in json_text(), path in path())| {
         let literal = format!("'{}'", json.replace('\'', "''"));
+        let view_literal = format!("arrow_cast({literal}, '{}')", DataType::Utf8View);
         let dict_literal = format!("arrow_cast({literal}, '{}')", dict_encoding());
-        for (encoding, literal) in [(DataType::Utf8View, literal), (dict_encoding(), dict_literal)] {
+        for (encoding, literal) in [(DataType::Utf8View, view_literal), (dict_encoding(), dict_literal)] {
             set_doc(&ctx, &json, &encoding);
             for func in PATH_FUNCS {
                 if !callable(func, &path) {

@@ -7,6 +7,7 @@ use datafusion::logical_expr::ScalarUDF;
 
 mod common;
 mod common_macros;
+mod common_string;
 mod common_union;
 mod json_as_text;
 mod json_contains;

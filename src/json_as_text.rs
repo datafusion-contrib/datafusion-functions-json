@@ -1,16 +1,11 @@
-use std::sync::Arc;
-
-use datafusion::arrow::array::{ArrayRef, StringArray, StringBuilder};
 use datafusion::arrow::datatypes::DataType;
-use datafusion::common::{Result as DataFusionResult, ScalarValue};
+use datafusion::common::Result as DataFusionResult;
 use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
 use jiter::{Jiter, Peek};
 
-use crate::common::{
-    get_err, invoke, invoke_array_scalars_direct, jiter_json_find, jiter_skip_str, return_type_check, GetError,
-    InvokeResult, JsonPath,
-};
+use crate::common::{get_err, jiter_json_find, jiter_skip_str, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
+use crate::common_string::{invoke_string, string_return_type, StringGetter, StringResultBuilder};
 
 make_udf_function!(
     JsonAsText,
@@ -44,14 +39,11 @@ impl ScalarUDFImpl for JsonAsText {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        return_type_check::<StringArray>(arg_types, self.name(), DataType::Utf8)
+        string_return_type(arg_types, self.name())
     }
 
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DataFusionResult<ColumnarValue> {
-        if let Some(result) = invoke_array_scalars_direct::<StringArray>(&args.args, append_json_as_text)? {
-            return Ok(result);
-        }
-        invoke::<StringArray>(&args.args, jiter_json_as_text)
+        invoke_string::<Self>(&args.args)
     }
 
     fn aliases(&self) -> &[String] {
@@ -77,42 +69,20 @@ impl ScalarUDFImpl for JsonAsText {
     }
 }
 
-impl InvokeResult for StringArray {
-    type Item = String;
-
-    type Builder = StringBuilder;
-
-    const ACCEPT_DICT_RETURN: bool = true;
-
-    fn builder(capacity: usize) -> Self::Builder {
-        StringBuilder::with_capacity(capacity, 0)
+impl StringGetter for JsonAsText {
+    fn append<B: StringResultBuilder>(opt_json: Option<&str>, path: &[JsonPath], builder: &mut B) {
+        if let (Some(json), Some((mut jiter, peek))) = (opt_json, jiter_json_find(opt_json, path)) {
+            builder.append_str(text_value(json, &mut jiter, peek).ok());
+        } else {
+            builder.append_str(None);
+        }
     }
 
-    fn append_value(builder: &mut Self::Builder, value: Option<Self::Item>) {
-        builder.append_option(value);
-    }
-
-    fn finish(mut builder: Self::Builder) -> DataFusionResult<ArrayRef> {
-        Ok(Arc::new(builder.finish()))
-    }
-
-    fn scalar(value: Option<Self::Item>) -> ScalarValue {
-        ScalarValue::Utf8(value)
-    }
-}
-
-fn jiter_json_as_text(opt_json: Option<&str>, path: &[JsonPath]) -> Result<String, GetError> {
-    let (Some(json), Some((mut jiter, peek))) = (opt_json, jiter_json_find(opt_json, path)) else {
-        return get_err!();
-    };
-    text_value(json, &mut jiter, peek).map(str::to_owned)
-}
-
-fn append_json_as_text(opt_json: Option<&str>, path: &[JsonPath], builder: &mut StringBuilder) {
-    if let (Some(json), Some((mut jiter, peek))) = (opt_json, jiter_json_find(opt_json, path)) {
-        builder.append_option(text_value(json, &mut jiter, peek).ok());
-    } else {
-        builder.append_null();
+    fn get(opt_json: Option<&str>, path: &[JsonPath]) -> Result<String, GetError> {
+        let (Some(json), Some((mut jiter, peek))) = (opt_json, jiter_json_find(opt_json, path)) else {
+            return get_err!();
+        };
+        text_value(json, &mut jiter, peek).map(str::to_owned)
     }
 }
 
@@ -129,7 +99,8 @@ fn text_value<'a, 'j: 'a>(json: &'j str, jiter: &'a mut Jiter<'j>, peek: Peek) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::test_util::assert_direct_matches_owned;
+    use crate::common_string::test_util::assert_string_direct_matches_owned;
+    use datafusion::common::ScalarValue;
 
     #[test]
     fn direct_builder_matches_owned_results() {
@@ -153,6 +124,6 @@ mod tests {
             ],
             vec![ScalarValue::Utf8(None)],
         ];
-        assert_direct_matches_owned::<StringArray>(&rows, &paths, append_json_as_text, jiter_json_as_text);
+        assert_string_direct_matches_owned::<JsonAsText>(&rows, &paths);
     }
 }
