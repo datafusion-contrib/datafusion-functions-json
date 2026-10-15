@@ -97,13 +97,14 @@ const TARGETS: &[Target] = &[
         sql_cast: Fold::Exact,
         arrow_cast: Fold::Exact,
     },
-    // SQL `VARCHAR` is `Utf8View` in DataFusion, but `json_as_text` returns `Utf8`.
+    // SQL `VARCHAR` is `Utf8View` in DataFusion. `json_as_text` returns the string type of the
+    // `Utf8View` document, so the `Utf8` that `arrow_cast` names here is the narrowing one.
     Target {
         sql: "varchar",
         arrow: "Utf8",
         accessor: "json_as_text",
-        sql_cast: Fold::Narrowing,
-        arrow_cast: Fold::Exact,
+        sql_cast: Fold::Exact,
+        arrow_cast: Fold::Narrowing,
     },
     // Narrowing targets: the type asked for is narrower than what the accessor returns, so the
     // fold keeps the cast on top of the accessor.
@@ -280,6 +281,16 @@ enum Outcome {
     Error,
 }
 
+impl Outcome {
+    /// The same outcome, with a `LargeUtf8` or `Utf8View` value given as `Utf8`.
+    fn with_string_type_as_utf8(self) -> Self {
+        match self {
+            Outcome::Value(DataType::LargeUtf8 | DataType::Utf8View, value) => Outcome::Value(DataType::Utf8, value),
+            other => other,
+        }
+    }
+}
+
 impl std::fmt::Display for Outcome {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -423,6 +434,9 @@ fn prop_fold_is_invisible() {
 /// Flattening `json_get(json_get(j, 'a'), 'b')` into `json_get(j, 'a', 'b')` must not change
 /// the answer. Here the plan without the rewrite really is the right reference, so this is
 /// the plain with/without-optimizer differential the barrier was built for.
+///
+/// The string type can change. The nested call reads the strings of a JSON union, which are
+/// `Utf8`, but the flattened call reads `j` and returns the string type of `j`.
 #[test]
 fn prop_unnest_is_invisible() {
     let rt = runtime();
@@ -453,8 +467,8 @@ fn prop_unnest_is_invisible() {
             "expected the nested call to be flattened:\n{}\n{}", unnested, unnested_plan
         );
 
-        let got = rt.block_on(outcome(&ctx, &unnested));
-        let want = rt.block_on(outcome(&ctx, &not_unnested));
+        let got = rt.block_on(outcome(&ctx, &unnested)).with_string_type_as_utf8();
+        let want = rt.block_on(outcome(&ctx, &not_unnested)).with_string_type_as_utf8();
         prop_assert_eq!(&got, &want,
             "\n  unnested:     {} => {}\n  not unnested: {} => {}\n",
             unnested, got, not_unnested, want);

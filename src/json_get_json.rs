@@ -1,17 +1,14 @@
 use std::sync::Arc;
 
-use datafusion::arrow::array::{StringArray, StringBuilder};
 use datafusion::arrow::datatypes::{DataType, Field, FieldRef};
 use datafusion::common::Result as DataFusionResult;
 use datafusion::logical_expr::{
     ColumnarValue, ReturnFieldArgs, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility,
 };
 
-use crate::common::{
-    get_err, invoke, invoke_array_scalars_direct, jiter_json_find, jiter_skip_str, return_type_check, GetError,
-    JsonPath,
-};
+use crate::common::{get_err, jiter_json_find, jiter_skip_str, GetError, JsonPath};
 use crate::common_macros::make_udf_function;
+use crate::common_string::{invoke_string, string_return_type, StringGetter, StringResultBuilder};
 use crate::common_union::json_field_metadata;
 
 make_udf_function!(
@@ -46,7 +43,7 @@ impl ScalarUDFImpl for JsonGetJson {
     }
 
     fn return_type(&self, arg_types: &[DataType]) -> DataFusionResult<DataType> {
-        return_type_check::<StringArray>(arg_types, self.name(), DataType::Utf8)
+        string_return_type(arg_types, self.name())
     }
 
     fn return_field_from_args(&self, args: ReturnFieldArgs) -> DataFusionResult<FieldRef> {
@@ -58,10 +55,7 @@ impl ScalarUDFImpl for JsonGetJson {
     }
 
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DataFusionResult<ColumnarValue> {
-        if let Some(result) = invoke_array_scalars_direct::<StringArray>(&args.args, append_json_get_json)? {
-            return Ok(result);
-        }
-        invoke::<StringArray>(&args.args, jiter_json_get_json)
+        invoke_string::<Self>(&args.args)
     }
 
     fn aliases(&self) -> &[String] {
@@ -87,25 +81,27 @@ impl ScalarUDFImpl for JsonGetJson {
     }
 }
 
-fn jiter_json_get_json(opt_json: Option<&str>, path: &[JsonPath]) -> Result<String, GetError> {
-    let (Some(json), Some((mut jiter, peek))) = (opt_json, jiter_json_find(opt_json, path)) else {
-        return get_err!();
-    };
-    jiter_skip_str(json, &mut jiter, peek).map(str::to_owned)
-}
+impl StringGetter for JsonGetJson {
+    fn append<B: StringResultBuilder>(opt_json: Option<&str>, path: &[JsonPath], builder: &mut B) {
+        if let (Some(json), Some((mut jiter, peek))) = (opt_json, jiter_json_find(opt_json, path)) {
+            builder.append_str(jiter_skip_str(json, &mut jiter, peek).ok());
+        } else {
+            builder.append_str(None);
+        }
+    }
 
-fn append_json_get_json(opt_json: Option<&str>, path: &[JsonPath], builder: &mut StringBuilder) {
-    if let (Some(json), Some((mut jiter, peek))) = (opt_json, jiter_json_find(opt_json, path)) {
-        builder.append_option(jiter_skip_str(json, &mut jiter, peek).ok());
-    } else {
-        builder.append_null();
+    fn get(opt_json: Option<&str>, path: &[JsonPath]) -> Result<String, GetError> {
+        let (Some(json), Some((mut jiter, peek))) = (opt_json, jiter_json_find(opt_json, path)) else {
+            return get_err!();
+        };
+        jiter_skip_str(json, &mut jiter, peek).map(str::to_owned)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::test_util::assert_direct_matches_owned;
+    use crate::common_string::test_util::assert_string_direct_matches_owned;
     use datafusion::common::ScalarValue;
 
     #[test]
@@ -125,6 +121,6 @@ mod tests {
             vec![ScalarValue::Utf8(Some("c".to_owned())), ScalarValue::Int64(Some(1))],
             vec![ScalarValue::Utf8(None)],
         ];
-        assert_direct_matches_owned::<StringArray>(&rows, &paths, append_json_get_json, jiter_json_get_json);
+        assert_string_direct_matches_owned::<JsonGetJson>(&rows, &paths);
     }
 }
