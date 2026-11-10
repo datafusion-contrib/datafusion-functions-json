@@ -1,9 +1,9 @@
 use log::debug;
 use std::sync::Arc;
 
-use datafusion::common::Result;
-use datafusion::execution::FunctionRegistry;
-use datafusion::logical_expr::ScalarUDF;
+use datafusion_common::Result;
+use datafusion_expr::registry::FunctionRegistry;
+use datafusion_expr::ScalarUDF;
 
 mod common;
 mod common_macros;

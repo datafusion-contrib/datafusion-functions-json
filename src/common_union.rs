@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, OnceLock};
 
-use datafusion::arrow::array::{
+use datafusion_common::arrow::array::{
     Array, ArrayRef, AsArray, BooleanArray, BooleanBuilder, Float64Array, Float64Builder, Int64Array, Int64Builder,
     NullArray, StringArray, StringBuilder, UnionArray,
 };
-use datafusion::arrow::buffer::{Buffer, ScalarBuffer};
-use datafusion::arrow::datatypes::{DataType, Field, UnionFields, UnionMode};
-use datafusion::arrow::error::ArrowError;
-use datafusion::common::ScalarValue;
+use datafusion_common::arrow::buffer::{Buffer, ScalarBuffer};
+use datafusion_common::arrow::datatypes::{DataType, Field, UnionFields, UnionMode};
+use datafusion_common::arrow::error::ArrowError;
+use datafusion_common::ScalarValue;
 
 /// Field metadata used to mark a `Utf8` field as containing raw JSON.
 ///

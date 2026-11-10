@@ -1,17 +1,17 @@
 use std::sync::Arc;
 
-use datafusion::arrow::datatypes::DataType;
-use datafusion::common::config::ConfigOptions;
-use datafusion::common::tree_node::Transformed;
-use datafusion::common::Column;
-use datafusion::common::DFSchema;
-use datafusion::common::Result;
-use datafusion::logical_expr::expr::{Alias, Cast, Expr, ScalarFunction, TryCast};
-use datafusion::logical_expr::expr_rewriter::FunctionRewrite;
-use datafusion::logical_expr::planner::{ExprPlanner, PlannerResult, RawBinaryExpr};
-use datafusion::logical_expr::sqlparser::ast::BinaryOperator;
-use datafusion::logical_expr::{ExprSchemable, ScalarUDF};
-use datafusion::scalar::ScalarValue;
+use datafusion_common::arrow::datatypes::DataType;
+use datafusion_common::config::ConfigOptions;
+use datafusion_common::tree_node::Transformed;
+use datafusion_common::Column;
+use datafusion_common::DFSchema;
+use datafusion_common::Result;
+use datafusion_common::ScalarValue;
+use datafusion_expr::expr::{Alias, Cast, Expr, ScalarFunction, TryCast};
+use datafusion_expr::expr_rewriter::FunctionRewrite;
+use datafusion_expr::planner::{ExprPlanner, PlannerResult, RawBinaryExpr};
+use datafusion_expr::sqlparser::ast::BinaryOperator;
+use datafusion_expr::{ExprSchemable, ScalarUDF};
 
 #[derive(Debug)]
 pub(crate) struct JsonFunctionRewriter;

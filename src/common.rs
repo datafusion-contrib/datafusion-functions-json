@@ -1,15 +1,15 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use datafusion::arrow::array::{
+use datafusion_common::arrow::array::{
     downcast_array, AnyDictionaryArray, Array, ArrayAccessor, ArrayRef, AsArray, DictionaryArray, LargeStringArray,
     PrimitiveArray, PrimitiveBuilder, RunArray, StringArray, StringViewArray,
 };
-use datafusion::arrow::compute::kernels::cast;
-use datafusion::arrow::compute::take;
-use datafusion::arrow::datatypes::{ArrowNativeType, DataType, Int64Type, UInt64Type};
-use datafusion::common::{exec_err, plan_err, Result as DataFusionResult, ScalarValue};
-use datafusion::logical_expr::ColumnarValue;
+use datafusion_common::arrow::compute::kernels::cast;
+use datafusion_common::arrow::compute::take;
+use datafusion_common::arrow::datatypes::{ArrowNativeType, DataType, Int64Type, UInt64Type};
+use datafusion_common::{exec_err, plan_err, Result as DataFusionResult, ScalarValue};
+use datafusion_expr::ColumnarValue;
 use jiter::{Jiter, JiterError, Peek};
 
 use crate::common_union::{
@@ -726,7 +726,7 @@ fn mask_dictionary_keys(keys: &PrimitiveArray<Int64Type>, type_ids: &[i8]) -> Pr
 #[cfg(test)]
 pub(crate) mod test_util {
     use super::*;
-    use datafusion::arrow::array::{LargeStringArray, StringViewArray};
+    use datafusion_common::arrow::array::{LargeStringArray, StringViewArray};
 
     /// `rows` as each string encoding `invoke_array_scalars_direct` handles.
     pub(crate) fn string_arrays(rows: &[Option<&str>]) -> Vec<ArrayRef> {
@@ -767,7 +767,7 @@ pub(crate) mod test_util {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datafusion::arrow::array::ListArray;
+    use datafusion_common::arrow::array::ListArray;
 
     #[test]
     fn into_owned_keeps_non_key_steps() {

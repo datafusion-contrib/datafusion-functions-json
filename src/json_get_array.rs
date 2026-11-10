@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use datafusion::arrow::array::{ArrayRef, ListBuilder, StringBuilder};
-use datafusion::arrow::datatypes::{DataType, Field};
-use datafusion::common::{Result as DataFusionResult, ScalarValue};
-use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
+use datafusion_common::arrow::array::{ArrayRef, ListBuilder, StringBuilder};
+use datafusion_common::arrow::datatypes::{DataType, Field};
+use datafusion_common::{Result as DataFusionResult, ScalarValue};
+use datafusion_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
 use jiter::Peek;
 use std::ops::Range;
 
@@ -64,21 +64,18 @@ impl ScalarUDFImpl for JsonGetArray {
         &self.aliases
     }
 
-    fn placement(
-        &self,
-        args: &[datafusion::logical_expr::ExpressionPlacement],
-    ) -> datafusion::logical_expr::ExpressionPlacement {
+    fn placement(&self, args: &[datafusion_expr::ExpressionPlacement]) -> datafusion_expr::ExpressionPlacement {
         // If the first argument is a column and the remaining arguments are literals (a path)
         // then we can push this UDF down to the leaf nodes.
         if args.len() >= 2
-            && matches!(args[0], datafusion::logical_expr::ExpressionPlacement::Column)
+            && matches!(args[0], datafusion_expr::ExpressionPlacement::Column)
             && args[1..]
                 .iter()
-                .all(|arg| matches!(arg, datafusion::logical_expr::ExpressionPlacement::Literal))
+                .all(|arg| matches!(arg, datafusion_expr::ExpressionPlacement::Literal))
         {
-            datafusion::logical_expr::ExpressionPlacement::MoveTowardsLeafNodes
+            datafusion_expr::ExpressionPlacement::MoveTowardsLeafNodes
         } else {
-            datafusion::logical_expr::ExpressionPlacement::KeepInPlace
+            datafusion_expr::ExpressionPlacement::KeepInPlace
         }
     }
 }
@@ -178,7 +175,7 @@ fn append_json_array(
 mod tests {
     use super::*;
     use crate::common::test_util::assert_direct_matches_owned;
-    use datafusion::arrow::array::AsArray;
+    use datafusion_common::arrow::array::AsArray;
 
     #[test]
     fn direct_builder_matches_owned_results() {
@@ -212,7 +209,7 @@ mod tests {
     #[test]
     fn malformed_late_element_does_not_append_partial_values() {
         let args = vec![
-            ColumnarValue::Array(Arc::new(datafusion::arrow::array::StringArray::from(vec![
+            ColumnarValue::Array(Arc::new(datafusion_common::arrow::array::StringArray::from(vec![
                 r#"{"a":[1,truX]}"#,
                 r#"{"a":[9]}"#,
             ]))),

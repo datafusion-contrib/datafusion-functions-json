@@ -1,11 +1,9 @@
 use std::sync::Arc;
 
-use datafusion::arrow::array::{StringArray, StringBuilder};
-use datafusion::arrow::datatypes::{DataType, Field, FieldRef};
-use datafusion::common::Result as DataFusionResult;
-use datafusion::logical_expr::{
-    ColumnarValue, ReturnFieldArgs, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility,
-};
+use datafusion_common::arrow::array::{StringArray, StringBuilder};
+use datafusion_common::arrow::datatypes::{DataType, Field, FieldRef};
+use datafusion_common::Result as DataFusionResult;
+use datafusion_expr::{ColumnarValue, ReturnFieldArgs, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
 
 use crate::common::{
     get_err, invoke, invoke_array_scalars_direct, jiter_json_find, jiter_skip_str, return_type_check, GetError,
@@ -68,21 +66,18 @@ impl ScalarUDFImpl for JsonGetJson {
         &self.aliases
     }
 
-    fn placement(
-        &self,
-        args: &[datafusion::logical_expr::ExpressionPlacement],
-    ) -> datafusion::logical_expr::ExpressionPlacement {
+    fn placement(&self, args: &[datafusion_expr::ExpressionPlacement]) -> datafusion_expr::ExpressionPlacement {
         // If the first argument is a column and the remaining arguments are literals (a path)
         // then we can push this UDF down to the leaf nodes.
         if args.len() >= 2
-            && matches!(args[0], datafusion::logical_expr::ExpressionPlacement::Column)
+            && matches!(args[0], datafusion_expr::ExpressionPlacement::Column)
             && args[1..]
                 .iter()
-                .all(|arg| matches!(arg, datafusion::logical_expr::ExpressionPlacement::Literal))
+                .all(|arg| matches!(arg, datafusion_expr::ExpressionPlacement::Literal))
         {
-            datafusion::logical_expr::ExpressionPlacement::MoveTowardsLeafNodes
+            datafusion_expr::ExpressionPlacement::MoveTowardsLeafNodes
         } else {
-            datafusion::logical_expr::ExpressionPlacement::KeepInPlace
+            datafusion_expr::ExpressionPlacement::KeepInPlace
         }
     }
 }
@@ -106,7 +101,7 @@ fn append_json_get_json(opt_json: Option<&str>, path: &[JsonPath], builder: &mut
 mod tests {
     use super::*;
     use crate::common::test_util::assert_direct_matches_owned;
-    use datafusion::common::ScalarValue;
+    use datafusion_common::ScalarValue;
 
     #[test]
     fn direct_builder_matches_owned_results() {

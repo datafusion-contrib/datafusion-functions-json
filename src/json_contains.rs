@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use datafusion::arrow::array::BooleanBuilder;
-use datafusion::arrow::datatypes::DataType;
-use datafusion::common::arrow::array::{ArrayRef, BooleanArray};
-use datafusion::common::{plan_err, Result, ScalarValue};
-use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
+use datafusion_common::arrow::array::BooleanBuilder;
+use datafusion_common::arrow::array::{ArrayRef, BooleanArray};
+use datafusion_common::arrow::datatypes::DataType;
+use datafusion_common::{plan_err, Result, ScalarValue};
+use datafusion_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
 
 use crate::common::{invoke, jiter_json_find, return_type_check, GetError, InvokeResult, JsonPath};
 use crate::common_macros::make_udf_function;
@@ -56,21 +56,18 @@ impl ScalarUDFImpl for JsonContains {
         &self.aliases
     }
 
-    fn placement(
-        &self,
-        args: &[datafusion::logical_expr::ExpressionPlacement],
-    ) -> datafusion::logical_expr::ExpressionPlacement {
+    fn placement(&self, args: &[datafusion_expr::ExpressionPlacement]) -> datafusion_expr::ExpressionPlacement {
         // If the first argument is a column and the remaining arguments are literals (a path)
         // then we can push this UDF down to the leaf nodes.
         if args.len() >= 2
-            && matches!(args[0], datafusion::logical_expr::ExpressionPlacement::Column)
+            && matches!(args[0], datafusion_expr::ExpressionPlacement::Column)
             && args[1..]
                 .iter()
-                .all(|arg| matches!(arg, datafusion::logical_expr::ExpressionPlacement::Literal))
+                .all(|arg| matches!(arg, datafusion_expr::ExpressionPlacement::Literal))
         {
-            datafusion::logical_expr::ExpressionPlacement::MoveTowardsLeafNodes
+            datafusion_expr::ExpressionPlacement::MoveTowardsLeafNodes
         } else {
-            datafusion::logical_expr::ExpressionPlacement::KeepInPlace
+            datafusion_expr::ExpressionPlacement::KeepInPlace
         }
     }
 }
