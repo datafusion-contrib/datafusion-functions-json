@@ -8,10 +8,10 @@ license = "Apache-2.0"
 keywords = ["datafusion", "JSON", "SQL"]
 categories = ["database-implementations", "parsing"]
 repository = "https://github.com/datafusion-contrib/datafusion-functions-json/"
-rust-version = "1.94.0"
+rust-version = "1.95.0"
 
 [dependencies]
-datafusion = { version = "55", default-features = false, features = [
+datafusion = { version = "56", default-features = false, features = [
     "sql",
 ] }
 jiter = "0.17.0"
@@ -21,7 +21,7 @@ serde_json = "1"
 
 [dev-dependencies]
 codspeed-criterion-compat = "5.0.2"
-datafusion = { version = "55", default-features = false, features = [
+datafusion = { version = "56", default-features = false, features = [
     "nested_expressions",
     "sql",
 ] }
@@ -39,6 +39,9 @@ pedantic = { level = "deny", priority = -1 }
 [[bench]]
 name = "main"
 harness = false
+
+[patch.crates-io]
+datafusion = { git = "https://github.com/apache/datafusion.git", branch = "branch-56" }
 
 # [patch.crates-io]
 # datafusion = { git = "https://github.com/apache/datafusion.git", rev = "d47bd599ee911eb4be018595b860341ff437ccb1" }
