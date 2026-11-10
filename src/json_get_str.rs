@@ -1,7 +1,7 @@
-use datafusion::arrow::array::{StringArray, StringBuilder};
-use datafusion::arrow::datatypes::DataType;
-use datafusion::common::Result as DataFusionResult;
-use datafusion::logical_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
+use datafusion_common::arrow::array::{StringArray, StringBuilder};
+use datafusion_common::arrow::datatypes::DataType;
+use datafusion_common::Result as DataFusionResult;
+use datafusion_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
 use jiter::{Jiter, Peek};
 
 use crate::common::{
@@ -55,21 +55,18 @@ impl ScalarUDFImpl for JsonGetStr {
         &self.aliases
     }
 
-    fn placement(
-        &self,
-        args: &[datafusion::logical_expr::ExpressionPlacement],
-    ) -> datafusion::logical_expr::ExpressionPlacement {
+    fn placement(&self, args: &[datafusion_expr::ExpressionPlacement]) -> datafusion_expr::ExpressionPlacement {
         // If the first argument is a column and the remaining arguments are literals (a path)
         // then we can push this UDF down to the leaf nodes.
         if args.len() >= 2
-            && matches!(args[0], datafusion::logical_expr::ExpressionPlacement::Column)
+            && matches!(args[0], datafusion_expr::ExpressionPlacement::Column)
             && args[1..]
                 .iter()
-                .all(|arg| matches!(arg, datafusion::logical_expr::ExpressionPlacement::Literal))
+                .all(|arg| matches!(arg, datafusion_expr::ExpressionPlacement::Literal))
         {
-            datafusion::logical_expr::ExpressionPlacement::MoveTowardsLeafNodes
+            datafusion_expr::ExpressionPlacement::MoveTowardsLeafNodes
         } else {
-            datafusion::logical_expr::ExpressionPlacement::KeepInPlace
+            datafusion_expr::ExpressionPlacement::KeepInPlace
         }
     }
 }
@@ -100,7 +97,7 @@ fn str_value<'a>(jiter: &'a mut Jiter<'_>, peek: Peek) -> Result<&'a str, GetErr
 mod tests {
     use super::*;
     use crate::common::test_util::assert_direct_matches_owned;
-    use datafusion::common::ScalarValue;
+    use datafusion_common::ScalarValue;
 
     #[test]
     fn direct_builder_matches_owned_results() {

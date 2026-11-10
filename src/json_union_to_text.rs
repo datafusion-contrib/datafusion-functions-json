@@ -1,11 +1,9 @@
 use std::sync::Arc;
 
-use datafusion::arrow::array::{Array, ArrayRef, StringViewBuilder, UnionArray};
-use datafusion::arrow::datatypes::{DataType, Field, FieldRef};
-use datafusion::common::{exec_datafusion_err, exec_err, plan_err, Result as DataFusionResult};
-use datafusion::logical_expr::{
-    ColumnarValue, ReturnFieldArgs, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility,
-};
+use datafusion_common::arrow::array::{Array, ArrayRef, StringViewBuilder, UnionArray};
+use datafusion_common::arrow::datatypes::{DataType, Field, FieldRef};
+use datafusion_common::{exec_datafusion_err, exec_err, plan_err, Result as DataFusionResult};
+use datafusion_expr::{ColumnarValue, ReturnFieldArgs, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
 
 use crate::common_macros::make_udf_function;
 use crate::common_union::{is_json_union, json_field_metadata, JsonUnionEncoder, JsonUnionValue, JSON_UNION_DATA_TYPE};
@@ -121,7 +119,7 @@ fn json_union_to_text_array(array: &ArrayRef) -> DataFusionResult<ArrayRef> {
 mod tests {
     use super::*;
     use crate::common_union::{JsonUnion, JsonUnionField};
-    use datafusion::arrow::array::StringViewArray;
+    use datafusion_common::arrow::array::StringViewArray;
 
     #[test]
     fn flattens_each_arm_to_json_text() {
