@@ -1793,9 +1793,11 @@ async fn test_double_arrow_double_nested_cast() {
 async fn test_plan_double_arrow_double_nested_cast() {
     let lines = logical_plan(r"explain select (json_data->>'foo'->>0)::int from test").await;
 
-    // NB: json_as_text(..)::int is NOT the same as `json_get_int(..)`, hence the cast is not rewritten
+    // NB: json_as_text(..)::int is NOT the same as `json_get_int(..)`, hence the cast is not rewritten.
+    // The cast is planned around the aliased `->>`, so the alias, and with it the column name, is
+    // inside the cast.
     let expected = [
-        "Projection: CAST(json_as_text(json_as_text(test.json_data, Utf8(\"foo\")), Int64(0)) AS Int32) AS json_data ->> 'foo' ->> 0",
+        "Projection: CAST(json_as_text(json_as_text(test.json_data, Utf8(\"foo\")), Int64(0)) AS json_data ->> 'foo' ->> 0 AS Int32)",
         "  TableScan: test projection=[json_data]",
     ];
 

@@ -278,11 +278,14 @@ impl ExprPlanner for JsonExprPlanner {
 
         let alias_name = format!("{left_repr} {op} {right_repr}");
 
-        // we put the alias in so that default column titles are `foo -> bar` instead of `json_get(foo, bar)`
+        // we put the alias in so that default column titles are `foo -> bar` instead of `json_get(foo, bar)`.
+        // An operand that is itself an operator, e.g. the `a ->> 'b'` in `a ->> 'b' ->> 0`, carries
+        // such an alias too; it has already gone into `alias_name`, and inside the call it would
+        // only clutter the plan, so it is dropped there.
         Ok(PlannerResult::Planned(Expr::Alias(Alias::new(
             Expr::ScalarFunction(ScalarFunction {
                 func: op.into(),
-                args: vec![expr.left, expr.right],
+                args: vec![expr.left.unalias(), expr.right.unalias()],
             }),
             None::<&str>,
             alias_name,
