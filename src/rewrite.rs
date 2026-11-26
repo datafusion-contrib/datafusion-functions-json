@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use datafusion::arrow::datatypes::DataType;
 use datafusion::common::config::ConfigOptions;
+use datafusion::common::plan_err;
 use datafusion::common::tree_node::Transformed;
 use datafusion::common::Column;
 use datafusion::common::DFSchema;
@@ -278,14 +279,177 @@ impl ExprPlanner for JsonExprPlanner {
 
         let alias_name = format!("{left_repr} {op} {right_repr}");
 
+        let right = match op {
+            JsonOperator::HashArrow | JsonOperator::HashLongArrow => text_array_path(expr.right)?,
+            JsonOperator::Arrow | JsonOperator::LongArrow | JsonOperator::Question => expr.right,
+        };
+
         // we put the alias in so that default column titles are `foo -> bar` instead of `json_get(foo, bar)`
         Ok(PlannerResult::Planned(Expr::Alias(Alias::new(
             Expr::ScalarFunction(ScalarFunction {
                 func: op.into(),
-                args: vec![expr.left, expr.right],
+                args: vec![expr.left, right],
             }),
             None::<&str>,
             alias_name,
         ))))
+    }
+}
+
+/// The path of `#>` or `#>>` as a list, when it is written as a string literal like `j #> '{a,b}'`.
+///
+/// Postgres reads such an untyped literal as the `text[]` the operators expect, so it is parsed
+/// rather than used as a single key, which would silently find nothing.
+fn text_array_path(path: Expr) -> Result<Expr> {
+    let Expr::Literal(scalar, _) = &path else {
+        return Ok(path);
+    };
+    let Some(Some(literal)) = scalar.try_as_str() else {
+        return Ok(path);
+    };
+    let elements = parse_text_array(literal)?
+        .into_iter()
+        .map(ScalarValue::Utf8)
+        .collect::<Vec<_>>();
+    Ok(Expr::Literal(
+        ScalarValue::List(ScalarValue::new_list_nullable(&elements, &DataType::Utf8)),
+        None,
+    ))
+}
+
+/// Parse a one-dimensional postgres array literal, as postgres's `array_in` does for a `text[]`.
+///
+/// Elements are separated by commas and the whitespace around them is dropped. An element is
+/// either double quoted, and kept verbatim, or unquoted, in which case an unquoted `NULL` (in any
+/// case) is a null element and an unquoted element cannot be empty. A backslash escapes the next
+/// character in both forms.
+///
+/// The dimension decoration (`[1:2]={a,b}`) and multidimensional arrays are not supported.
+fn parse_text_array(literal: &str) -> Result<Vec<Option<String>>> {
+    let malformed = || plan_err!("malformed array literal: '{literal}'");
+    let Some(inner) = literal
+        .trim_matches(is_array_whitespace)
+        .strip_prefix('{')
+        .and_then(|inner| inner.strip_suffix('}'))
+    else {
+        return malformed();
+    };
+    let mut elements = Vec::new();
+    if inner.chars().all(is_array_whitespace) {
+        return Ok(elements);
+    }
+    let mut chars = inner.chars().peekable();
+    loop {
+        while chars.next_if(|&c| is_array_whitespace(c)).is_some() {}
+        let mut element = String::new();
+        if chars.next_if_eq(&'"').is_some() {
+            loop {
+                match chars.next() {
+                    Some('"') => break,
+                    Some('\\') => {
+                        let Some(c) = chars.next() else {
+                            return malformed();
+                        };
+                        element.push(c);
+                    }
+                    Some(c) => element.push(c),
+                    None => return malformed(),
+                }
+            }
+            while chars.next_if(|&c| is_array_whitespace(c)).is_some() {}
+            elements.push(Some(element));
+        } else {
+            // the length of `element` without its unescaped trailing whitespace
+            let mut kept_len = 0;
+            let mut escaped = false;
+            while let Some(c) = chars.next_if(|&c| c != ',') {
+                match c {
+                    '"' | '{' | '}' => return malformed(),
+                    '\\' => {
+                        let Some(c) = chars.next() else {
+                            return malformed();
+                        };
+                        element.push(c);
+                        kept_len = element.len();
+                        escaped = true;
+                    }
+                    c => {
+                        element.push(c);
+                        if !is_array_whitespace(c) {
+                            kept_len = element.len();
+                        }
+                    }
+                }
+            }
+            element.truncate(kept_len);
+            if element.is_empty() {
+                return malformed();
+            }
+            elements.push((escaped || !element.eq_ignore_ascii_case("NULL")).then_some(element));
+        }
+        match chars.next() {
+            Some(',') => {}
+            None => return Ok(elements),
+            Some(_) => return malformed(),
+        }
+    }
+}
+
+/// The whitespace postgres skips around array elements, that of C's `isspace`.
+fn is_array_whitespace(c: char) -> bool {
+    matches!(c, ' ' | '\t' | '\n' | '\r' | '\x0B' | '\x0C')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_text_array_as_postgres() {
+        // the arrays postgres reads these `text[]` literals as
+        let cases: &[(&str, &[Option<&str>])] = &[
+            ("{}", &[]),
+            (" { } ", &[]),
+            ("{a,b}", &[Some("a"), Some("b")]),
+            ("{ a , b }", &[Some("a"), Some("b")]),
+            ("{a b}", &[Some("a b")]),
+            (r#"{"a b",c}"#, &[Some("a b"), Some("c")]),
+            (r#"{"a,b"}"#, &[Some("a,b")]),
+            (r#"{"a\"b"}"#, &[Some("a\"b")]),
+            (r#"{"a\\b"}"#, &[Some(r"a\b")]),
+            (r"{a\,b}", &[Some("a,b")]),
+            (r"{ a\  }", &[Some("a ")]),
+            (r#"{NULL,null,"NULL",\NULL}"#, &[None, None, Some("NULL"), Some("NULL")]),
+            (r#"{"",a}"#, &[Some(""), Some("a")]),
+            (r#"{"output.fgb",0}"#, &[Some("output.fgb"), Some("0")]),
+            (r#"{é,"ü x"}"#, &[Some("é"), Some("ü x")]),
+        ];
+        for (literal, expected) in cases {
+            let expected = expected.iter().map(|e| e.map(str::to_owned)).collect::<Vec<_>>();
+            assert_eq!(parse_text_array(literal).unwrap(), expected, "{literal}");
+        }
+    }
+
+    #[test]
+    fn parse_text_array_malformed() {
+        // postgres rejects all of these but the multidimensional and decorated arrays
+        for literal in [
+            "a,b",
+            "{a",
+            "{a}b",
+            r"{a\}",
+            "{a,,b}",
+            "{a,}",
+            "{,a}",
+            r#"{"a"b}"#,
+            r#"{"a" b}"#,
+            r#"{a"b"}"#,
+            r#"{a"b}"#,
+            "{a,{b}}",
+            "{{a,b}}",
+            "[1:2]={a,b}",
+        ] {
+            assert!(parse_text_array(literal).is_err(), "{literal}");
+        }
     }
 }
