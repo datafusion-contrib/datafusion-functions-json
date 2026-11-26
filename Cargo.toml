@@ -40,9 +40,6 @@ pedantic = { level = "deny", priority = -1 }
 name = "main"
 harness = false
 
-[patch.crates-io]
-datafusion = { git = "https://github.com/apache/datafusion.git", branch = "branch-56" }
-
 # [patch.crates-io]
 # datafusion = { git = "https://github.com/apache/datafusion.git", rev = "d47bd599ee911eb4be018595b860341ff437ccb1" }
 # datafusion-common = { git = "https://github.com/apache/datafusion.git", rev = "d47bd599ee911eb4be018595b860341ff437ccb1" }
