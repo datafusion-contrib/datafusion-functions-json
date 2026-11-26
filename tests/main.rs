@@ -3884,6 +3884,48 @@ async fn test_hash_long_arrow_index_or_key() {
 }
 
 #[tokio::test]
+async fn test_hash_long_arrow_text_array_literal() {
+    // postgres reads an untyped string literal as the `text[]` path the operator expects
+    let batches = run_query(&format!("select {NESTED} #>> '{{a,b,c}}'")).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "x".to_string()));
+
+    let batches = run_query(&format!("select {NESTED} #> '{{a, b}}'")).await.unwrap();
+    assert_eq!(display_val(batches).await.1, r#"{object={"c": "x"}}"#);
+
+    // a quoted element keeps its commas and dots, and an element spelling an integer indexes an array
+    let sql = r#"select '{"file": {"output.fgb,v2": [1.5, 2.5]}}' #>> '{file,"output.fgb,v2",1}'"#;
+    let batches = run_query(sql).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, "2.5".to_string()));
+
+    // an unquoted NULL is a null element, so the result is null
+    let batches = run_query(&format!("select {NESTED} #>> '{{a,NULL}}'")).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, String::new()));
+
+    // an empty path is the whole value
+    let batches = run_query(r#"select '{"a": 1}' #>> '{}'"#).await.unwrap();
+    assert_eq!(display_val(batches).await, (DataType::Utf8, r#"{"a": 1}"#.to_string()));
+}
+
+#[tokio::test]
+async fn test_hash_long_arrow_malformed_text_array_literal() {
+    // postgres rejects it too, a bare key is not a path
+    let err = run_query(&format!("select {NESTED} #>> 'a'")).await.unwrap_err();
+    assert_eq!(err.to_string(), "Error during planning: malformed array literal: 'a'");
+}
+
+#[tokio::test]
+async fn test_plan_hash_arrow_text_array_literal() {
+    let lines = logical_plan(r"explain select json_data #> '{a,b}' from test").await;
+    assert_eq!(
+        lines,
+        [
+            "Projection: json_get(test.json_data, List([a, b])) AS json_data #> '{a,b}'",
+            "  TableScan: test projection=[json_data]",
+        ]
+    );
+}
+
+#[tokio::test]
 async fn test_long_arrow_text_index() {
     // the same rule applies to a text key which reaches an array; postgres returns null
     // here because its text `->` only looks at objects, so this is more lenient

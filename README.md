@@ -72,17 +72,22 @@ SELECT id, json_col->'a' as json_col_a FROM test_table
 - [x] `#>` operator - `json_get` over a path, so `a #> array['x', 'y']` is `a -> 'x' -> 'y'`
 - [x] `#>>` operator - `json_as_text` over a path, so `a #>> array['x', 'y']` is `a -> 'x' ->> 'y'`
 
-The right-hand side of a path operator is a `text[]` list expression:
+The right-hand side of a path operator is a `text[]` list expression, or a string literal in
+postgres's array syntax:
 
 ```sql
 select json_col #>> array['a', 'b'] from test_table;
 select json_col #>> array['a', 'b']::text[] from test_table;
 select json_col #>> $1::text[] from test_table;
+select json_col #>> '{a,"b c"}' from test_table;
 ```
 
-Postgres's array literal syntax, `'{a,b}'`, is not supported. As in postgres, each element is
-a key when it reaches an object and an index when it reaches an array, so
-`array['items', '0', 'name']` walks to `items`, then element zero, then `name`. A list of
+A string literal follows the postgres rules for a one-dimensional `text[]`: double quotes keep
+an element verbatim, a backslash escapes the next character and an unquoted `NULL` is a null
+element. A malformed literal, such as a bare key, is a planning error.
+
+As in postgres, each element is a key when it reaches an object and an index when it reaches an
+array, so `array['items', '0', 'name']` walks to `items`, then element zero, then `name`. A list of
 integers is a path of indices, and a negative index counts from the end of the array. The
 `json_get*` and `json_as_text` functions accept the same list as a path, e.g.
 `json_as_text(json_col, array['a', 'b'])`.
